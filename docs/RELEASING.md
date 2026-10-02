@@ -41,10 +41,14 @@
 - 命令行：
   ```bash
   /Applications/Godot.app/Contents/MacOS/Godot --headless \
-    --path project --export-release "Windows Desktop" ../dist/game3d-windows.exe
+    --path project --export-release "Windows" ../dist/game3d-windows.exe
   ```
-  preset 已开启 `binary_format/embed_pck`，导出为**单个 exe**；发布时压缩为 `game3d-windows.zip`（如 `zip -j dist/game3d-windows.zip dist/game3d-windows.exe`）。
-- 编辑器：项目 → 导出 → 选「Windows Desktop」→ 导出项目。
+  **注意 preset 名是 `"Windows"`，不是 `"Windows Desktop"`** —— `"Windows Desktop"` 是
+  `platform` 字段的值，不是 preset 名；用错会报 `Invalid export preset name`。
+  preset 已开启 `binary_format/embed_pck`，导出为**单个 exe**，同时 Godot 会把
+  `project/bin/windows/game3d.windows.template_release.x86_64.dll` 拷到 exe 同目录；
+  发布时两个文件一起压成 `game3d-windows-x64.zip`。
+- 编辑器：项目 → 导出 → 选「Windows」→ 导出项目。
 
 ### Linux（x86_64）
 
@@ -53,8 +57,72 @@
   /Applications/Godot.app/Contents/MacOS/Godot --headless \
     --path project --export-release "Linux" ../dist/game3d-linux.x86_64
   ```
-  同样是单可执行文件（pck 已嵌入），发布时压缩为 `game3d-linux.zip`。
-- 编辑器：项目 → 导出 → 选「Linux」→ 导出项目。产物记得 `chmod +x`。
+  同样是单可执行文件（pck 已嵌入），Godot 会把
+  `project/bin/linux/libgame3d.linux.template_release.x86_64.so` 拷到同目录；
+  发布时两个文件一起压成 `game3d-linux-x64.zip`，产物记得 `chmod +x`。
+- 编辑器：项目 → 导出 → 选「Linux」→ 导出项目。
+
+### Linux .deb（**Godot 不支持导出 deb，需手工组包**）
+
+Godot 的 Linux preset 只能导出裸可执行文件 + `.so`，`.deb` 是用 `dpkg-deb` 手工组的。
+前置：`brew install dpkg`。完整命令（在仓库根目录执行）：
+
+```bash
+PKG=dist/deb-root
+rm -rf "$PKG"
+mkdir -p "$PKG/opt/lakeside-cabin" "$PKG/usr/local/bin" \
+         "$PKG/usr/share/applications" \
+         "$PKG/usr/share/icons/hicolor/256x256/apps" "$PKG/DEBIAN"
+
+# 1) 可执行文件 + GDExtension 库 —— 必须放同一目录，否则运行时找不到 .so
+cp dist/game3d-linux.x86_64                                   "$PKG/opt/lakeside-cabin/"
+cp project/bin/linux/libgame3d.linux.template_release.x86_64.so "$PKG/opt/lakeside-cabin/"
+chmod 755 "$PKG/opt/lakeside-cabin/game3d.x86_64"
+
+# 2) 命令行启动器
+printf '#!/bin/sh\nexec /opt/lakeside-cabin/game3d.x86_64 "$@"\n' > "$PKG/usr/local/bin/lakeside-cabin"
+chmod 755 "$PKG/usr/local/bin/lakeside-cabin"
+
+# 3) 应用菜单项
+cat > "$PKG/usr/share/applications/lakeside-cabin.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=湖畔家园 Homestead
+Comment=3D lakeside homestead sandbox
+Exec=/opt/lakeside-cabin/game3d.x86_64
+Icon=lakeside-cabin
+Terminal=false
+Categories=Game;
+EOF
+
+# 4) 图标：icns → 256px png
+sips -s format png -Z 256 docs/Homestead.icns \
+  --out "$PKG/usr/share/icons/hicolor/256x256/apps/lakeside-cabin.png" >/dev/null
+
+# 5) 控制信息
+cat > "$PKG/DEBIAN/control" <<'EOF'
+Package: lakeside-cabin
+Version: 0.1.0-1
+Section: games
+Priority: optional
+Architecture: amd64
+Installed-Size: 90400
+Maintainer: lei <lei@localhost>
+Depends: libc6 (>= 2.31), libx11-6, libxcursor1, libxinerama1, libxrandr2, libxi6, libvulkan1, libasound2 | libasound2t64
+Description: 湖畔家园 Homestead - 3D lakeside sandbox game
+ A cozy 3D lakeside homestead world built with Godot 4.7.2 + custom
+ C++ GDExtension: 448m procedural terrain, day/night cycle, weather,
+ fishing, farm animals and a save system.
+ .
+ Launch from the app menu or run: lakeside-cabin
+EOF
+
+# 6) 打包
+dpkg-deb --build --root-owner-group "$PKG" dist/game3d-linux-amd64.deb
+```
+
+校验：`dpkg-deb --info dist/game3d-linux-amd64.deb`、`dpkg-deb --contents …`。
+安装：`sudo dpkg -i dist/game3d-linux-amd64.deb`（依赖缺失时 `sudo apt -f install`）。
 
 ### macOS 签名 / 公证注意事项
 
