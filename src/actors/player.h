@@ -2,10 +2,12 @@
 
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/character_body3d.hpp>
+#include <godot_cpp/classes/input_event.hpp>
 #include <godot_cpp/classes/label3d.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/ref.hpp>
 #include <godot_cpp/variant/string.hpp>
+#include <godot_cpp/variant/vector2.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
 #include <random>
@@ -73,6 +75,18 @@ public:
 	Player() = default;
 	~Player() override = default;
 
+	// —— 必须放在 public，不能放 protected ——
+	// godot-cpp 的 Node::register_virtuals<T,B>() 里写的是
+	//     decltype(&B::_input)  vs  decltype(&T::_input)
+	// 这段代码是 Node 的成员，等于"从基类上下文取派生类成员的指针"，
+	// 取 protected 成员在 C++ 里直接编译失败：
+	//   error: '_input' is a protected member of 'Player'
+	// 另外签名必须是 void（Node::_input 是 virtual void），写成 bool 也编不过；
+	// 头文件里也必须真 include <godot_cpp/classes/input_event.hpp>，
+	// 光靠 node.hpp 的 class InputEvent; 前向声明，实例化 Ref<InputEvent> 时不够。
+	// 鼠标原始位移：_input 里累加、NOTIFICATION_PROCESS 里消费。
+	void _input(const Ref<InputEvent> &p_event) override;
+
 	void set_move_speed(double p_v) { move_speed = p_v; }
 	double get_move_speed() const { return move_speed; }
 
@@ -106,6 +120,27 @@ private:
 	bool mouse_captured = false; // 鼠标是否已捕获（点击捕获 / ESC 释放）
 	bool esc_prev = false;
 	bool lmb_prev = false;
+
+	// —— 鼠标视角必须用"像素位移"，不能用"速度×帧时间" ——
+	// get_last_mouse_velocity() 给的是像素/秒，再乘 delta 积分回去，等于拿
+	// 上一段事件的平均速度去推算这一帧该转多少：慢速微调转不到位、快速甩又过冲，
+	// 帧率一抖灵敏度还跟着变（用户报的"有延迟/有积分"就是这个 + 相机平滑）。
+	// 改成 _input 里累加本帧原始位移，_update_look 里一次性消费掉。
+	Vector2 mouse_rel;            // 本帧累计位移（消费后清零）
+	bool input_seen = false;      // _input 是否真的被派发过（没派发则退回老路线）
+	double mouse_sens = 0.0032;   // 偏航灵敏度（弧度/像素，与旧版等效）
+	double mouse_sens_y = 0.0028; // 俯仰灵敏度（弧度/像素）
+	void set_mouse_sensitivity(double p_v) {
+		mouse_sens = p_v;
+		mouse_sens_y = p_v * 0.875; // 保持与默认 0.0032/0.0028 相同的纵横比
+	}
+	double get_mouse_sensitivity() const { return mouse_sens; }
+
+	// 相机跟随点：平滑只作用在这里，环绕（鼠标转动）直接给到位。
+	// 原来是对最终机位做 lerp —— 转视角时相机位置在追绕球面的目标点，
+	// 时间常数约 1/12 ≈ 83ms，手感就是"视角永远慢你半拍"。
+	Vector3 cam_follow;
+	bool cam_follow_init = false;
 
 	// —— 脚步声状态 ——
 	godot::Ref<godot::AudioStream> snd_grass;      // 普通草甸脚步（优先加载 grass_step.wav）

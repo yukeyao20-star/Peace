@@ -8,7 +8,9 @@
 #include <godot_cpp/classes/directional_light3d.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/environment.hpp>
+#include <godot_cpp/classes/gpu_particles3d.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/multi_mesh.hpp>
 #include <godot_cpp/classes/multi_mesh_instance3d.hpp>
 #include <godot_cpp/classes/primitive_mesh.hpp>
@@ -334,10 +336,32 @@ void SkyCycle::apply() {
 		if (sun != nullptr) {
 			Vector3 sd = sun->get_global_transform().basis.xform(
 					Vector3(0.0f, 0.0f, 1.0f)).normalized();
+			sun_dir = sd; // 存下来供植被透光等其它系统读（不受 water_mat 是否就绪影响）
 			water_mat->set_shader_parameter("sun_dir", sd);
 			float glint = (sun_h >= 0.0f) ? (day * (1.0f - 0.6f * gloom))
 					: (0.15f * (1.0f - cloud * 0.8f));
 			water_mat->set_shader_parameter("sun_glint", glint);
+		}
+	}
+
+	// —— 礁石激浪联动：湖面结冰封湖时，拍岸水花也得停 ——
+	// ShoreSpray 是 TerrainBuilder 撒完湖岸礁石后生成的，懒查找一次并缓存。
+	// 用 amount_ratio 平滑淡出（不是直接隐藏），避免封湖瞬间水花"啪"地消失。
+	if (spray_root == nullptr && get_parent() != nullptr) {
+		spray_root = Object::cast_to<Node3D>(
+				get_parent()->get_node_or_null(NodePath("Terrain/ShoreSpray")));
+	}
+	if (spray_root != nullptr) {
+		float ratio = 1.0f - snow * 1.6f; // 雪量过半就把水花压没
+		ratio = ratio < 0.0f ? 0.0f : (ratio > 1.0f ? 1.0f : ratio);
+		if (Math::abs(ratio - spray_ratio_applied) > 0.01f) {
+			spray_ratio_applied = ratio;
+			for (int i = 0; i < spray_root->get_child_count(); i++) {
+				GPUParticles3D *g = Object::cast_to<GPUParticles3D>(spray_root->get_child(i));
+				if (g != nullptr) {
+					g->set_amount_ratio(ratio);
+				}
+			}
 		}
 	}
 

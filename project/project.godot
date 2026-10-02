@@ -31,3 +31,6 @@ window/stretch/aspect="expand"
 [rendering]
 
 textures/vram_compression/import_etc2_astc=true
+; 边缘抗锯齿：桥面/引道、桥体与地形的接缝在远处会因为几何走样而闪，
+; 2x MSAA 是最省的一档（草地上开销很小）
+anti_aliasing/quality/msaa_3d=1

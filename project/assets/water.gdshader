@@ -15,7 +15,7 @@ render_mode blend_mix, depth_draw_always, cull_back;
 uniform vec4 shallow_color : source_color = vec4(0.18, 0.55, 0.58, 1.0);
 uniform vec4 deep_color : source_color = vec4(0.015, 0.13, 0.27, 1.0);
 uniform vec4 foam_color : source_color = vec4(0.93, 0.97, 1.0, 1.0);
-uniform float wave_height : hint_range(0.0, 0.5) = 0.05;
+uniform float wave_height : hint_range(0.0, 0.5) = 0.075;
 uniform float wave_speed : hint_range(0.0, 4.0) = 1.1;
 uniform float normal_strength : hint_range(0.0, 3.0) = 1.0;
 uniform float noise_scale : hint_range(0.1, 4.0) = 1.0;
@@ -31,7 +31,23 @@ uniform vec3 sun_dir = vec3(0.3, 0.8, 0.5);      // 指向太阳/月亮的方向
 uniform float sun_glint : hint_range(0.0, 1.0) = 1.0; // 高光强度（白昼×晴天度；夜里=月光残量）
 uniform float shore_wave_speed : hint_range(0.0, 5.0) = 2.8;  // 拍岸浪推进速度（向岸翻滚周期）
 uniform float shore_wave_freq : hint_range(1.0, 20.0) = 7.5;  // 破浪深度频率（浪卷紧凑度）
-uniform float shore_wave_reach : hint_range(0.2, 4.0) = 1.9;  // 拍岸浪作用水深范围（米，越大影响越深处）
+uniform float shore_wave_reach : hint_range(0.2, 6.0) = 2.6;  // 拍岸浪作用水深范围（米，越大影响越深处）
+// 拍岸涌浪的"真实几何"参数：按水深把水面顶起一道随时间向岸推进的浪脊。
+// 水深图由 TerrainBuilder 建图时烘好（顶点着色器拿不到深度缓冲）。
+uniform float swell_height : hint_range(0.0, 1.0) = 0.22;
+uniform float swell_reach_mul = 1.8; // 几何浪脊比白沫作用范围再宽一些（先看见浪滚来，近了才碎成白沫）
+
+// 水深图：R = 水深 / shore_map_depth。顶点（浪脊几何）与片元（白沫相位）共用同一份
+// 水深值 —— 两边相位才不会错开，白沫才骑在抬起来的那道水脊上。
+uniform sampler2D shore_map : filter_linear, repeat_disable;
+uniform vec2 shore_map_origin = vec2(-81.0, -34.5);
+uniform vec2 shore_map_size = vec2(150.0, 165.0);
+uniform float shore_map_depth = 6.0;
+
+// 湖岸礁石（由 TerrainBuilder 生成地图后写入）：xz = 世界坐标，w = 视觉半径。
+// 拍岸浪在每块石头周围爆起白沫——撞击点来自真实几何，不再是噪声"假装"的石头。
+uniform vec4 shore_rocks[40]; // 长度须与 TerrainBuilder::apply_shore_rocks 的 MAX_ROCKS 一致
+uniform int shore_rock_count = 0;
 
 uniform sampler2D depth_tex : hint_depth_texture, filter_linear, repeat_disable;
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear, repeat_disable;
@@ -66,6 +82,12 @@ float wave_sum(vec2 p, float t) {
 			+ sin(dot(p, vec2(0.60, 0.80)) * 0.42 + t * 0.72) * 0.34;
 }
 
+// 从水深图取该点的水深（米）
+float map_depth(vec2 wp_xz) {
+	vec2 uv = clamp((wp_xz - shore_map_origin) / shore_map_size, vec2(0.0), vec2(1.0));
+	return texture(shore_map, uv).r * shore_map_depth;
+}
+
 // 多波干涉程序焦散：经典图案，输出尖锐晃动的光丝（0..1+）
 float caustic_pattern(vec2 coord, float t) {
 	vec2 p = mod(coord * 6.28318, 6.28318) - 250.0;
@@ -91,7 +113,7 @@ float rain_ring(vec2 uv, float t) {
 	float phase = fract(t * 1.4 + rnd * 7.0); // 0..1 = 一圈涟漪的生命期
 	vec2 off = vec2(hash21(i + vec2(13.7, 5.1)), hash21(i + vec2(3.9, 9.2))) - 0.5;
 	float r = length(f - off * 0.4);
-	float ring = 1.0 - smoothstep(0.0, 0.055, abs(r - phase * 0.42));
+	float ring = 1.0 - smoothstep(0.0, 0.040, abs(r - phase * 0.42));
 	return ring * (1.0 - phase) * (1.0 - phase);
 }
 
@@ -109,8 +131,10 @@ float ice_cracks(vec2 p) {
 // 所有层共用这一个函数，有限差分求梯度时才能取到每一层真实的斜率。
 float water_height(vec2 a, vec2 b, vec2 c, vec2 pw, float amt) {
 	float base = vnoise(a) * 0.62 + vnoise(b) * 0.38 + (vnoise(c) - 0.5) * 0.25;
-	float rings = (rain_ring(pw * 2.2, TIME) + rain_ring(pw * 4.7 + 31.7, TIME * 1.23) * 0.6)
-			* amt * 0.5;
+	// 雨点涟漪：格子加密（涟漪更小更密）、幅度压低 —— 之前的"大圆圈"像气泡膜，
+	// 真实的雨打湖面是细密的小坑。
+	float rings = (rain_ring(pw * 3.4, TIME) + rain_ring(pw * 7.1 + 31.7, TIME * 1.23) * 0.55)
+			* amt * 0.26;
 	return base + rings;
 }
 
@@ -120,6 +144,15 @@ void vertex() {
 	// 基础开阔水面起伏 + 宏观自然动态呼吸起伏
 	float w = wave_sum(wp.xz, TIME * wave_speed) * wave_height;
 	w += sin(wp.x * 0.45 + wp.z * 0.35 + TIME * 1.6) * 0.022;
+	// 拍岸涌浪的真实几何：水面真的被顶起一道向岸推进的浪脊。
+	// 相位用**水深**（水深图）而不是"到石头的距离"—— 水越深相位越超前，
+	// 浪脊随时间从湖心滚向岸边。之前浪只画在白沫里、水面是平的，
+	// 而且相位算的是"离石头多远"，32 块石头叠一起就成了满湖乱鼓包。
+	float md_v = map_depth(wp.xz);
+	float swell_env = 1.0 - smoothstep(0.0, shore_wave_reach * swell_reach_mul, md_v);
+	float swell = pow(max(sin(TIME * shore_wave_speed + md_v * shore_wave_freq), 0.0), 2.2)
+			* swell_env;
+	w += swell * swell_height;
 	// 结冰压平波浪：冰面不起伏（freeze=1 时波高归零）
 	VERTEX.y += w * (1.0 + rain_amount * 0.8) * (1.0 - freeze_amount);
 }
@@ -190,7 +223,10 @@ void fragment() {
 	vec3 refl_dir = reflect(-view_dir, n);
 	vec3 sky_col = mix(vec3(0.80, 0.87, 0.94), vec3(0.32, 0.54, 0.88),
 			clamp(refl_dir.y * 1.7, 0.0, 1.0));
-	vec3 col = mix(base, sky_col, fres * 0.7);
+	// 反射分两层：引擎的环境反射 + 屏幕空间反射（SSR，需要不透明材质，见文件末尾注释）
+	// 负责"真实映出天空和岸"，这里的 sky_col 只作一层薄薄的兜底 —— 保证任何角度
+	// 水面都不发死，同时不把引擎那层真实反射盖掉。
+	vec3 col = mix(base, sky_col, fres * 0.40);
 
 	// CS2 碎金高光：紧镜面瓣随波面法线抖动成闪烁光路 + 宽光泽瓣铺底；
 	// 强度由 SkyCycle 按白昼×晴天度驱动（夜里剩月光残量），结冰大幅衰减
@@ -205,37 +241,60 @@ void fragment() {
 	// ══════════════════════════════════════════════════════════════════════
 
 	// ── A. 深度区带分级 ──────────────────────────────────────────────────
-	// 极浅区 (0~0.25m)：石头就在这里，浪花最猛烈
+	// 极浅区 (0~0.42m)：石头就在这里，浪花最猛烈
 	// 近岸区 (0~shore_reach)：主力拍岸涌浪区
-	float extreme_shallow = 1.0 - smoothstep(0.0, 0.28, water_depth);   // 石头激浪区
+	float extreme_shallow = 1.0 - smoothstep(0.0, 0.42, water_depth);   // 石头激浪区
 	float shore_k = 1.0 - smoothstep(0.01, shore_wave_reach, water_depth); // 整体近岸系数
 
 	// ── B. 三频涌浪叠加（深水→浅水推进，浪峰向岸翻卷） ─────────────────
-	// 三组不同相位/频率，制造"一浪叠一浪"的自然节奏感
-	float lap1 = TIME * shore_wave_speed - water_depth * shore_wave_freq;
-	float lap2 = TIME * shore_wave_speed * 0.72 - water_depth * shore_wave_freq * 1.35 + 2.31;
-	float lap3 = TIME * shore_wave_speed * 1.41 - water_depth * shore_wave_freq * 0.85 + 4.77;
+	// 三组不同相位/频率，制造"一浪叠一浪"的自然节奏感。
+	// 相位里的水深项必须是 **加号**：水越深相位越超前，浪峰才会随时间
+	// 从深处滚向岸边。原来写成减号，浪是往外跑的 —— 这就是"浪花凭空出现"的根因。
+	// 水深用**水深图**而不是深度缓冲算出来的 water_depth：顶点位移也用水深图，
+	// 两边同源，白沫才骑在抬起来的那道水脊上（差一点就错开半条浪）。
+	float md = map_depth(world_pos.xz);
+	float lap1 = TIME * shore_wave_speed + md * shore_wave_freq;
+	float lap2 = TIME * shore_wave_speed * 0.72 + md * shore_wave_freq * 1.35 + 2.31;
+	float lap3 = TIME * shore_wave_speed * 1.41 + md * shore_wave_freq * 0.85 + 4.77;
 
 	// 浪峰破碎（幂次尖锐化 → 陡峭向岸翻卷白沫）
-	float crest1 = pow(max(sin(lap1), 0.0), 2.8) * shore_k;
-	float crest2 = pow(max(sin(lap2), 0.0), 3.5) * shore_k * 0.75;
-	float crest3 = pow(max(sin(lap3), 0.0), 4.2) * shore_k * 0.55;
+	float crest1 = pow(max(sin(lap1), 0.0), 2.2) * shore_k;
+	float crest2 = pow(max(sin(lap2), 0.0), 2.9) * shore_k * 0.80;
+	float crest3 = pow(max(sin(lap3), 0.0), 3.6) * shore_k * 0.58;
 	float wave_crest = crest1 + crest2 + crest3;
 
 	// ── C. 石头激浪（Rock Splash）────────────────────────────────────────
-	// 原理：极浅区(0~0.25m)水与石头的接触界面，用高频噪声+涌浪相位叠加
-	// 产生不规则爆发性白沫团 ── 模拟浪花猛击石头激起水花的瞬间冲击感
+	// 真实礁石坐标来自 TerrainBuilder 的 shore_rocks（xz = 世界位置，w = 半径）。
+	// 浪脊（crest1）推到石头那一刻才炸 —— 白沫浪线、浪脊几何、水花粒子
+	// 三者同相位，所以是"看见浪打上去 → 炸开"，不是凭空冒出来。
+	float rock_ring = 0.0;
+	float rock_core = 0.0;
+	for (int i = 0; i < 40; i++) {
+		if (i >= shore_rock_count) {
+			break;
+		}
+		vec2 rp = shore_rocks[i].xz;
+		float rr = max(shore_rocks[i].w, 0.05);
+		float d = distance(world_pos.xz, rp);
+		float infl = 1.0 - smoothstep(rr * 0.70, rr * 2.45, d);
+		rock_ring = max(rock_ring, infl);
+		rock_core = max(rock_core, infl * infl * infl);
+	}
+
+	// 石头处的不规则破碎噪声（让爆发团不成规整圆环）
 	float foam_n_fine = vnoise(p * 6.5 + vec2(TIME * 0.24, -TIME * 0.18))
 					  + vnoise(p * 14.2 - vec2(TIME * 0.16, TIME * 0.22)) * 0.55
 					  + vnoise(p * 28.0 + vec2(TIME * 0.09, TIME * 0.13)) * 0.30;
 	foam_n_fine = foam_n_fine / 1.85; // 归一到 0~1
+	float rock_grain = 0.55 + 0.45 * smoothstep(0.30, 0.80, foam_n_fine);
 
-	// 石头激浪：涌浪推进到极浅区撞击石头时猛烈爆发（相位叠加不规则噪声）
-	float rock_burst = smoothstep(0.42, 0.82, foam_n_fine)  // 噪声高值点=石头位置
-					 * crest1 * 2.8                          // 随主浪峰爆发
-					 * extreme_shallow;                      // 仅在石头带触发
-	// 额外：石头侧面的持续飞沫（不随相位脉动，而是持续存在的薄沫）
-	float rock_mist = smoothstep(0.55, 0.78, foam_n_fine) * extreme_shallow * 0.55;
+	// 正面撞击：浪脊推到石头时猛烈炸开（最高最白）
+	float rock_burst = rock_core * rock_grain * crest1 * 3.6 * (1.0 - freeze_amount);
+	// 侧面挂沫：石头周围一圈持续的白色碎沫（随浪脊起伏）
+	float rock_mist = rock_ring * rock_grain * (0.16 + crest1 * 0.95) * shore_k * (1.0 - freeze_amount);
+	// 浪脊自身的白沫线：比 crest1 更锐，就是那道能看见它从远处滚过来的白脊
+	float swell_foam = pow(max(sin(lap1), 0.0), 5.5) * shore_k * rock_grain
+			* 1.15 * (1.0 - freeze_amount);
 
 	// ── D. 潮汐冲刷水线（Swash Zone）────────────────────────────────────
 	float foam_n_base = vnoise(p * 3.2 + vec2(t * 0.16, -t * 0.11)) * 0.5
@@ -262,24 +321,25 @@ void fragment() {
 	float foam_base = 1.0 - smoothstep(0.0, foam_depth * 0.45, water_depth + foam_n_base * 0.14 - 0.04);
 
 	// ── H. 综合混合 ──────────────────────────────────────────────────────
-	float foam = foam_base * 0.60              // 静态基底
-			   + wave_crest * 1.55             // 三频涌浪主浪花
-			   + rock_burst * 1.80             // 石头爆发激浪（最猛）
-			   + rock_mist * 0.65              // 石头飞沫
-			   + swash_line * 1.20             // 水线涨落
+	float foam = foam_base * 0.34              // 静态基底（压低：静浪时岸边干净，浪来时对比更强）
+			   + wave_crest * 1.75             // 三频涌浪主浪花
+			   + swell_foam * 1.15             // 向岸推进的白沫浪线（浪的"本体"）
+			   + rock_burst * 2.30             // 石头正面爆发激浪（最猛）
+			   + rock_mist * 1.05              // 石头侧面挂沫
+			   + swash_line * 1.15             // 水线涨落
 			   + backwash * 0.70               // 退浪花边
-			   + spray * 0.90;                 // 飞溅白雾
+			   + spray * 0.95;                 // 飞溅白雾
 	foam = clamp(foam, 0.0, 1.0) * (1.0 - freeze_amount);
 
 	// ── I. 浪峰法线隆起（立体破浪感）────────────────────────────────────
-	float norm_surge = (crest1 * 0.55 + extreme_shallow * rock_burst * 0.30) * (1.0 - freeze_amount);
+	float norm_surge = (crest1 * 0.70 + rock_core * crest1 * 0.60) * (1.0 - freeze_amount);
 	vec3 wave_norm_offset = vec3(cos(lap1) * norm_surge, 0.0, sin(lap1) * norm_surge) * shore_k;
 	n = normalize(n + wave_norm_offset);
 
 	// ── J. 浪花颜色：纯白中带极轻微的青绿色（湖水携带）─────────────────
-	vec3 splash_col = mix(foam_color.rgb, vec3(0.95, 0.99, 1.0), 0.25);
+	vec3 splash_col = mix(foam_color.rgb, vec3(0.96, 0.99, 1.0), 0.25);
 	// 石头激浪处更纯白（大量气泡与水花混合）
-	splash_col = mix(splash_col, vec3(1.0, 1.0, 1.0), rock_burst * 0.60);
+	splash_col = mix(splash_col, vec3(1.0, 1.0, 1.0), clamp(rock_burst + rock_mist, 0.0, 1.0) * 0.72);
 	col = mix(col, splash_col, foam);
 
 	// —— 冰面观感：底冰蓝×明暗噪声 + 脊线裂缝亮纹 + 保留菲涅尔天光 ——
@@ -295,8 +355,12 @@ void fragment() {
 	col = mix(col, col * vec3(0.80, 0.84, 0.90), rain_amount * 0.55);
 
 	ALBEDO = col;
-	ROUGHNESS = mix(mix(0.02, 0.35, foam) + rain_amount * 0.10, 0.06, cover); // 冰面比静水更镜面
-	SPECULAR = 0.6;                    // 阳光碎金高光
+	// 粗糙度压到很低 → 反射接近镜面（CS2 那种"液面镜子"的观感）；
+	// 泡沫处抬高粗糙度，浪花是哑光的白。
+	ROUGHNESS = mix(mix(0.015, 0.30, foam) + rain_amount * 0.08, 0.05, cover);
+	SPECULAR = 0.9;                    // 反射强度（阳光碎金高光 + 环境反射）
 	METALLIC = 0.0;
-	ALPHA = 1.0;                       // 手动合成折射，实际不透明
+	// 注意：这里绝不能写 ALPHA。一旦写 ALPHA，Godot 会把水面扔进透明通道，
+	// 而屏幕空间反射（SSR）只作用于不透明物体 —— 水面就再也映不出桥和岸了。
+	// 折射是手动合成到 ALBEDO 里的，本来也不需要 alpha 混合。
 }

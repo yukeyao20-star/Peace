@@ -15,6 +15,8 @@
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/font.hpp>
 #include <godot_cpp/classes/input.hpp>
+#include <godot_cpp/classes/input_event.hpp>
+#include <godot_cpp/classes/input_event_mouse_motion.hpp>
 #include <godot_cpp/classes/label.hpp>
 #include <godot_cpp/classes/label3d.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
@@ -52,6 +54,11 @@ void Player::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_camera_distance"), &Player::get_camera_distance);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "camera_distance"), "set_camera_distance", "get_camera_distance");
 
+	// 鼠标灵敏度（弧度/像素）。做成属性是为了不重编译就能调手感。
+	ClassDB::bind_method(D_METHOD("set_mouse_sensitivity", "value"), &Player::set_mouse_sensitivity);
+	ClassDB::bind_method(D_METHOD("get_mouse_sensitivity"), &Player::get_mouse_sensitivity);
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "mouse_sensitivity"), "set_mouse_sensitivity", "get_mouse_sensitivity");
+
 	ClassDB::bind_method(D_METHOD("set_camera_height", "value"), &Player::set_camera_height);
 	ClassDB::bind_method(D_METHOD("get_camera_height"), &Player::get_camera_height);
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "camera_height"), "set_camera_height", "get_camera_height");
@@ -63,8 +70,19 @@ void Player::_notification(int p_what) {
 			// 按名字找到场景里的子节点（Model 只负责外观旋转，Camera3D 是跟随相机）
 			model = Object::cast_to<Node3D>(get_node_or_null("Model"));
 			camera = Object::cast_to<Camera3D>(get_node_or_null("Camera3D"));
+			// 深度精度：Godot 默认 near 0.05 / far 4000，对 448m 的地图过于浪费——
+			// 深度缓冲的有效精度大致按 near 反比、按 far 正比，远处两个面（桥面与
+			// 引道地形、桥面与贴地装饰薄片）只差几厘米时就会互相覆盖着闪。
+			// 收窄到 0.1 / 800（第三人称相机最近 2.5m，800m 覆盖全图对角）后精度约提升一个量级。
+			if (camera != nullptr) {
+				camera->set_near(0.1);
+				camera->set_far(800.0);
+			}
 			set_physics_process(true); // 打开物理帧回调（移动逻辑）
 			set_process(true);         // 打开渲染帧回调（相机平滑）
+			// 打开输入回调：_input 只做"把鼠标原始位移累加起来"这一件事。
+			// 视角计算仍在 NOTIFICATION_PROCESS 里（不破坏工程既有的主循环约定）。
+			set_process_input(true);
 
 			// 互动提示标签（跟随目标物体，平时隐藏）
 			prompt = memnew(Label3D);
@@ -563,6 +581,23 @@ void Player::play_ui(int type) {
 	}
 }
 
+// 鼠标原始位移：在这里累加，_update_look 每帧消费一次。
+//
+// 为什么不用 Input::get_last_mouse_velocity()：
+//   它返回的是"像素/秒"的瞬时速度估计，拿它再乘帧时间积分回去，
+//   等效于用上一段事件的平均速度推算这一帧该转多少 —— 手感上就是
+//   慢速微调转不到位、快速甩动又过冲，而且帧率一变灵敏度就跟着变。
+//   视角要的是"这一帧累计移动了多少像素"，直接取位移才对。
+//
+// 注意这里是"轮询 + _input 只做累加"的分工：真正的视角计算仍在
+// NOTIFICATION_PROCESS 里（与工程既有的 _notification 主循环约定一致）。
+void Player::_input(const Ref<InputEvent> &p_event) {
+	Ref<InputEventMouseMotion> mm = p_event;
+	if (mm.is_valid() && mouse_captured) {
+		mouse_rel += mm->get_relative();
+		input_seen = true;
+	}
+}
 // 鼠标视角：点击画面捕获鼠标，ESC 释放；捕获期间鼠标速度驱动偏航/俯仰，
 // 滚轮缩放距离。轮询路线（Input 单例）而非 _unhandled_input——与工程
 // "_notification 优先于 GDVIRTUAL override"的既有约定一致。
@@ -586,12 +621,20 @@ void Player::_update_look(double delta) {
 	lmb_prev = lmb;
 
 	if (!mouse_captured) {
+		mouse_rel = Vector2(); // 没捕获时不要把位移攒着，否则下次一进来会猛地跳一下
 		return;
 	}
 
-	Vector2 vel = input->get_last_mouse_velocity(); // 像素/秒（捕获模式的累计相对速度）
-	cam_yaw -= (double)vel.x * delta * 0.0032;
-	cam_pitch = Math::clamp(cam_pitch + (double)vel.y * delta * 0.0028, -0.5, 1.25);
+	// 本帧累计的像素位移（消费后清零）
+	Vector2 rel = mouse_rel;
+	mouse_rel = Vector2();
+	if (!input_seen) {
+		// 兜底：万一 _input 一次都没被派发（本工程历史上担心过这件事），
+		// 退回老的"速度 × 帧时间"，至少还能转。
+		rel = input->get_last_mouse_velocity() * (float)delta;
+	}
+	cam_yaw -= (double)rel.x * mouse_sens;
+	cam_pitch = Math::clamp(cam_pitch + (double)rel.y * mouse_sens_y, -0.5, 1.25);
 
 	if (input->is_mouse_button_pressed(MOUSE_BUTTON_WHEEL_UP)) {
 		cam_dist = Math::max(2.5, cam_dist - 0.6);
@@ -603,40 +646,50 @@ void Player::_update_look(double delta) {
 
 // 第三人称越肩相机：以"胸口支点"为球心，偏航/俯仰决定球面机位；
 // 支点→机位有遮挡时沿视线回拉（防穿墙，回拉直达不平滑，避免闪墙）。
+//
+// **平滑只作用在跟随点上，不作用在环绕上**：
+//   原来是对最终机位做 lerp（camera_smoothing=12，时间常数约 83ms）——
+//   鼠标一转，目标机位是绕球面瞬移的，但相机位置在慢慢追，
+//   结果就是"视角永远慢半拍"。用户报的"有延迟/有积分"主要就是这一条。
+//   现在改成：跟随时（角色走动）平滑，环绕（鼠标转动）直接给到位。
 void Player::_update_camera(double delta) {
 	if (camera == nullptr) {
 		return;
 	}
 
 	const Vector3 head = get_global_position() + Vector3(0.0, camera_height, 0.0);
+
+	if (!cam_follow_init) {
+		cam_follow = head;
+		cam_follow_init = true;
+	}
+	double t = delta * camera_smoothing;
+	if (t > 1.0) {
+		t = 1.0;
+	}
+	cam_follow = cam_follow.lerp(head, t);
+
 	Vector3 off = Basis(Vector3(0.0, 1.0, 0.0), (float)cam_yaw).xform(
 			Vector3(0.0, std::sin(cam_pitch), std::cos(cam_pitch)) * cam_dist);
-	Vector3 want = head + off;
+	Vector3 want = cam_follow + off;
 
-	bool pulled = false;
 	PhysicsDirectSpaceState3D *space = get_world_3d()->get_direct_space_state();
 	if (space != nullptr) {
-		Ref<PhysicsRayQueryParameters3D> ray = PhysicsRayQueryParameters3D::create(head, want);
+		Ref<PhysicsRayQueryParameters3D> ray = PhysicsRayQueryParameters3D::create(cam_follow, want);
 		Array ex;
 		ex.push_back(get_rid());
 		ray->set_exclude(ex);
 		Dictionary hit = space->intersect_ray(ray);
 		if (!hit.is_empty()) {
+			// 支点→机位之间有遮挡：沿视线回拉，别穿墙
 			Vector3 hp = hit["position"];
-			want = head + (hp - head) * 0.86;
-			pulled = true;
+			want = cam_follow + (hp - cam_follow) * 0.86;
 		}
 	}
 
-	if (pulled) {
-		camera->set_global_position(want);
-	} else {
-		double t = delta * camera_smoothing;
-		if (t > 1.0) {
-			t = 1.0;
-		}
-		camera->set_global_position(camera->get_global_position().lerp(want, t));
-	}
+	// 直达不平滑（包括回拉）—— 平滑已经在 cam_follow（跟随点）上做过了，
+	// 这里再平滑一次就又变成"视角慢半拍"。
+	camera->set_global_position(want);
 	camera->look_at(head + Vector3(0.0, 0.25, 0.0), Vector3(0.0, 1.0, 0.0));
 }
 
@@ -653,9 +706,10 @@ void Player::_update_footsteps(double delta, bool on_floor) {
 		step_acc = 0.0;
 		land_timer = 0.40; // 连跳与落地缓冲：接地点草叶保持倒伏并回弹 0.4 秒
 		last_land_pos = get_global_position();
-		play_step(_step_kind(), 0.86f); // 着地声偏沉，音色跟随当前地面
+		const int kind = _step_kind();
+		play_step(kind, 0.86f); // 着地声偏沉，音色跟随当前地面
 
-		// 落地双脚并排留下较深印痕
+		// 落地双脚并排留下较深印痕（地面类型一并传下去：石桥/木地板留擦痕而非泥印）
 		if (FootprintManager::get_singleton() != nullptr) {
 			Vector3 pos = get_global_position();
 			float yaw = Math::atan2(facing.x, facing.z);
@@ -663,8 +717,8 @@ void Player::_update_footsteps(double delta, bool on_floor) {
 			if (right_vec.length_squared() > 0.001f) {
 				right_vec = right_vec.normalized();
 			}
-			FootprintManager::get_singleton()->spawn_footprint(FootprintManager::TYPE_HUMAN_LEFT, pos - right_vec * 0.14f, yaw, 1.08f);
-			FootprintManager::get_singleton()->spawn_footprint(FootprintManager::TYPE_HUMAN_RIGHT, pos + right_vec * 0.14f, yaw, 1.08f);
+			FootprintManager::get_singleton()->spawn_footprint(FootprintManager::TYPE_HUMAN_LEFT, pos - right_vec * 0.14f, yaw, 1.08f, kind);
+			FootprintManager::get_singleton()->spawn_footprint(FootprintManager::TYPE_HUMAN_RIGHT, pos + right_vec * 0.14f, yaw, 1.08f, kind);
 		}
 		return;
 	}
@@ -683,9 +737,10 @@ void Player::_update_footsteps(double delta, bool on_floor) {
 	if (step_acc >= 2.1) {
 		step_acc = 0.0;
 		std::uniform_real_distribution<float> pitch_dist(0.92f, 1.08f);
-		play_step(_step_kind(), pitch_dist(rng));
+		const int kind = _step_kind();
+		play_step(kind, pitch_dist(rng));
 
-		// 跑步/行走留痕：左右脚交替印痕
+		// 跑步/行走留痕：左右脚交替印痕（地面类型一并传下去）
 		if (FootprintManager::get_singleton() != nullptr) {
 			Vector3 pos = get_global_position();
 			float yaw = Math::atan2(facing.x, facing.z);
@@ -696,7 +751,7 @@ void Player::_update_footsteps(double delta, bool on_floor) {
 			float lat_off = foot_side ? 0.13f : -0.13f;
 			Vector3 foot_pos = pos + right_vec * lat_off;
 			FootprintManager::FootprintType ft = foot_side ? FootprintManager::TYPE_HUMAN_RIGHT : FootprintManager::TYPE_HUMAN_LEFT;
-			FootprintManager::get_singleton()->spawn_footprint(ft, foot_pos, yaw, 1.0f);
+			FootprintManager::get_singleton()->spawn_footprint(ft, foot_pos, yaw, 1.0f, kind);
 			foot_side = !foot_side;
 		}
 	}

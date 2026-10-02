@@ -75,7 +75,7 @@ scons platform=macos target=template_debug     # 增量编译
 ## 并行协作约定
 - world.tscn 常被用户/并行实例改动 → **动手前必须重读场景与 src/ 最新状态**；选改动面时避让近期热点文件。
 - 多实例同时开工时 mtime 检查会过期（秒级撞车，第 31 轮两连撞）：**动手后第一笔 Edit 报"内容不符"或读文件发现陌生新代码 = 撞车信号，立即整体退出换冷方向**，不要清理自己的残留编辑（防二次争写）。
-- 三平台构建走 .github/workflows/build.yml，不要从 macOS 交叉编译；不 git commit（未授权）。
+- 三平台构建走 .github/workflows/build.yml，不要从 macOS 交叉编译。**git 已初始化并完成首次提交**（root `5202346`，2026-10-02，289 文件）；提交前先 `git status` 复核别把构建产物带进去（.gitignore 已排 *.os/*.dylib/dist/release/builds/project/export/.godot，**export_presets.cfg 已入库**）。
 - **构建树互斥铁律（2026-10-01 多次事故后确立）**：src/*.os 被 debug/release 目标共享、.sconsign.dblite 会争写损坏 → **同一时间全工程只允许一路 scons**。开工前必须 `pgrep -fl scons` 查并发，≥1 路活跃就等待，绝不加入（第 38/39 轮互踩、本会话遇 5 路并发，曾致 sconsign 损坏+误报 up-to-date+产物过期）。
 - **沙箱 safe-delete 钩子坑**：回合删除配额（50 文件）耗尽后 rm/unlink/rmtree 全部**静默拦截** → binding_generator 的 rmtree(gen/) 与 SCons unlink 既有 target 被拦 → **scons 假成功**（EXIT=0 无编译行、gen 树残缺）。解法：python 直接调 generate_bindings() 重建 + `scons generate_bindings=no` 绕开；每回合删文件要省着用。
 
@@ -85,3 +85,11 @@ scons platform=macos target=template_debug     # 增量编译
 - **导出两大坑**：universal/arm64 必须开 ETC2 ASTC（project.godot `[rendering] textures/vram_compression/import_etc2_astc=true`）；**导出命令输出严禁接 `grep|head` 管道**——SIGPIPE 杀死导出进程 → 半残 zip（Info.plist 0 字节、pck/dylib 缺失），日志一律落文件。
 - Win/Linux：本机无交叉工具链，预设已备好；走 .github/workflows/build.yml CI（需用户授权 push）或 `brew install mingw-w64` 后本机出包。
 - 玩法闭环：GameDirector（CanvasLayer）计 BerryBush 的 `berry_picked` 信号，目标 6 颗 → 进度 HUD + 10s 操作提示 + 达成结算。
+
+## 官网（2026-10-02 起）
+- **线上 http://107.173.70.200/**（DediRock VPS，1C2G）。只有 HTTP，443 被同机 sing-box 的 VLESS-Reality 占着，**不要为了上 HTTPS 去动 sing-box**。
+- 源码在仓库 `site/`：`index.html` / `style.css` / `assets/img/` / `download/` / `nginx/` / `deploy.sh`。
+- **部署**：`cd site && ./deploy.sh`（只同步网页），`./deploy.sh --nginx`（连 nginx 配置一起，会自动备份 + `nginx -t` 校验）。
+- **服务器侧**：站点根 `/var/www/game`；nginx 配置 `/etc/nginx/sites-available/homestead`（80 default_server）；订阅 location 在 `/etc/nginx/snippets/homestead-sub.conf` 被 include，**订阅 URL 与行为不可改**。
+- **打包规则**：官网用的截图一律裁掉游戏 HUD（顶 9.5% / 底 5%），导出宽度 520（滚动带）/ 900（画廊）/ 1500（大图），JPEG q78–84。
+- ⚠️ **改官网截图前先核对构建时间**：包比源码旧的时候，宣传画面会和下载内容对不上。

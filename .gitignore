@@ -42,3 +42,12 @@ compile_commands.json
 .idea/
 *.swp
 .DS_Store
+
+# ---- QA 诊断产物（单次截图/差分图，体积大且不可复现，不入库） ----
+docs/qa/
+
+# ---- 官网上托管的安装包（发布产物，走 dist/ 重新导出即可） ----
+site/download/
+
+# ---- WorkBuddy AI 会话/记忆目录 ----
+.workbuddy-ai/

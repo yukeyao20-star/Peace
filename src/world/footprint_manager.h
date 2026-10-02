@@ -68,7 +68,11 @@ public:
 	// pos: 落地世界坐标（贴近地面高度）
 	// yaw_rad: 移动朝向（弧度，对齐足印尖端）
 	// scale: 缩放比率（幼年/体型差异）
-	void spawn_footprint(FootprintType type, const Vector3 &pos, float yaw_rad, float scale = 1.0f);
+	// surface: 脚下地面类型（沿用 Player::_step_kind 的编码：
+	//          0 荒草/泥土、1 雪地、2 雨天湿泥、3 石桥石板、4 木地板、5 球场草坪、
+	//          6 泥土小径）；传 -1 = 调用方不指定，纯按当前天气决定（动物走这条路）。
+	//          硬质地面踩不出泥印，只留浅灰擦痕——不区分的话石桥上会印一串泥脚印。
+	void spawn_footprint(FootprintType type, const Vector3 &pos, float yaw_rad, float scale = 1.0f, int surface = -1);
 };
 
 } // namespace godot

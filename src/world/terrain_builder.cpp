@@ -23,15 +23,20 @@
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/cylinder_shape3d.hpp>
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/fast_noise_lite.hpp>
 #include <godot_cpp/classes/geometry_instance3d.hpp>
+#include <godot_cpp/classes/gpu_particles3d.hpp>
 #include <godot_cpp/classes/gradient.hpp>
+#include <godot_cpp/classes/gradient_texture1_d.hpp>
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/multi_mesh.hpp>
 #include <godot_cpp/classes/multi_mesh_instance3d.hpp>
+#include <godot_cpp/classes/particle_process_material.hpp>
 #include <godot_cpp/classes/plane_mesh.hpp>
+#include <godot_cpp/classes/quad_mesh.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/shader.hpp>
@@ -41,10 +46,12 @@
 #include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/classes/static_body3d.hpp>
 #include <godot_cpp/classes/surface_tool.hpp>
+#include <godot_cpp/classes/texture2d.hpp>
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/core/memory.hpp>
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
+#include <godot_cpp/variant/packed_vector4_array.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
@@ -142,6 +149,326 @@ void commit_scatter(Node3D *p_parent, const char *p_name, Ref<Mesh> p_mesh, cons
 	p_parent->add_child(mi);
 }
 
+// 拍岸浪参数：必须与 water.gdshader 的 shore_wave_speed / shore_wave_freq / swell_freq
+// 默认值一致（水面着色器用它们算浪脊相位，浪花粒子要跟它同相）。改一处就要改两处。
+constexpr float REEF_WAVE_SPEED = 2.8f; // == water.gdshader shore_wave_speed
+constexpr float REEF_WAVE_FREQ = 7.5f;  // == water.gdshader shore_wave_freq
+constexpr float SWELL_FREQ = 1.7f;      // == water.gdshader swell_freq（浪脊向石头收拢的相位频率）
+
+// 程序化岩石网格：球面按 3D 噪声做径向位移（不规则的棱面轮廓），
+// 再生成逐面法线（flat shading）—— 低模岩石硬朗的切面感就来自这里。
+// 光滑球体当石头永远是"蛋"：棱面 + 噪声才是石头的关键。
+//   p_radius：基础半径（与 SphereMesh::set_radius 同义，方便沿用原有缩放参数）
+//   p_squash：压扁 Y（<1 更扁，像卧石/被水磨过的顽石；竖向半高 = p_radius·p_squash）
+//   p_amp   ：位移幅度，0.15~0.35 比较自然（再大就成麻花了）
+//   p_freq  ：噪声频率，越大碎面越密
+Ref<ArrayMesh> make_rock_mesh(int p_seg, int p_rings, float p_radius, float p_squash,
+		float p_amp, float p_freq, int p_seed) {
+	Ref<FastNoiseLite> noise;
+	noise.instantiate();
+	noise->set_noise_type(FastNoiseLite::TYPE_SIMPLEX_SMOOTH);
+	noise->set_seed(p_seed);
+	noise->set_frequency(p_freq);
+	noise->set_fractal_type(FastNoiseLite::FRACTAL_FBM);
+	noise->set_fractal_octaves(3);
+	noise->set_fractal_gain(0.5f);
+	noise->set_fractal_lacunarity(2.1f);
+
+	// 经纬球顶点：j = 0 顶极点 → j = p_rings 底极点
+	std::vector<std::vector<Vector3>> grid(p_rings + 1);
+	for (int j = 0; j <= p_rings; j++) {
+		float phi = (float)j / (float)p_rings * Math::PI;
+		float sy = Math::cos(phi);
+		float sr = Math::sin(phi);
+		grid[j].resize(p_seg + 1);
+		for (int i = 0; i <= p_seg; i++) {
+			float th = (float)i / (float)p_seg * Math::TAU;
+			Vector3 dir(sr * Math::cos(th), sy, sr * Math::sin(th));
+			float n = noise->get_noise_3d(dir.x, dir.y, dir.z);
+			Vector3 p = dir * (p_radius * (1.0f + p_amp * n));
+			p.y *= p_squash;
+			grid[j][i] = p;
+		}
+	}
+
+	Ref<SurfaceTool> st;
+	st.instantiate();
+	st->begin(Mesh::PRIMITIVE_TRIANGLES);
+	st->set_smooth_group(-1); // 逐面法线 → flat shading（石头要的就是硬切面）
+	for (int j = 0; j < p_rings; j++) {
+		for (int i = 0; i < p_seg; i++) {
+			const Vector3 &a = grid[j][i];
+			const Vector3 &b = grid[j][i + 1];
+			const Vector3 &c = grid[j + 1][i + 1];
+			const Vector3 &d = grid[j + 1][i];
+			if (j >= 1) { // 顶极点处 a==b，退化三角形跳过
+				st->add_vertex(a);
+				st->add_vertex(b);
+				st->add_vertex(c);
+			}
+			if (j <= p_rings - 2) { // 底极点处 c==d
+				st->add_vertex(a);
+				st->add_vertex(c);
+				st->add_vertex(d);
+			}
+		}
+	}
+	st->generate_normals();
+	return st->commit();
+}
+
+// 叶团网格：球面按低频噪声径向位移 —— 蓬松、不规则的叶簇体积。
+// 和石头用的是同一套思路，区别在两点：
+//   1) 平滑法线（叶簇是软团，不是石头那种硬切面）；
+//   2) 位移幅度小、频率低（叶团轮廓要"鼓"，不能碎成麻花）。
+// 一颗树冠由 7 个这样的小团错落叠出来 —— 单球当树冠就是"一坨"的根源。
+//   p_radius：基础半径（实例缩放直接乘这个，所以取 1.0 最好算）
+//   p_squash：压扁 Y（叶团略扁，像被自身重量压下来的冠形）
+Ref<ArrayMesh> make_leaf_blob_mesh(float p_radius, float p_squash, float p_amp,
+		float p_freq, int p_seed, int p_seg, int p_rings) {
+	Ref<FastNoiseLite> noise;
+	noise.instantiate();
+	noise->set_noise_type(FastNoiseLite::TYPE_SIMPLEX_SMOOTH);
+	noise->set_seed(p_seed);
+	noise->set_frequency(p_freq);
+	noise->set_fractal_type(FastNoiseLite::FRACTAL_FBM);
+	// 3 层 FBM：低频定叶团的鼓包轮廓，中频给表面加起伏。
+	// 为什么是 3 层而不是 4 层：4 层时最高一层频率到 1.30×2.5³≈20，波长只有 0.3，
+	// 而网格顶点间距约 0.33 —— 噪声比顶点还密，等于给每个顶点随机抖动，
+	// 表面被抖成一片硬邦邦的碎面（看着像绿色碎石堆，而不是叶子）。
+	// 降到 3 层、lacunarity 2.0，最高频 5.2（波长 1.2，约 3.6 个顶点/波）才采得动。
+	noise->set_fractal_octaves(3);
+	noise->set_fractal_gain(0.52f);
+	noise->set_fractal_lacunarity(2.0f);
+
+	// 叶面明暗：再采一层更高频的噪声当顶点色（乘在实例色上）。
+	// 树冠从此不是一块平涂的绿 —— 同一团叶子里有的在光里、有的在阴影里，
+	// 这是"看起来像叶子"最便宜也最有效的一招（不用任何贴图）。
+	Ref<FastNoiseLite> tint;
+	tint.instantiate();
+	tint->set_noise_type(FastNoiseLite::TYPE_SIMPLEX_SMOOTH);
+	tint->set_seed(p_seed + 977);
+	tint->set_frequency(p_freq * 2.8f);
+	tint->set_fractal_type(FastNoiseLite::FRACTAL_FBM);
+	// 2 层 + lacunarity 2.0。叶色的高频"噪"不是缺点 —— 插值后就是一层细碎的
+	// 叶面明暗斑驳，正是"叶簇"该有的质感；反倒是大块平涂看着像塑料。
+	tint->set_fractal_octaves(2);
+	tint->set_fractal_lacunarity(2.0f);
+
+	std::vector<std::vector<Vector3>> grid(p_rings + 1);
+	std::vector<std::vector<Vector3>> leafc(p_rings + 1); // 顶点色：叶片明暗 + 色相偏移
+	for (int j = 0; j <= p_rings; j++) {
+		float phi = (float)j / (float)p_rings * Math::PI;
+		float sy = Math::cos(phi);
+		float sr = Math::sin(phi);
+		grid[j].resize(p_seg + 1);
+		leafc[j].resize(p_seg + 1);
+		for (int i = 0; i <= p_seg; i++) {
+			float th = (float)i / (float)p_seg * Math::TAU;
+			Vector3 dir(sr * Math::cos(th), sy, sr * Math::sin(th));
+			// 乘 1.6 把噪声坐标推离原点：球心附近噪声梯度小，直接采样会让
+			// 相邻叶团长得几乎一样（同一棵树像复制粘贴）
+			float n = noise->get_noise_3d(dir.x * 1.6f, dir.y * 1.6f, dir.z * 1.6f);
+			Vector3 p = dir * (p_radius * (1.0f + p_amp * n));
+			p.y *= p_squash;
+			grid[j][i] = p;
+			float d = tint->get_noise_3d(dir.x * 2.4f, dir.y * 2.4f, dir.z * 2.4f);
+			// 叶片不是"同一块绿打上灰度明暗"——真实树叶暗部偏冷（深青绿）、亮部偏暖（黄绿）。
+			// 所以顶点色给的是 RGB 而不是灰度：红通道拉得最开，绿次之，蓝在暗部反而抬高。
+			// 这层色相分离乘在实例色（树本身的绿）上，才有"叶子有深有浅"的层次，
+			// 否则不管怎么调明暗，看着都还是同一块绿布。
+			float t = clampf(0.5f + 0.78f * d, 0.0f, 1.0f);
+			// 暗端抬到 0.86：暗部是要"暗绿"，不是"发黑"。
+			// 蓝端 0.70~0.74：这一层是"别往墨绿走"的最后一道闸 —— 树冠大面积
+			// 只吃蓝色天光，蓝通道给多少就原样冒出来多少，这里必须压住。
+			// 亮端红 1.14（原来是 1.22）：红给太高亮部会往黄/橄榄偏，
+			// 出来的不是"亮绿"而是"灰橄榄"，反而更不像草木。
+			leafc[j][i] = Vector3(0.86f, 1.01f, 0.70f).lerp(Vector3(1.14f, 1.16f, 0.74f), t);
+		}
+	}
+
+	// 法线自己算，不走 SurfaceTool::generate_normals()。
+	// 原因：那条路要靠"同位置顶点合并"来平滑，叶团每个顶点都带不同的顶点色，
+	// 合并条件很脆弱 —— 实测出来是一张张硬平面（树冠像绿色碎石堆）。
+	// 这里直接对参数曲面求切向量再叉乘，逐顶点法线天然连续，跟顶点色无关。
+	std::vector<std::vector<Vector3>> nrm(p_rings + 1);
+	for (int j = 0; j <= p_rings; j++) {
+		nrm[j].resize(p_seg + 1);
+		for (int i = 0; i <= p_seg; i++) {
+			int jp = j > 0 ? j - 1 : 0;
+			int jn = j < p_rings ? j + 1 : p_rings;
+			// 纬向环绕：第 p_seg 列是第 0 列的副本，所以 i=0 的"前一列"是 p_seg-1，
+			// i=p_seg 的"后一列"是 1（不是 0，否则差分为 0）
+			int im = (i == 0) ? (p_seg - 1) : (i - 1);
+			int ip = (i == p_seg) ? 1 : (i + 1);
+			Vector3 du = grid[jn][i] - grid[jp][i];   // 沿经线
+			Vector3 dv = grid[j][ip] - grid[j][im];   // 沿纬线
+			Vector3 n = dv.cross(du);
+			if (n.length_squared() < 1e-12f) {
+				// 极点 / 退化处：退回径向（球面外法线）
+				Vector3 rad = grid[j][i];
+				n = rad.length_squared() > 1e-9f ? rad : Vector3(0.0f, 1.0f, 0.0f);
+			}
+			nrm[j][i] = n.normalized();
+		}
+	}
+
+	Ref<SurfaceTool> st;
+	st.instantiate();
+	st->begin(Mesh::PRIMITIVE_TRIANGLES);
+	for (int j = 0; j < p_rings; j++) {
+		for (int i = 0; i < p_seg; i++) {
+			const Vector3 &a = grid[j][i];
+			const Vector3 &b = grid[j][i + 1];
+			const Vector3 &c = grid[j + 1][i + 1];
+			const Vector3 &d = grid[j + 1][i];
+			if (j >= 1) {
+				st->set_color(Color(leafc[j][i].x, leafc[j][i].y, leafc[j][i].z));
+				st->set_normal(nrm[j][i]);
+				st->add_vertex(a);
+				st->set_color(Color(leafc[j][i + 1].x, leafc[j][i + 1].y, leafc[j][i + 1].z));
+				st->set_normal(nrm[j][i + 1]);
+				st->add_vertex(b);
+				st->set_color(Color(leafc[j + 1][i + 1].x, leafc[j + 1][i + 1].y, leafc[j + 1][i + 1].z));
+				st->set_normal(nrm[j + 1][i + 1]);
+				st->add_vertex(c);
+			}
+			if (j <= p_rings - 2) {
+				st->set_color(Color(leafc[j][i].x, leafc[j][i].y, leafc[j][i].z));
+				st->set_normal(nrm[j][i]);
+				st->add_vertex(a);
+				st->set_color(Color(leafc[j + 1][i + 1].x, leafc[j + 1][i + 1].y, leafc[j + 1][i + 1].z));
+				st->set_normal(nrm[j + 1][i + 1]);
+				st->add_vertex(c);
+				st->set_color(Color(leafc[j + 1][i].x, leafc[j + 1][i].y, leafc[j + 1][i].z));
+				st->set_normal(nrm[j + 1][i]);
+				st->add_vertex(d);
+			}
+		}
+	}
+	return st->commit();
+}
+
+// 浪花强度预设：粒子数 / 初速倍率 / 粒径倍率 / 淡出位置（占生命期比例）/ 扩散角 / 阻尼。
+// 岸边小石头用小档（水花收敛），深水巨礁用大档（参考实拍那种炸起来的水柱）。
+struct SplashStyle {
+	int amount;
+	float vel;
+	float size;
+	float fade;
+	float spread;
+	float damp; // 空气阻力：小 → 飞得高、散得开（大浪）；大 → 短促收口（岸边小水花）
+};
+
+// 水花软圆点贴图（程序生成）：中心实、边缘柔和衰减的白点。
+// 拿它做粒子的 billboard 面片，比实心小球更像飞溅的水滴/水雾。
+Ref<Texture2D> make_splash_dot() {
+	const int S = 32;
+	Ref<Image> img = Image::create_empty(S, S, false, Image::FORMAT_RGBA8);
+	for (int y = 0; y < S; y++) {
+		for (int x = 0; x < S; x++) {
+			float dx = ((float)x + 0.5f) / (float)S * 2.0f - 1.0f;
+			float dy = ((float)y + 0.5f) / (float)S * 2.0f - 1.0f;
+			float d = Math::sqrt(dx * dx + dy * dy);
+			// 软到没有硬核：单颗像一粒水珠，几十颗叠起来才成"白雾"。
+			// 峰值只给 0.9 —— 留一点余量给重叠累积，密处自然糊成一片白。
+			float a = clampf(1.0f - d, 0.0f, 1.0f);
+			a = Math::pow(a, 1.7f) * 0.9f;
+			img->set_pixel(x, y, Color(1.0f, 1.0f, 1.0f, a));
+		}
+	}
+	return ImageTexture::create_from_image(img);
+}
+
+// 礁石激浪水花：一撮从石头处向上炸开、受重力回落的水滴粒子（真实几何，不是贴片）。
+// 与水面拍岸浪同周期（周期 = 2π / 浪速），并用 pre_process_time 把发射时刻推到浪峰 ——
+// 所以水花和石头根部那圈白沫是同一道浪打出来的，不会各响各的。
+// p_depth 是石头处的水深：水越深，浪到得越晚（相位推迟）。
+GPUParticles3D *make_reef_splash(const Vector3 &p_pos, float p_radius, float p_depth,
+		const Ref<Texture2D> &p_dot, const Ref<Mesh> &p_quad, const SplashStyle &p_style) {
+	GPUParticles3D *p = memnew(GPUParticles3D);
+	p->set_position(p_pos);
+	p->set_amount(p_style.amount);
+	const float period = Math::TAU / REEF_WAVE_SPEED;
+	p->set_lifetime(period); // 生命周期 = 浪周期 → 每道浪喷一次
+	p->set_one_shot(false);
+	p->set_explosiveness_ratio(1.0f); // 一次性喷完，不是细水长流
+	p->set_randomness_ratio(0.06f);   // 一点点错开，别像机关枪
+	p->set_draw_pass_mesh(0, p_quad);
+	// 包围盒按浪花高度给足，避免被视锥剔除掉
+	float reach = 3.0f + 3.0f * p_style.vel;
+	p->set_visibility_aabb(AABB(Vector3(-reach, -4.0f, -reach),
+			Vector3(reach * 2.0f, 8.0f + 2.0f * p_style.vel, reach * 2.0f)));
+
+	Ref<ParticleProcessMaterial> pm;
+	pm.instantiate();
+	pm->set_emission_shape(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE);
+	// 发射球半径取石头半径的一半：水花是从石头根部那一圈炸开的，
+	// 球给太大粒子会从石头肚子里面冒出来。
+	pm->set_emission_sphere_radius(Math::max(p_radius * 0.55f, 0.12f));
+	pm->set_direction(Vector3(0.0f, 1.0f, 0.0f));
+	pm->set_spread(p_style.spread);
+	pm->set_gravity(Vector3(0.0f, -9.5f, 0.0f));
+	pm->set_param_min(ParticleProcessMaterial::PARAM_INITIAL_LINEAR_VELOCITY, 2.2f * p_style.vel);
+	pm->set_param_max(ParticleProcessMaterial::PARAM_INITIAL_LINEAR_VELOCITY, 4.8f * p_style.vel);
+	pm->set_param_min(ParticleProcessMaterial::PARAM_DAMPING, p_style.damp * 0.75f);
+	pm->set_param_max(ParticleProcessMaterial::PARAM_DAMPING, p_style.damp * 1.6f);
+	pm->set_param_min(ParticleProcessMaterial::PARAM_SCALE, 0.05f * p_style.size);
+	pm->set_param_max(ParticleProcessMaterial::PARAM_SCALE, 0.15f * p_style.size);
+
+	// 生命期透明度：一出现就亮，随后淡出（水花落下即散，不留"白球飘着"）。
+	// p_style.fade 决定"完全消失"落在生命期的哪个位置 —— 大浪花飞得高、要看完整条弧线，
+	// 淡出点就往后推；岸边小水花短促，淡出点靠前。
+	Ref<Gradient> ramp;
+	ramp.instantiate();
+	float f = p_style.fade;
+	ramp->add_point(0.00f, Color(1.0f, 1.0f, 1.0f, 0.0f));
+	ramp->add_point(f * 0.07f, Color(1.0f, 1.0f, 1.0f, 0.95f));
+	ramp->add_point(f * 0.34f, Color(1.0f, 1.0f, 1.0f, 0.74f));
+	ramp->add_point(f * 0.67f, Color(1.0f, 1.0f, 1.0f, 0.32f));
+	ramp->add_point(f, Color(1.0f, 1.0f, 1.0f, 0.0f));
+	ramp->add_point(1.00f, Color(1.0f, 1.0f, 1.0f, 0.0f));
+	Ref<GradientTexture1D> gt;
+	gt.instantiate();
+	gt->set_gradient(ramp);
+	pm->set_color_ramp(gt);
+	p->set_process_material(pm);
+
+	// 相位对齐：涌浪的浪脊推到石头时才喷水花。
+	// 水面着色器里浪脊相位 = TIME·speed + d·swell_freq（d = 到石头的距离），
+	// 石头表面处 d = p_radius → 浪脊到达石头的时刻 = (π/2 - p_radius·swell_freq) / speed。
+	// pre_process_time 把模拟时间提前 (周期 - 相位)，发射时刻就正好落在浪脊撞石头上。
+	// 注：p_depth 不再参与相位（浪脊是按到石头的距离推进的，不是按水深），
+	// 保留在签名里是因为调用方按水深做了别的筛选，将来也可能再用来调参。
+	(void)p_depth;
+	double raw_delay = ((double)Math::PI * 0.5 - (double)p_radius * (double)SWELL_FREQ)
+			/ (double)REEF_WAVE_SPEED;
+	float delay = (float)std::fmod(raw_delay, (double)period);
+	if (delay < 0.0f) {
+		delay += period;
+	}
+	p->set_pre_process_time(period - delay);
+	return p;
+}
+
+// 水花粒子的面片：软圆点 + 始终面向相机的 billboard（所有石头共用一份）
+Ref<Mesh> make_splash_quad(const Ref<Texture2D> &p_dot) {
+	Ref<QuadMesh> quad;
+	quad.instantiate();
+	quad->set_size(Vector2(1.0f, 1.0f));
+	Ref<StandardMaterial3D> m;
+	m.instantiate();
+	m->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED); // 水花是自亮的白，不吃光照
+	m->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	m->set_billboard_mode(BaseMaterial3D::BILLBOARD_PARTICLES);
+	m->set_flag(BaseMaterial3D::FLAG_BILLBOARD_KEEP_SCALE, true);
+	m->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, p_dot);
+	m->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true); // 让粒子渐隐生效
+	m->set_flag(BaseMaterial3D::FLAG_DONT_RECEIVE_SHADOWS, true);
+	quad->set_material(m);
+	return quad;
+}
+
 // 植被通用材质：白色底色 + 顶点色（实例色）决定实际颜色；果子/花可带一点点自发光
 Ref<StandardMaterial3D> veg_material(const Color &p_emission = Color()) {
 	Ref<StandardMaterial3D> m;
@@ -154,6 +481,22 @@ Ref<StandardMaterial3D> veg_material(const Color &p_emission = Color()) {
 		m->set_feature(BaseMaterial3D::FEATURE_EMISSION, true);
 		m->set_emission(p_emission);
 	}
+	return m;
+}
+
+// 岩石材质：rock.gdshader（世界坐标噪声斑驳 + 水线以下湿石压暗）。
+// 加载失败退回 veg_material（纯实例色），不至于石头消失。
+// 注意：必须定义在 veg_material 之后（失败路径要用它）。
+Ref<Material> rock_material() {
+	Ref<Resource> res = ResourceLoader::get_singleton()->load("res://assets/rock.gdshader");
+	Ref<Shader> shader = Ref<Shader>(Object::cast_to<Shader>(res.ptr()));
+	if (shader.is_null()) {
+		return veg_material();
+	}
+	Ref<ShaderMaterial> m;
+	m.instantiate();
+	m->set_shader(shader);
+	m->set_shader_parameter("water_line", -0.55f); // 与 water_level 一致
 	return m;
 }
 
@@ -179,6 +522,206 @@ Ref<ShaderMaterial> wind_material(float p_base_y, float p_span, float p_strength
 // 风摆材质的静态兜底（wind_material 加载失败时用）
 Ref<Material> fallback_wind_material() {
 	return veg_material();
+}
+
+// 随波材质（荷叶 / 荷花共用）：加载 lily.gdshader，顶点按世界坐标采水面波高。
+// p_bob_extra：比水面多晃多少 —— 荷叶贴水、荷花轻，都比水面晃得明显一点。
+// p_emission：自发光（荷花花瓣要；荷叶留 0）。
+// 返回空引用表示着色器没加载上，调用方自行退回静态材质。
+Ref<ShaderMaterial> water_bob_material(float p_bob_extra, const Vector3 &p_emission) {
+	Ref<Resource> res = ResourceLoader::get_singleton()->load("res://assets/lily.gdshader");
+	Ref<Shader> shader = Ref<Shader>(Object::cast_to<Shader>(res.ptr()));
+	if (shader.is_null()) {
+		return Ref<ShaderMaterial>();
+	}
+	Ref<ShaderMaterial> m;
+	m.instantiate();
+	m->set_shader(shader);
+	m->set_shader_parameter("bob_extra", p_bob_extra);
+	m->set_shader_parameter("emission", p_emission);
+	return m;
+}
+
+// 往 SurfaceTool 里塞一段锥形圆管（从 a 到 b，起端半径 ra、末端 rb，seg 边）。
+// 为什么自己拼管而不用 CylinderMesh：树枝要指向任意方向，而 CylinderMesh 只能沿本地 Y；
+// 而且主干和树枝必须落在同一个网格里，才能共用同一份 MultiMesh 实例变换（一棵树一次 draw）。
+static void add_tube(SurfaceTool *st, const Vector3 &a, const Vector3 &b,
+		float ra, float rb, int seg, const Color &col) {
+	Vector3 axis = b - a;
+	float len = axis.length();
+	if (len < 0.0001f) {
+		return;
+	}
+	axis /= len;
+	// 与轴垂直的正交基；ref 按轴方向挑，避免叉乘退化
+	Vector3 ref = Math::abs(axis.y) < 0.95f ? Vector3(0.0f, 1.0f, 0.0f) : Vector3(1.0f, 0.0f, 0.0f);
+	Vector3 u = axis.cross(ref).normalized();
+	Vector3 v = axis.cross(u).normalized();
+	for (int i = 0; i < seg; i++) {
+		float t0 = (float)i / (float)seg * Math::TAU;
+		float t1 = (float)(i + 1) / (float)seg * Math::TAU;
+		Vector3 d0 = u * Math::cos(t0) + v * Math::sin(t0);
+		Vector3 d1 = u * Math::cos(t1) + v * Math::sin(t1);
+		Vector3 a0 = a + d0 * ra, a1 = a + d1 * ra;
+		Vector3 b0 = b + d0 * rb, b1 = b + d1 * rb;
+		// 绕序朝外：u×v = axis（因为 v = axis×u），所以按 (a0,b1,b0) / (a0,a1,b1)
+		// 展开时法线才指向径向外侧；反过来会得到一圈朝内的面，正面剔除后整根管子消失。
+		st->set_color(col);
+		st->add_vertex(a0);
+		st->set_color(col);
+		st->add_vertex(b1);
+		st->set_color(col);
+		st->add_vertex(b0);
+		st->set_color(col);
+		st->add_vertex(a0);
+		st->set_color(col);
+		st->add_vertex(a1);
+		st->set_color(col);
+		st->add_vertex(b1);
+	}
+}
+
+// —— 树原型（archetype）——
+// 起因：如果所有树共用一份骨架网格 + 一套固定叶团坐标，整片林子就是同一棵树复制几百遍，
+// 远看是一排排一模一样的绿蘑菇（用户一眼就指出来了）。
+// 所以建图时先预生成 K 套"树形"：每套自带自己的树冠形状（宽窄/高低/叶团个数）
+// 和**与之配套**的枝条布局。种树时随机挑一套，再叠上各自的 yaw / 缩放 / 叶色。
+//
+// 为什么枝条必须和叶团同源生成：上一版枝条是写死的固定表、叶团是另一张固定表，
+// 结果枝梢经常戳到树冠外面，变成一根光秃秃的树枝挂在天上，像 bug。
+// 现在每根枝条的梢部坐标就是对应叶团的中心坐标 —— 枝梢永远埋在叶团里。
+//
+// 关键比例：主干到 y≈2.3 细成"主梢"钻进树冠，侧枝在 y≈1.1~1.5 从主干分叉出去，
+// 而树冠底面抬到 y≈1.7 —— 中间那半米枝条是露在外面的。树干分叉看得见，
+// 树才不是"一根棍顶着一坨绿"。
+struct TreeBlob {
+	float ang;   // 方位角
+	float rad;   // 离主干轴的水平距离
+	float y;     // 离地高度
+	float scale; // 叶团半径（叶团网格基准半径 1.0）
+};
+struct TreeLimb {
+	float ang; // 方位角
+	float rad; // 梢部离主干轴的水平距离
+	float y0;  // 起点高度（在主干上）
+	float y1;  // 梢部高度
+	float r0;  // 起点半径
+	float r1;  // 梢部半径
+};
+struct TreeArchetype {
+	std::vector<TreeBlob> blobs;
+	std::vector<TreeLimb> limbs;
+	Ref<ArrayMesh> skeleton;
+	float top_y = 4.0f;    // 冠顶高度（积雪分档 / 雪毯用）
+	float shoulder_y = 3.3f; // 冠肩高度
+	float crown_r = 1.7f;  // 树冠横向半径
+};
+
+// 生成一套树形。坐标系是"树本地空间"：y=0 地面、y 向上，尺寸按未缩放的树。
+TreeArchetype make_tree_archetype(std::mt19937 &rng) {
+	auto rr = [&rng](float lo, float hi) -> float {
+		std::uniform_real_distribution<float> d(lo, hi);
+		return d(rng);
+	};
+	TreeArchetype a;
+	float crown_w = rr(0.84f, 1.14f); // 横向铺开倍率
+	float crown_h = rr(0.94f, 1.08f); // 纵向抬高倍率
+	float blob_r = rr(0.72f, 0.92f);  // 叶团基准半径
+	float base_ang = rr(0.0f, Math::TAU);
+
+	// 叶团个数逐套变化（3~5 / 2~4 / 1~3）：这是"每棵树长得不一样"最直接的来源，
+	// 比换 yaw、换缩放管用得多。团数一多一少，树冠的疏密和轮廓就完全不同了。
+	//
+	// 底圈：铺得开、团之间留缝 —— 缝里能看见枝干，层次感就是从这来的
+	int n1 = 3 + (int)rr(0.0f, 3.0f);
+	for (int i = 0; i < n1; i++) {
+		float ang = base_ang + (float)i / (float)n1 * Math::TAU + rr(-0.26f, 0.26f);
+		float rad = rr(0.56f, 0.86f) * crown_w;
+		float y = rr(2.38f, 2.78f) * crown_h;
+		float sc = blob_r * rr(0.66f, 0.84f);
+		a.blobs.push_back({ ang, rad, y, sc });
+		a.limbs.push_back({ ang, rad * 0.96f, rr(1.10f, 1.48f), y - sc * 0.10f,
+				rr(0.075f, 0.092f), rr(0.030f, 0.040f) });
+	}
+	// 中圈：收一点、抬一点
+	int n2 = 2 + (int)rr(0.0f, 2.99f);
+	for (int i = 0; i < n2; i++) {
+		float ang = base_ang + 0.9f + (float)i / (float)n2 * Math::TAU + rr(-0.34f, 0.34f);
+		float rad = rr(0.32f, 0.64f) * crown_w;
+		float y = rr(2.90f, 3.28f) * crown_h;
+		float sc = blob_r * rr(0.58f, 0.76f);
+		a.blobs.push_back({ ang, rad, y, sc });
+		a.limbs.push_back({ ang, rad, rr(1.55f, 1.95f), y - sc * 0.10f,
+				rr(0.055f, 0.070f), rr(0.024f, 0.034f) });
+	}
+	// 顶团：收成冠尖
+	int n3 = 1 + (int)rr(0.0f, 2.99f);
+	for (int i = 0; i < n3; i++) {
+		float ang = base_ang + rr(0.0f, Math::TAU);
+		float rad = rr(0.0f, 0.28f) * crown_w;
+		float y = rr(3.26f, 3.60f) * crown_h;
+		float sc = blob_r * rr(0.50f, 0.70f);
+		a.blobs.push_back({ ang, rad, y, sc });
+		a.limbs.push_back({ ang, rad, rr(2.05f, 2.35f), y - sc * 0.10f,
+				rr(0.045f, 0.058f), rr(0.020f, 0.028f) });
+	}
+
+	// 碎叶团 2~3 个：贴在大叶团的表面上，专门用来打碎树冠轮廓。
+	// 树冠"像不像叶子"主要看边缘碎不碎 —— 边缘光滑的一坨永远是气球；
+	// 边缘被小团啃出锯齿，才像一簇簇叶子堆出来的。
+	// （这些团不配枝条：它们本来就趴在大团表面，配枝条反而会戳出来。）
+	int base_n = (int)a.blobs.size();
+	int n4 = 2 + (int)rr(0.0f, 1.99f);
+	for (int i = 0; i < n4; i++) {
+		TreeBlob host = a.blobs[(int)rr(0.0f, (float)base_n - 0.001f)]; // 按值拷贝：下面要 push_back
+		float hx = host.rad * Math::cos(host.ang);
+		float hz = host.rad * Math::sin(host.ang);
+		float oa = rr(0.0f, Math::TAU);
+		float orr = host.scale * rr(0.55f, 0.85f);
+		float nx = hx + Math::cos(oa) * orr;
+		float nz = hz + Math::sin(oa) * orr;
+		float ny = host.y + rr(-0.18f, 0.48f) * host.scale;
+		a.blobs.push_back({ Math::atan2(nz, nx), Math::sqrt(nx * nx + nz * nz), ny,
+				host.scale * rr(0.36f, 0.54f) });
+	}
+
+	// 冠顶 / 冠肩 / 横向半径由叶团反推 —— 不再写死常数，
+	// 这样树冠形状一变，雪毯和积雪分档自动跟着走。
+	float top = 0.0f;
+	float rad_max = 0.0f;
+	for (const TreeBlob &b : a.blobs) {
+		top = Math::max(top, b.y + b.scale * 0.86f); // 叶团网格 squash=0.86
+		rad_max = Math::max(rad_max, b.rad + b.scale);
+	}
+	a.top_y = top;
+	a.shoulder_y = Math::max(top - 0.62f, 2.0f);
+	a.crown_r = rad_max;
+	return a;
+}
+
+// 由原型生成骨架网格：主干 + 所有侧枝，一体成型。
+// 主干和树枝必须在同一个网格里，才能共用同一份 MultiMesh 实例变换（一棵树一次 draw）。
+Ref<ArrayMesh> make_tree_skeleton_mesh(const TreeArchetype &p_a) {
+	Ref<SurfaceTool> st;
+	st.instantiate();
+	st->begin(Mesh::PRIMITIVE_TRIANGLES);
+	// 圆管要平滑着色（8 边形截面若走逐面法线，看着像根铅笔）；整棵树共用一个平滑组，
+	// 各段顶点位置不同，不会互相污染法线。
+	st->set_smooth_group(0);
+	const Color bark(1.0f, 1.0f, 1.0f); // 顶点色留白，颜色全走 MultiMesh 实例色（树皮棕）
+
+	// 主干：底端埋进土 0.10，往上细成"主梢"钻进树冠（顶端藏在叶团里，不用封口）
+	add_tube(st.ptr(), Vector3(0.0f, -0.10f, 0.0f), Vector3(0.0f, 2.30f, 0.0f), 0.30f, 0.085f, 8, bark);
+	for (const TreeLimb &l : p_a.limbs) {
+		Vector3 a(0.055f * Math::cos(l.ang), l.y0, 0.055f * Math::sin(l.ang));
+		Vector3 b(l.rad * Math::cos(l.ang), l.y1, l.rad * Math::sin(l.ang));
+		add_tube(st.ptr(), a, b, l.r0, l.r1, 6, bark);
+	}
+
+	st->generate_normals();
+	Ref<ArrayMesh> m = st->commit();
+	m->surface_set_material(0, veg_material());
+	return m;
 }
 
 // 夜光孢子光尘：一撮淡绿微光粒子，缓慢上浮、生命周期首尾渐隐。
@@ -282,6 +825,14 @@ void TerrainBuilder::update_sky_driven() {
 	if (sky_cache) {
 		rain = sky_cache->get_rain_amount();
 		snow = sky_cache->get_snow_amount();
+		// 太阳方向 → 树冠叶片透光（背光面透出的暖光）。方向每帧都在变，
+		// 所以放在这里逐帧写；材质数量少（3 档树冠），代价可忽略。
+		if (!leaf_mats.empty()) {
+			Vector3 sd = sky_cache->get_sun_dir();
+			for (auto &m : leaf_mats) {
+				m->set_shader_parameter("sun_dir", sd);
+			}
+		}
 	}
 
 	// —— 踩草倒伏：收集玩家 + 农场动物的位置与"移动能量"写进草丛着色器 ——
@@ -705,12 +1256,15 @@ void TerrainBuilder::build_water() {
 	Ref<ShaderMaterial> mat;
 	mat.instantiate();
 	mat->set_shader(shader);
+	water_mat = mat; // 存成员：build_vegetation 撒完湖岸礁石后要把坐标写进来
 
 	Ref<PlaneMesh> plane;
 	plane.instantiate();
 	plane->set_size(Vector2(150.0f, 165.0f)); // 边缘深埋进沿岸丘陵，水面完整覆盖壮阔大湖 (X: -81~69, Z: -34.5~130.5)
-	plane->set_subdivide_width(96);           // 顶点波浪细分（大湖水面波浪精细起伏）
-	plane->set_subdivide_depth(104);
+	plane->set_subdivide_width(176);          // 顶点波浪细分（大湖水面波浪精细起伏）
+	// 细分从 104 提到 192：顶点间距约 0.85m —— 拍岸涌浪的浪脊宽约 1.5m，
+	// 网格太粗的话浪脊比一个格子还窄，直接采样走样（水面一格一格地闪）。
+	plane->set_subdivide_depth(192);
 	plane->set_material(mat);
 
 	MeshInstance3D *mi = memnew(MeshInstance3D);
@@ -718,6 +1272,57 @@ void TerrainBuilder::build_water() {
 	mi->set_mesh(plane);
 	mi->set_position(Vector3(-6.0f, water_level, 48.0f));
 	add_child(mi);
+
+	// ---- 水深图（shore_map）----
+	// 为什么需要它：拍岸浪的相位是"离岸多远"的函数，但顶点着色器拿不到深度缓冲
+	// （hint_depth_texture / SCREEN_UV 只在 fragment 有效），所以顶点里用的水深
+	// 必须由 CPU 提前烘成一张纹理。片元侧也读同一张图 —— 两边相位同源，
+	// 白沫才会骑在抬起来的水脊上，而不是各算各的。
+	//
+	// 覆盖范围必须严格等于上面的 PlaneMesh：中心 (-6, 48) + size(150,165)
+	//   → X: -81 ~ 69，Z: -34.5 ~ 130.5
+	const Vector2 sm_origin(-81.0f, -34.5f);
+	const Vector2 sm_size(150.0f, 165.0f);
+	const float SM_DEPTH = 6.0f; // 与 water.gdshader 的 shore_map_depth 一致
+	const int SMW = 384;
+	const int SMH = 422; // 约 0.39 m/像素；线性过滤把像素台阶抹平，浪脊轮廓够细
+	Ref<Image> sm = Image::create_empty(SMW, SMH, false, Image::FORMAT_R8);
+	for (int y = 0; y < SMH; y++) {
+		for (int x = 0; x < SMW; x++) {
+			Vector2 w = sm_origin + sm_size * Vector2(((float)x + 0.5f) / (float)SMW,
+													  ((float)y + 0.5f) / (float)SMH);
+			float d = clampf((water_level - terrain_height(w.x, w.y)) / SM_DEPTH, 0.0f, 1.0f);
+			sm->set_pixel(x, y, Color(d, 0.0f, 0.0f));
+		}
+	}
+	mat->set_shader_parameter("shore_map", ImageTexture::create_from_image(sm));
+	mat->set_shader_parameter("shore_map_origin", sm_origin);
+	mat->set_shader_parameter("shore_map_size", sm_size);
+	mat->set_shader_parameter("shore_map_depth", SM_DEPTH);
+}
+
+// 把湖岸礁石坐标写进水面着色器（shore_rocks 数组 + 数量）。
+// 着色器据此在每块石头周围爆起白沫 —— 拍岸浪的"撞击点"来自真实几何。
+void TerrainBuilder::apply_shore_rocks() {
+	if (water_mat.is_null()) {
+		return;
+	}
+	const int MAX_ROCKS = 40; // 湖岸 32 + 深水巨礁 1 + 伴礁 2 + 余量；须与 water.gdshader 数组长度一致
+	PackedVector4Array arr;
+	arr.resize(MAX_ROCKS);
+	int n = 0;
+	for (const Vector4 &r : shore_rocks) {
+		if (n >= MAX_ROCKS) {
+			break;
+		}
+		arr[n] = r;
+		++n;
+	}
+	for (int i = n; i < MAX_ROCKS; ++i) {
+		arr[i] = Vector4(0.0f, -999.0f, 0.0f, 0.0f); // 空槽扔到天边，着色器里距离永远拉满
+	}
+	water_mat->set_shader_parameter("shore_rocks", arr);
+	water_mat->set_shader_parameter("shore_rock_count", n);
 }
 
 // ------------------------------------------------------------- 植被
@@ -731,6 +1336,21 @@ void TerrainBuilder::build_vegetation() {
 	auto rnd = [&rng](float lo, float hi) -> float {
 		std::uniform_real_distribution<float> d(lo, hi);
 		return d(rng);
+	};
+	// 叶团抖动专用随机源：独立种子、独立序列。
+	// 树冠从"1 个球"变成"7 个球"要多抽一批随机数，若混用上面的 rng 会把
+	// 全局序列整体推后 → 灌木/草/芦苇/石头全部重排一遍（整图变样）。
+	// 单开一条序列，树的形状变了，地图其余部分原封不动。
+	std::mt19937 blob_rng(20250810);
+	auto blob_rnd = [&blob_rng](float lo, float hi) -> float {
+		std::uniform_real_distribution<float> d(lo, hi);
+		return d(blob_rng);
+	};
+	// 荷叶倾斜 / 荷花撒点用的独立随机源，同样是为了不动全局序列。
+	std::mt19937 pond_rng(552211);
+	auto pond_rnd = [&pond_rng](float lo, float hi) -> float {
+		std::uniform_real_distribution<float> d(lo, hi);
+		return d(pond_rng);
 	};
 
 	// 给共用网格挂风摆材质（积雪走 snow_bands 分级，登记见各网格创建处；
@@ -752,14 +1372,20 @@ void TerrainBuilder::build_vegetation() {
 	};
 
 	// —— 共用网格（低模 + 实例色，一种植物一个 MultiMesh） ——
-	Ref<CylinderMesh> trunk_mesh;
-	trunk_mesh.instantiate();
-	trunk_mesh->set_top_radius(0.10f);
-	trunk_mesh->set_bottom_radius(0.24f);
-	trunk_mesh->set_height(2.6f);
-	trunk_mesh->set_radial_segments(7);
-	trunk_mesh->set_rings(1);
-	trunk_mesh->set_material(veg_material());
+	// 树形原型：预生成 ARCH_N 套树（各自的树冠形状 + 配套枝条），种树时随机挑一套。
+	// 这是"树不要全都长的一模一样"的落点 —— 光靠 yaw 和缩放区分不出来，
+	// 必须让树冠本身的形状（宽窄 / 高低 / 叶团个数）就不一样。
+	const int ARCH_N = 6;
+	std::mt19937 arch_rng(90210); // 独立随机源：不干扰全局序列，地图其余部分不动
+	std::vector<TreeArchetype> archetypes;
+	archetypes.reserve(ARCH_N);
+	for (int i = 0; i < ARCH_N; i++) {
+		TreeArchetype a = make_tree_archetype(arch_rng);
+		a.skeleton = make_tree_skeleton_mesh(a);
+		archetypes.push_back(a);
+	}
+	// 树干按原型分桶：每个原型一份 MultiMesh（共用的 mesh 做不到逐实例换形状）
+	std::vector<Scatter> trunks_by_arch(ARCH_N);
 
 	// 树冠 + 树枝雪毯：按树顶高度分三档（T1 低 / T2 中 / T3 高），每档一套
 	// 材质（veg_wind）。积雪分级：低档先覆雪先现雪毯、高档后积雪——映射区间
@@ -768,24 +1394,34 @@ void TerrainBuilder::build_vegetation() {
 	// 取自世界坐标，天然同步），alpha 由所在档位驱动淡入，无雪完全隐形
 	// （fallback 同理不可见，属降级路径）。
 	const float band_rng[3][2] = { { 0.15f, 0.45f }, { 0.35f, 0.65f }, { 0.55f, 0.85f } };
-	Ref<SphereMesh> canopy_mesh_bands[3];
+	// 树冠改用"叶团"网格（噪声位移的球），一颗树由 7 个错落的叶团拼成。
+	// 原来那颗压扁的光滑球就是用户说的"一坨"—— 一个球没有任何层次，
+	// 加上噪声位移和多团叠放才有叶簇的体积感。
+	Ref<Mesh> canopy_mesh_bands[3];
 	Ref<SphereMesh> snowcap_mesh_bands[3];
 	for (int b = 0; b < 3; b++) {
 		float lo = band_rng[b][0];
 		float hi = band_rng[b][1];
 
-		canopy_mesh_bands[b].instantiate();
-		canopy_mesh_bands[b]->set_radius(1.05f);
-		canopy_mesh_bands[b]->set_height(1.5f); // 压扁的球当树冠
-		canopy_mesh_bands[b]->set_radial_segments(10);
-		canopy_mesh_bands[b]->set_rings(6);
-		Ref<ShaderMaterial> cwm = wind_material(-0.75f, 1.5f, 0.05f); // 树冠随风轻摆
+		// 三档用不同噪声种子：低树和高树的叶簇长相不同，成片时不至于像复制
+		canopy_mesh_bands[b] = make_leaf_blob_mesh(1.0f, 0.86f, 0.34f, 1.30f, 6100 + b * 37, 19, 12);
+		Ref<ShaderMaterial> cwm = wind_material(-0.80f, 1.60f, 0.05f); // 树冠随风轻摆
 		if (cwm.is_valid()) {
 			cwm->set_shader_parameter("snow_amount", 0.0f);
-			canopy_mesh_bands[b]->set_material(cwm);
+			// 叶团额外开"碎抖"：相位按世界坐标高频取，相邻叶团差好几弧度 →
+			// 同一棵树上有的叶子在动、有的没动，而不是整坨树冠一起平移。
+			cwm->set_shader_parameter("flutter_strength", 0.042f);
+			cwm->set_shader_parameter("flutter_scale", 5.5f);
+			// 叶团底面压暗一点 → 配合"越高的团越亮"做出整棵树上浅下深的层次。
+			// 别压太狠：0.62 那版三处暗系数叠起来把树压成了墨绿疙瘩，0.74 刚好有层次又不发黑。
+			cwm->set_shader_parameter("bottom_shade", 0.78f);
+			// 叶片透光：太阳在叶子背面时透出来的暖光（背光面靠它提亮、脱离墨绿）
+			cwm->set_shader_parameter("backlight", 0.50f);
+			leaf_mats.push_back(cwm);
+			canopy_mesh_bands[b]->surface_set_material(0, cwm);
 			snow_bands.push_back({ cwm, lo, hi, false });
 		} else {
-			canopy_mesh_bands[b]->set_material(fallback_wind_material());
+			canopy_mesh_bands[b]->surface_set_material(0, fallback_wind_material());
 		}
 
 		snowcap_mesh_bands[b].instantiate();
@@ -917,14 +1553,48 @@ void TerrainBuilder::build_vegetation() {
 		snow_bands.push_back({ reed_wind, 0.02f, 0.30f, false }); // 贴地，最先积雪
 	}
 
-	Ref<CylinderMesh> lily_mesh;
-	lily_mesh.instantiate();
-	lily_mesh->set_top_radius(0.55f);
-	lily_mesh->set_bottom_radius(0.50f);
-	lily_mesh->set_height(0.05f);
-	lily_mesh->set_radial_segments(12);
-	lily_mesh->set_rings(1);
-	lily_mesh->set_material(veg_material());
+	// 荷叶：带 V 形缺口的浅碗形圆盘（睡莲叶的标志性形状），双面薄片。
+	// 材质走 lily.gdshader —— 顶点里按水面波高抬降，荷叶跟着湖面一起起伏、倾斜。
+	Ref<ArrayMesh> lily_mesh;
+	{
+		Ref<SurfaceTool> lst;
+		lst.instantiate();
+		lst->begin(Mesh::PRIMITIVE_TRIANGLES);
+		lst->set_smooth_group(-1);
+		const int LSEG = 16;
+		const float R_OUT = 0.55f;
+		const float NOTCH = 0.62f; // 缺口张角（弧度）
+		float la0 = NOTCH * 0.5f;
+		float lspan = Math::TAU - NOTCH;
+		Vector3 lc(0.0f, -0.022f, 0.0f); // 叶心略低 → 浅碗
+		for (int i = 0; i < LSEG; i++) {
+			float t0 = la0 + lspan * (float)i / (float)LSEG;
+			float t1 = la0 + lspan * (float)(i + 1) / (float)LSEG;
+			Vector3 p0(std::cos(t0) * R_OUT, 0.030f, std::sin(t0) * R_OUT); // 叶缘上翘
+			Vector3 p1(std::cos(t1) * R_OUT, 0.030f, std::sin(t1) * R_OUT);
+			lst->add_vertex(lc);
+			lst->add_vertex(p0);
+			lst->add_vertex(p1);
+			lst->add_vertex(lc); // 反面（薄片，配合 cull_disabled）
+			lst->add_vertex(p1);
+			lst->add_vertex(p0);
+		}
+		lst->generate_normals();
+		lily_mesh.instantiate();
+		lst->commit(lily_mesh);
+	}
+	{
+		Ref<Resource> res = ResourceLoader::get_singleton()->load("res://assets/lily.gdshader");
+		Ref<Shader> sh = Ref<Shader>(Object::cast_to<Shader>(res.ptr()));
+		if (sh.is_valid()) {
+			Ref<ShaderMaterial> lm;
+			lm.instantiate();
+			lm->set_shader(sh);
+			lily_mesh->surface_set_material(0, lm);
+		} else {
+			lily_mesh->surface_set_material(0, veg_material());
+		}
+	}
 
 	// 荷花网格：外层粉白盛开花瓣 + 内层深粉微拢花瓣 + 金黄花蕊
 	Ref<ArrayMesh> lotus_mesh;
@@ -1009,16 +1679,23 @@ void TerrainBuilder::build_vegetation() {
 		lst->generate_normals();
 		lotus_mesh.instantiate();
 		lst->commit(lotus_mesh);
-		lotus_mesh->surface_set_material(0, veg_material(Color(0.12f, 0.05f, 0.08f)));
+		// 荷花也要随浪起伏 —— 原来用的是静态 veg_material，水在动它钉死在水面上，
+		// 一眼就看出是"插"上去的。换成和荷叶同一个随波着色器：
+		// 花瓣顶点各自采世界坐标处的波高，花会跟着波面轻轻点头、侧倾。
+		// bob_extra 比荷叶再大一点（荷花立得高，晃起来更明显），自发光保留原来的暖粉光。
+		Ref<ShaderMaterial> lot_mat = water_bob_material(0.065f, Vector3(0.12f, 0.05f, 0.08f));
+		if (lot_mat.is_valid()) {
+			lotus_mesh->surface_set_material(0, lot_mat);
+		} else {
+			lotus_mesh->surface_set_material(0, veg_material(Color(0.12f, 0.05f, 0.08f)));
+		}
 	}
 
-	Ref<SphereMesh> rock_mesh;
-	rock_mesh.instantiate();
-	rock_mesh->set_radius(0.4f);
-	rock_mesh->set_height(0.5f);
-	rock_mesh->set_radial_segments(8);
-	rock_mesh->set_rings(4);
-	rock_mesh->set_material(veg_material());
+	// 陆地巨石 / 碎石坡：换成和湖岸礁石同一套"噪声棱面网格 + 岩石材质"。
+	// 原来是个光滑球 + 平涂色 —— 就是用户说的"石头质感太垃圾"。
+	// 半径/压扁比例沿用旧的 SphereMesh(r0.4 / h0.5 → 竖向半高 0.25)，外观尺度不变。
+	Ref<ArrayMesh> rock_mesh = make_rock_mesh(11, 6, 0.40f, 0.64f, 0.30f, 2.0f, 771);
+	rock_mesh->surface_set_material(0, rock_material());
 
 	// 鹅卵石：扁圆小石，铺在水线沙滩上
 	Ref<SphereMesh> pebble_mesh;
@@ -1117,7 +1794,7 @@ void TerrainBuilder::build_vegetation() {
 	}
 
 	// —— 实例收集器 ——
-	Scatter trunks, fruits, bushes, grass, reeds, lilies, lotuses, flowers, rocks;
+	Scatter fruits, bushes, grass, reeds, lilies, lotuses, flowers, rocks;
 	Scatter carpet; // 草毯层：单叶小刀片百万级平铺（足球场式连续地毯）
 	Scatter berry_bushes, berries; // 浆果丛（MC 甜浆果丛风格）：深绿矮丛 + 鲜红浆果
 	Scatter pebbles, leaves;       // 湖岸鹅卵石带 + 树下落叶
@@ -1125,9 +1802,9 @@ void TerrainBuilder::build_vegetation() {
 	Scatter logs;                  // 林间平缓处的横卧倒木
 	Scatter shroom_stems, shroom_caps, shroom_spots; // 蘑菇：柄 + 伞盖 + 红伞白点
 	Scatter shroom_snow;           // 蘑菇伞顶雪毯（低矮最先积雪）
-	// 树冠（低/高两层）与树枝雪毯按树顶高度分三档：T1 低 / T2 中 / T3 高。
-	// 同一棵树的两层树冠与两片雪毯进同一档，覆雪与雪毯同步出现。
-	Scatter canopy_lo_bands[3], canopy_hi_bands[3];
+	// 树冠与树枝雪毯按树顶高度分三档：T1 低 / T2 中 / T3 高（积雪分档，低树先积雪）。
+	// 树冠再按"树形原型"分桶 —— 每个原型一份 MultiMesh，见 trunks_by_arch 的说明。
+	Scatter canopy_lo[ARCH_N][3];
 	Scatter snowcap_bands[3];
 
 	// 石桥桥面矩形（含桥台外扩一点）：压平后的引道与桥面同高，
@@ -1138,7 +1815,16 @@ void TerrainBuilder::build_vegetation() {
 	};
 
 	auto tree_color = [&rnd]() -> Color {
-		return Color(0.26f + rnd(0.0f, 0.14f), 0.48f + rnd(0.0f, 0.16f), 0.20f + rnd(0.0f, 0.08f));
+		// 逐树的底色。三个坑都踩过，记一下：
+		//  1) 太暗 → 整片林子发闷（红 0.22~0.44、绿 0.42~0.66 那版）；
+		//  2) **蓝通道不能给高**。树冠大面积是背光面，靠蓝色天光照亮，
+		//     蓝给到 0.3 以上，出来的像素蓝通道就跟绿通道齐平 —— 那就是"墨绿"。
+		//  3) 底色还得够亮。树冠是一堆球面，单位面积的受光本来就比平铺的草地少
+		//     （实测大约只有草地的一半），底色不抬到接近上限就永远显得比草地暗一截。
+		// 结论：绿 0.77~0.95、红 0.54~0.74（偏黄绿）、蓝 0.32~0.44（压住不偏青）。
+		// 绿比红高、蓝压到红的六成左右 —— 实测这条比例出来的像素和草地同一族色相
+		// （红/绿≈0.74、蓝/绿≈0.69），而不是"灰绿/鼠尾草色"。
+		return Color(0.54f + rnd(0.0f, 0.20f), 0.77f + rnd(0.0f, 0.18f), 0.32f + rnd(0.0f, 0.12f));
 	};
 
 	std::vector<Vector2> tree_pos; // 已种的树，用于最小间距判定
@@ -1186,41 +1872,84 @@ void TerrainBuilder::build_vegetation() {
 		float tilt = rnd(-0.05f, 0.05f);
 		Color canopy = tree_color();
 
-		// 积雪分档：以树顶高（h + 3.55·s）分三档——低树先积雪、高树后积雪。
-		// 档位由已有参数确定性导出，不调 rnd()——不挪动全局随机序列。
-		int band = (h + 3.55f * s) < 4.5f ? 0 : ((h + 3.55f * s) < 6.2f ? 1 : 2);
+		// 随机挑一套树形（用独立的 blob_rnd，不动全局序列）。
+		// 这一步是"树不要长得一模一样"的关键：叶团个数、树冠宽窄、枝条走向都由原型决定。
+		int arch = (int)blob_rnd(0.0f, (float)ARCH_N - 0.001f);
+		arch = Math::clamp(arch, 0, ARCH_N - 1);
+		const TreeArchetype &ta = archetypes[arch];
 
-		trunks.add(Vector3(p.x, h + 1.25f * s, p.y), yaw, tilt, s,
+		// 积雪分档：以这棵树的实际冠顶高（h + top_y·s）分三档 —— 低树先积雪、高树后积雪。
+		// 档位由已有参数确定性导出，不调 rnd() —— 不挪动全局随机序列。
+		int band = (h + ta.top_y * s) < 5.35f ? 0 : ((h + ta.top_y * s) < 7.35f ? 1 : 2);
+
+		// 树干骨架：原点就在树根（骨架网格自带 -0.10~2.30 的竖向范围），所以 y 直接用 h。
+		trunks_by_arch[arch].add(Vector3(p.x, h, p.y), yaw, tilt, s,
 				Color(0.29f + rnd(0.0f, 0.05f), 0.195f, 0.13f));
 		// 树干碰撞（穿树出戏；半径取平均×0.88，略细于视觉防蹭人）
 		StaticBody3D *tb = memnew(StaticBody3D);
-		tb->set_position(Vector3(p.x, h + 1.25f * s, p.y));
+		tb->set_position(Vector3(p.x, h + 1.45f * s, p.y));
 		CollisionShape3D *tcs = memnew(CollisionShape3D);
 		Ref<CylinderShape3D> tcy;
 		tcy.instantiate();
-		tcy->set_radius(0.15f * s);
-		tcy->set_height(2.5f * s);
+		tcy->set_radius(0.17f * s);
+		tcy->set_height(3.0f * s);
 		tcs->set_shape(tcy);
 		tb->add_child(tcs);
 		add_child(tb);
-		canopy_lo_bands[band].add(Vector3(p.x, h + 2.5f * s, p.y), yaw, 0.0f, s, canopy);
-		canopy_hi_bands[band].add(Vector3(p.x, h + 3.25f * s, p.y), yaw * 0.5f, tilt, s * 0.55f,
-				Color(Math::min(canopy.r * 1.18f, 1.0f), Math::min(canopy.g * 1.15f, 1.0f), canopy.b));
-		// 雪毯两片：高冠顶一顶（略宽出悬檐）+ 低冠肩一圈（搭在冠球肩部）；
-		// alpha 由所在档位驱动淡入，无雪隐形。
-		snowcap_bands[band].add(Vector3(p.x, h + 3.55f * s, p.y), yaw * 0.5f, tilt, s * 0.62f,
-				Color(1.0f, 1.0f, 1.0f));
-		snowcap_bands[band].add(Vector3(p.x, h + 3.10f * s, p.y), yaw * 0.5f, tilt, s * 0.85f,
-				Color(0.96f, 0.97f, 1.0f));
+
+		// —— 树冠：按原型铺叶团 ——
+		// 每团的位置/大小都带小幅抖动（同一原型的树也不完全重合），但幅度压得很小：
+		// 枝条是全原型共用的固定网格，抖大了枝梢就跑到叶团外面去了。
+		// 颜色有两层变化：整棵树的底色（tree_color 逐树随机）+
+		// 每团自己的明暗与冷暖（shade / warm 逐团随机）——
+		// 同一棵树上有深绿团也有黄绿团，这才是"叶子有深有浅"。
+		for (const TreeBlob &bl : ta.blobs) {
+			float a = yaw + bl.ang + blob_rnd(-0.15f, 0.15f);
+			float rr = bl.rad * s * blob_rnd(0.94f, 1.06f);
+			float yy = bl.y * s * blob_rnd(0.96f, 1.04f);
+			float sc = bl.scale * s * blob_rnd(0.90f, 1.10f);
+			float warm = blob_rnd(-0.07f, 0.07f); // 偏黄 / 偏青（小幅度，只做微调）
+			// —— 上浅下深：天光自上而下，冠顶的团在光里、底圈和内侧的团压在暗处 ——
+			// 这条渐变必须**压过**逐团的随机明暗。之前随机明暗给到 0.74~1.26，
+			// 比高度项还强，结果一棵树上"哪团亮"是随机的，上下层次全被冲掉了
+			// （用户要的正是"靠上的浅、靠下的深"）。
+			// 现在：高度决定 0.80~1.22 的主基调，随机只留 ±7% 打散呆板。
+			// **下限不能压太低**：这一项还要再乘顶点色和着色器的底暗系数，
+			// 三个下限叠起来（0.64×0.66×0.62≈0.26）会糊出一大片发黑，
+			// 树就成了墨绿疙瘩。抬到 0.80 之后最暗处也还有 0.45 的亮度。
+			float t = clampf((bl.y - 2.30f) / 1.40f, 0.0f, 1.0f);
+			float m = (0.86f + 0.36f * t) * blob_rnd(0.94f, 1.06f);
+			// 色相也跟着高度走：越往上越偏黄绿（受光），越往下越偏青绿（背光）。
+			// 只调亮度不做色相分离的话，看着还是"同一块绿调了曝光"。
+			Color bc(Math::clamp(canopy.r * m + warm + 0.07f * t, 0.0f, 1.0f),
+					Math::clamp(canopy.g * m, 0.0f, 1.0f),
+					Math::clamp(canopy.b * m - warm * 0.7f - 0.05f * t, 0.0f, 1.0f));
+			canopy_lo[arch][band].add(
+					Vector3(p.x + std::cos(a) * rr, h + yy, p.y + std::sin(a) * rr),
+					blob_rnd(0.0f, 6.2831f), blob_rnd(-0.22f, 0.22f), sc, bc);
+		}
+
+		// 雪毯两片：冠顶一顶（压在顶团上）+ 冠肩一圈（搭在中圈肩部）。
+		// 高度与半径都从原型的冠顶/冠肩/横向半径推出来 —— 树形一变雪毯自动跟着走。
+		snowcap_bands[band].add(Vector3(p.x, h + (ta.top_y - 0.30f) * s, p.y), yaw * 0.5f, tilt,
+				ta.crown_r * 0.40f * s, Color(1.0f, 1.0f, 1.0f));
+		snowcap_bands[band].add(Vector3(p.x, h + ta.shoulder_y * s, p.y), yaw * 0.5f, tilt,
+				ta.crown_r * 0.58f * s, Color(0.96f, 0.97f, 1.0f));
 
 		tree_pos.push_back(p);
 
-		// 约四成的树结果子：红 / 橙 / 黄小果挂在树冠上
+		// 约四成的树结果子：红 / 橙 / 黄小果挂在树冠外缘。
+		// 半径 / 高度都按原型反推（crown_r 的 0.72~1.00 倍、冠底到冠顶之间），
+		// 这样树冠形状变了果子还在叶子上，不会飘在空中或埋进叶团里。
 		if (rnd(0.0f, 1.0f) < 0.42f) {
 			int n_fruit = 2 + (int)rnd(0.0f, 2.9f);
+			float fr_lo = ta.crown_r * 0.72f;
+			float fr_hi = ta.crown_r * 1.00f;
+			float fy_lo = ta.top_y * 0.56f;
+			float fy_hi = ta.top_y * 0.88f;
 			for (int k = 0; k < n_fruit; k++) {
 				float a = rnd(0.0f, 6.2831f);
-				float rad = rnd(0.55f, 0.95f) * s;
+				float rad = rnd(fr_lo, fr_hi) * s;
 				float pick = rnd(0.0f, 3.0f);
 				Color fc;
 				if (pick < 1.0f) {
@@ -1230,7 +1959,7 @@ void TerrainBuilder::build_vegetation() {
 				} else {
 					fc = Color(0.95f, 0.84f, 0.25f); // 黄
 				}
-				fruits.add(Vector3(p.x + std::cos(a) * rad, h + rnd(2.05f, 2.95f) * s, p.y + std::sin(a) * rad),
+				fruits.add(Vector3(p.x + std::cos(a) * rad, h + rnd(fy_lo, fy_hi) * s, p.y + std::sin(a) * rad),
 						0.0f, 0.0f, rnd(0.8f, 1.25f), fc);
 			}
 		}
@@ -1546,7 +2275,16 @@ void TerrainBuilder::build_vegetation() {
 		}
 		float s = rnd(0.85f, 1.45f);
 		Color c(0.20f + rnd(0.0f, 0.10f), 0.42f + rnd(0.0f, 0.12f), 0.20f);
-		lilies.add(Vector3(p.x, water_level + 0.06f, p.y), rnd(0.0f, 6.2831f), 0.0f, s, c);
+		// 约三成荷叶翘出水面：叶缘翻起一个大角度，整片抬到水面之上。
+		// 全平贴水面会很死板 —— 真实荷塘里总有几片被风掀起来、或者还没展平。
+		float ltilt = 0.0f;
+		float llift = 0.0f;
+		if (pond_rnd(0.0f, 1.0f) < 0.34f) {
+			float mag = pond_rnd(0.18f, 0.46f);
+			ltilt = pond_rnd(0.0f, 1.0f) < 0.5f ? -mag : mag;
+			llift = 0.09f + mag * 0.22f;
+		}
+		lilies.add(Vector3(p.x, water_level + 0.06f + llift, p.y), rnd(0.0f, 6.2831f), ltilt, s, c);
 
 		// 荷叶实体碰撞：使主角能够稳稳踩在荷叶上行走和连跳
 		StaticBody3D *lb = memnew(StaticBody3D);
@@ -1574,6 +2312,31 @@ void TerrainBuilder::build_vegetation() {
 	};
 	for (const Vector3 &lpos : lotus_spots) {
 		lotuses.add(lpos, rnd(0.0f, 6.2831f), 0.0f, rnd(1.05f, 1.35f), Color(1.0f, 1.0f, 1.0f));
+	}
+	// 程序化补种：湖面这么大，只摆 8 朵太稀。绕各湖湾浅水区撒到 46 朵左右。
+	// 用独立随机源（pond_rnd），不动全局序列，其他植被的位置不会跟着变。
+	for (int attempt = 0; attempt < 900 && lotuses.count() < 46; attempt++) {
+		float a = pond_rnd(0.0f, 6.2831f);
+		float lobe = pond_rnd(0.0f, 4.0f);
+		Vector2 p;
+		if (lobe < 1.4f) {
+			p = Vector2(-14.0f, 66.0f) + Vector2(std::cos(a), std::sin(a)) * 44.0f * pond_rnd(0.10f, 0.72f);
+		} else if (lobe < 2.4f) {
+			p = Vector2(16.0f, 56.0f) + Vector2(std::cos(a), std::sin(a)) * 32.0f * pond_rnd(0.12f, 0.70f);
+		} else if (lobe < 3.2f) {
+			p = Vector2(-15.0f, 8.0f) + Vector2(std::cos(a), std::sin(a)) * 22.0f * pond_rnd(0.12f, 0.72f);
+		} else {
+			p = Vector2(-6.0f + std::cos(a) * 11.0f * pond_rnd(0.12f, 0.78f),
+					26.0f + std::sin(a) * 15.0f * pond_rnd(0.12f, 0.78f));
+		}
+		if (on_bridge_deck(p)) {
+			continue; // 别长到桥面底下
+		}
+		if (terrain_height(p.x, p.y) > -0.95f) {
+			continue; // 太浅（快到岸边）不长荷花
+		}
+		lotuses.add(Vector3(p.x, water_level + 0.065f, p.y), pond_rnd(0.0f, 6.2831f), 0.0f,
+				pond_rnd(0.95f, 1.40f), Color(1.0f, 1.0f, 1.0f));
 	}
 
 	// —— 小花：草地上的颜色点缀 ——
@@ -1989,6 +2752,190 @@ void TerrainBuilder::build_vegetation() {
 		commit_scatter(this, "Boulders", boulder_mesh, boulders);
 	}
 
+	// —— 湖岸礁石：水线带上的顽石（拍岸浪的"撞击锚点"） ——
+	// 独立 rng（固定种子）——不挪动上方 Scatter 的随机序列，避免整图重排。
+	// 石头半沉半露：浪推过来时正面撞上露出水面的石脊，在石头两侧炸开白沫。
+	// 坐标会写进 water.gdshader 的 shore_rocks，让浪花精确落在石头上。
+	{
+		std::mt19937 rng_k(771024);
+		auto rnd_k = [&rng_k](float lo, float hi) -> float {
+			std::uniform_real_distribution<float> d(lo, hi);
+			return d(rng_k);
+		};
+
+		// 噪声位移 + 逐面法线的顽石网格（原来是光滑球，看着像蛋）
+		Ref<ArrayMesh> reef_mesh = make_rock_mesh(11, 6, 0.5f, 0.74f, 0.32f, 1.8f, 51071);
+		reef_mesh->surface_set_material(0, rock_material());
+
+		Scatter reefs;
+		shore_rocks.clear();
+		std::vector<Vector2> reef_pos;
+		std::vector<Vector4> spray_data; // (石头半径, 石头处水深, 随机种子, 等比缩放)
+		std::vector<Vector3> spray_pos;  // 浪花锚点（静水线）
+		for (int attempt = 0; attempt < 40000 && reefs.count() < 32; attempt++) {
+			Vector2 p(rnd_k(-inner, inner), rnd_k(-inner, inner));
+			if (in_pitch(p.x, p.y) || on_bridge_deck(p)) {
+				continue;
+			}
+			if (dist_to_path(p.x, p.y) < 1.0f) {
+				continue;
+			}
+			// 必须在湖区附近：湖外也有恰好低于水线的洼地（洼地压平 `h<0 → h*=0.18`），
+			// 光看高度会把石头撒到没水的草地上（实测过 x=-167 的干洼地）。
+			if (!is_near_lake(p.x, p.y, 7.0f)) {
+				continue;
+			}
+			float h = terrain_height(p.x, p.y);
+			// 只落水线带：水下 0.85m ~ 水上 0.12m
+			if (h < water_level - 0.85f || h > water_level + 0.12f) {
+				continue;
+			}
+			float s = rnd_k(0.55f, 1.45f);
+			float r_xz = 0.5f * s;   // SphereMesh r0.5 → 水平视觉半径
+			float r_y = 0.37f * s;   // 竖向半高
+			float sink = rnd_k(0.28f, 0.46f);
+			float cy = h + r_y - 2.0f * r_y * sink; // 中心：按比例埋入水线
+			float top = cy + r_y;
+			// 露出水面 0.12~0.75m：太低看不见、太高像孤岛
+			if (top - water_level < 0.12f || top - water_level > 0.75f) {
+				continue;
+			}
+			bool too_close = false;
+			for (const Vector2 &q : reef_pos) {
+				if ((p - q).length() < 2.6f) {
+					too_close = true;
+					break;
+				}
+			}
+			if (too_close) {
+				continue;
+			}
+			// 湿石色：比陆地巨石更深的青灰（被水泡透），带随机色差
+			float g = rnd_k(0.22f, 0.34f);
+			reefs.add(Vector3(p.x, cy, p.y), rnd_k(0.0f, 6.2831f), rnd_k(-0.12f, 0.12f), s,
+					Color(g + 0.01f, g + 0.02f, g + 0.05f));
+			reef_pos.push_back(p);
+			shore_rocks.push_back(Vector4(p.x, cy, p.y, r_xz));
+
+			// 浪花冠：石头处的水深决定拍岸浪相位（水越深，浪到得越晚）。
+			// 冠的等比缩放 = 石头水平半径 × 2.0 —— 单位冠底半径 0.5，缩放后正好贴住石头，
+			// 浪峰时顶半径 ≈ 3.2 × 石头半径，形成"炸开"的扇形水花。
+			{
+				float wdepth = Math::max(water_level - h, 0.0f);
+				spray_data.push_back(Vector4(r_xz, wdepth, rnd_k(0.0f, 1.0f), r_xz * 2.0f));
+				spray_pos.push_back(Vector3(p.x, water_level - 0.06f, p.y));
+			}
+
+			// 碰撞：露出水面的石脊能站人（半径略小于视觉，贴合脚感）
+			StaticBody3D *rb = memnew(StaticBody3D);
+			rb->set_position(Vector3(p.x, cy, p.y));
+			CollisionShape3D *rcs = memnew(CollisionShape3D);
+			Ref<SphereShape3D> rsp;
+			rsp.instantiate();
+			rsp->set_radius(0.44f * s);
+			rcs->set_shape(rsp);
+			rb->add_child(rcs);
+			add_child(rb);
+		}
+		commit_scatter(this, "ShoreReefs", reef_mesh, reefs);
+
+		// —— 礁石激浪水花：每块石头一撮向上炸开的水滴粒子 ——
+		// 真实几何：从任何角度看都是立体的水花，不是贴在水面上的白斑。
+		// 全部挂在 ShoreSpray 下，SkyCycle 靠它统一做"结冰封湖 → 停喷"的淡出。
+		// 岸边是小石头 → 用收敛的小档水花，大浪留给下面的深水巨礁。
+		Ref<Texture2D> splash_dot = make_splash_dot();
+		Ref<Mesh> splash_quad = make_splash_quad(splash_dot);
+		Node3D *spray_root = memnew(Node3D);
+		spray_root->set_name("ShoreSpray");
+		add_child(spray_root);
+		const SplashStyle shore_style = { 22, 0.72f, 0.80f, 0.26f, 56.0f, 2.6f };
+		for (int i = 0; i < (int)spray_pos.size(); i++) {
+			spray_root->add_child(make_reef_splash(spray_pos[i], spray_data[i].x,
+					spray_data[i].y, splash_dot, splash_quad, shore_style));
+		}
+
+		// ══════════════════════════════════════════════════════════════════
+		// 深水巨礁：湖心深水处一块大石头，浪打上去炸起一大蓬白色水花
+		// （参考实拍：礁石露出水面约 1m，浪花能冲到石头高度的 2 倍以上）
+		// ══════════════════════════════════════════════════════════════════
+		{
+			std::mt19937 rng_g(880417);
+			auto rnd_g = [&rng_g](float lo, float hi) -> float {
+				std::uniform_real_distribution<float> d(lo, hi);
+				return d(rng_g);
+			};
+
+			// 在西北大湖里找一块足够深的水域：从偏好点螺旋外扩，取最深处。
+			// 巨礁必须立在水里 —— 水深不够就不是"湖心礁石"了。
+			Vector2 anchor(-14.0f, 58.0f);
+			Vector2 spot = anchor;
+			float best_depth = -1.0f;
+			for (int r = 0; r <= 9; r++) {
+				for (int a = 0; a < 10; a++) {
+					float ang = (float)a / 10.0f * Math::TAU;
+					Vector2 c = anchor + Vector2(Math::cos(ang), Math::sin(ang)) * ((float)r * 1.6f);
+					float d = water_level - terrain_height(c.x, c.y);
+					if (d > best_depth) {
+						best_depth = d;
+						spot = c;
+					}
+				}
+			}
+			printf("[TerrainBuilder] 深水巨礁落点 (%.1f, %.1f)，水深 %.2f m\n",
+					spot.x, spot.y, best_depth);
+
+			if (best_depth > 0.9f) {
+				Ref<ArrayMesh> big_mesh = make_rock_mesh(13, 7, 0.5f, 0.78f, 0.30f, 1.35f, 33071);
+				big_mesh->surface_set_material(0, rock_material());
+
+				// 主礁：露出水面约 1.3m（实拍里那块礁石的量级）
+				float s = 2.9f;
+				float half_y = 0.5f * 0.78f * s; // 网格竖向半高 × 缩放
+				float cy = water_level + 1.30f - half_y;
+				Scatter big;
+				big.add(Vector3(spot.x, cy, spot.y), rnd_g(0.0f, 6.2831f), rnd_g(-0.10f, 0.10f), s,
+						Color(0.20f, 0.21f, 0.23f)); // 湿透的深青灰
+				commit_scatter(this, "DeepReef", big_mesh, big);
+
+				// 水花位置：静水线。半径给大 —— 影响环和粒子扩散都按它走。
+				float r_xz = 0.5f * s;
+				float wdepth = Math::max(water_level - terrain_height(spot.x, spot.y), 0.0f);
+				spray_root->add_child(make_reef_splash(Vector3(spot.x, water_level - 0.10f, spot.y),
+						r_xz, wdepth, splash_dot, splash_quad, SplashStyle{ 900, 2.35f, 3.20f, 0.62f, 52.0f, 0.85f }));
+
+				// 给水面着色器也登记：巨礁周围同样要有一圈拍岸白沫
+				shore_rocks.push_back(Vector4(spot.x, cy, spot.y, r_xz));
+
+				// 伴礁：主礁旁边两块小的，把"礁石群"的感觉做出来
+				Ref<ArrayMesh> mid_mesh = make_rock_mesh(11, 6, 0.5f, 0.72f, 0.34f, 1.9f, 44071);
+				mid_mesh->surface_set_material(0, rock_material());
+				Scatter mid;
+				const SplashStyle mid_style = { 90, 1.45f, 1.70f, 0.42f, 62.0f, 1.25f };
+				for (int k = 0; k < 2; k++) {
+					float ang = rnd_g(0.0f, 6.2831f);
+					float dist = rnd_g(3.2f, 5.0f);
+					Vector2 mp = spot + Vector2(Math::cos(ang), Math::sin(ang)) * dist;
+					float mh = terrain_height(mp.x, mp.y);
+					if (water_level - mh < 0.45f) {
+						continue; // 太浅，不放了
+					}
+					float ms = rnd_g(1.15f, 1.55f);
+					float m_half = 0.5f * 0.72f * ms;
+					float mcy = water_level + rnd_g(0.30f, 0.55f) - m_half;
+					mid.add(Vector3(mp.x, mcy, mp.y), rnd_g(0.0f, 6.2831f), rnd_g(-0.14f, 0.14f), ms,
+							Color(0.22f, 0.23f, 0.25f));
+					float mr = 0.5f * ms;
+					spray_root->add_child(make_reef_splash(Vector3(mp.x, water_level - 0.08f, mp.y),
+							mr, Math::max(water_level - mh, 0.0f), splash_dot, splash_quad, mid_style));
+					shore_rocks.push_back(Vector4(mp.x, mcy, mp.y, mr));
+				}
+				commit_scatter(this, "DeepReefCompanions", mid_mesh, mid);
+			}
+		}
+
+		apply_shore_rocks(); // 把石头坐标交给水面着色器（含上面那块巨礁）
+	}
+
 	// —— 树桩：树林区里的伐木残桩（矮圆柱 + 顶面浅色年轮盘） ——
 	// 独立 rng（固定种子）。贴地校验：桩底一圈取四点，高差过大即弃（防悬空）。
 	{
@@ -2073,14 +3020,19 @@ void TerrainBuilder::build_vegetation() {
 	}
 
 	// —— 提交为 MultiMesh 节点 ——
-	commit_scatter(this, "TreeTrunks", trunk_mesh, trunks);
+	// 树干按原型分桶提交（每个原型一份 MultiMesh，共用的 mesh 没法逐实例换形状）
+	for (int i = 0; i < ARCH_N; i++) {
+		char nm[64];
+		snprintf(nm, sizeof(nm), "TreeTrunks_A%d", i);
+		commit_scatter(this, nm, archetypes[i].skeleton, trunks_by_arch[i]);
+	}
 	static const char *tier_names[3] = { "T1LowSnow", "T2MidSnow", "T3HighSnow" };
 	for (int b = 0; b < 3; b++) {
-		char name[48];
-		snprintf(name, sizeof(name), "TreeCanopyLow%s", tier_names[b]);
-		commit_scatter(this, name, canopy_mesh_bands[b], canopy_lo_bands[b]);
-		snprintf(name, sizeof(name), "TreeCanopyHigh%s", tier_names[b]);
-		commit_scatter(this, name, canopy_mesh_bands[b], canopy_hi_bands[b]);
+		char name[64];
+		for (int i = 0; i < ARCH_N; i++) {
+			snprintf(name, sizeof(name), "TreeCanopy%s_A%d", tier_names[b], i);
+			commit_scatter(this, name, canopy_mesh_bands[b], canopy_lo[i][b]);
+		}
 		snprintf(name, sizeof(name), "TreeSnowCaps%s", tier_names[b]);
 		commit_scatter(this, name, snowcap_mesh_bands[b], snowcap_bands[b]);
 	}

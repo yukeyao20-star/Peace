@@ -46,6 +46,11 @@ private:
 	Ref<ProceduralSkyMaterial> sky_mat;
 	Ref<Environment> env;
 	Ref<ShaderMaterial> water_mat; // 水面材质（Terrain/Lake，懒查找；rain 驱动其 rain_amount）
+	Node3D *spray_root = nullptr;  // 礁石激浪水花容器（Terrain/ShoreSpray，懒查找；结冰封湖时淡出）
+	float spray_ratio_applied = -1.0f; // 已写入的粒子发射比例（避免每帧无脑刷 32 个节点）
+	// 太阳/月亮的世界方向（指向光源）。每帧 apply() 里更新，供需要"从哪边照过来"的
+	// 材质读取 —— 目前是树冠叶片透光（背光面透出的暖光）和水面碎金高光。
+	Vector3 sun_dir = Vector3(0.3f, 0.8f, 0.5f);
 
 	float time_of_day = 0.32f;   // 0..1，开局在上午
 	float day_length = 240.0f;   // 一整天的现实秒数
@@ -100,6 +105,7 @@ public:
 	int get_day_count() const { return day_count; }
 	float get_rain_amount() const { return rain; } // 雨强因子 0..1（供夜光/水面等系统联动）
 	float get_snow_amount() const { return snow; } // 雪强因子 0..1
+	Vector3 get_sun_dir() const { return sun_dir; } // 指向太阳/月亮的世界方向（植被透光等用）
 
 	// —— 天气状态快照（SaveSystem 存读用）——
 	int get_weather() const { return weather; }

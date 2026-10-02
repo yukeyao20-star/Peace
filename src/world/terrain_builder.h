@@ -4,6 +4,7 @@
 #include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/variant/vector2.hpp>
+#include <godot_cpp/variant/vector4.hpp>
 
 #include <map>
 #include <vector>
@@ -98,6 +99,13 @@ private:
 	Ref<StandardMaterial3D> shroom_spot_mat; // MushroomSpots 专用（夜光冷白）
 	std::vector<CPUParticles3D *> spore_puffs; // 孢子光尘（夜开昼关）
 	Ref<ShaderMaterial> terrain_mat;           // 地形雪盖材质（snow_ground.gdshader，加载失败时为空 → 用标准材质兜底）
+	Ref<ShaderMaterial> water_mat;             // 水面材质（water.gdshader）——用于把湖岸礁石坐标写进着色器
+
+	// 湖岸礁石（水线带的大石头）：xyz = 世界坐标，w = 视觉半径。
+	// 生成后写进 water.gdshader 的 shore_rocks 数组 —— 让拍岸浪精确地在
+	// 真实石头的位置爆起白色浪花，而不是靠噪声"假装"石头。
+	std::vector<Vector4> shore_rocks;
+	void apply_shore_rocks(); // 把 shore_rocks 写进 water_mat 的 uniform 数组
 
 	// 积雪分级条目：雪强 snow ∈ [0,1] → 生效值 v = sstepf(lo, hi, snow) 写进
 	// veg_wind 的 snow_amount（覆雪混色 + 梢部下坠都跟着分级）；drive_alpha 的
@@ -109,6 +117,11 @@ private:
 		bool drive_alpha = false;
 	};
 	std::vector<SnowBand> snow_bands;
+
+	// 叶片透光：树冠专用 veg_wind 材质（update_sky_driven 每帧把 SkyCycle 的
+	// 太阳方向写进 sun_dir）。树冠大面积是背光面，只靠蓝色天光会糊成墨绿，
+	// 靠这一层"光从叶子背面透过来"的暖光把背光面提起来。
+	std::vector<Ref<ShaderMaterial>> leaf_mats;
 
 	// 踩草倒伏：草丛/高草专用 veg_wind 材质（update_sky_driven 每帧把玩家与
 	// "farm_animals" 组里动物的世界坐标写进 trample_pos/trample_count）
@@ -140,6 +153,12 @@ public:
 	float dist_to_path(float x, float z) const;
 	bool is_in_bush(float x, float z, float y) const;
 	bool is_near_lake(float x, float z, float margin = 0.0f) const;
+
+	// —— 给钓鱼系统用的水面查询 ——
+	// 抛竿落点必须真的在水里。FishingSystem 拿不到高度场，这里开两个只读口子。
+	float get_water_level() const { return water_level; }
+	// 该点水深（米）：> 0 = 水面之下；<= 0 = 岸上。
+	float water_depth_at(float x, float z) const { return water_level - terrain_height(x, z); }
 };
 
 } // namespace godot

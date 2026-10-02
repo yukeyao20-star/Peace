@@ -5,10 +5,13 @@
 #include <godot_cpp/classes/audio_stream.hpp>
 #include <godot_cpp/classes/audio_stream_player.hpp>
 #include <godot_cpp/classes/box_mesh.hpp>
+#include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/canvas_layer.hpp>
 #include <godot_cpp/classes/color_rect.hpp>
+#include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/font.hpp>
+#include <godot_cpp/classes/immediate_mesh.hpp>
 #include <godot_cpp/classes/input.hpp>
 #include <godot_cpp/classes/label.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
@@ -16,10 +19,12 @@
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
+#include <godot_cpp/classes/viewport.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/math.hpp>
 
 #include "player.h"
+#include "terrain_builder.h"
 
 using namespace godot;
 
@@ -60,6 +65,7 @@ void FishingSystem::_notification(int p_what) {
 				Node *p = get_parent();
 				if (p != nullptr) {
 					player = Object::cast_to<Player>(p->get_node_or_null(NodePath("Player")));
+					terrain = Object::cast_to<TerrainBuilder>(p->get_node_or_null(NodePath("Terrain")));
 				}
 				if (player == nullptr) {
 					return;
@@ -67,13 +73,14 @@ void FishingSystem::_notification(int p_what) {
 			}
 
 			bool f_down = input->is_key_pressed(KEY_F);
-			bool f_edge = f_down && !f_prev;
+			bool f_edge = f_down && !f_prev;    // 按下（等待阶段用来收竿）
+			bool f_release = !f_down && f_prev; // 松手 = 蓄力结束、抛出去
 			f_prev = f_down;
 			bool hold = input->is_key_pressed(KEY_SPACE)
 					|| input->is_mouse_button_pressed(MOUSE_BUTTON_LEFT);
 
 			switch (state) {
-				case 0: tick_idle(delta, f_edge); break;
+				case 0: tick_idle(delta, f_down, f_release); break;
 				case 1: tick_waiting(delta, f_edge); break;
 				case 2: tick_hooking(delta, hold); break;
 				case 3: tick_leaping(delta); break;
@@ -84,6 +91,9 @@ void FishingSystem::_notification(int p_what) {
 					}
 				} break;
 			}
+
+			// 鱼竿与鱼线每帧跟随玩家（摆在状态机之后：抛竿那一帧就能看到竿挥出去）
+			update_rod();
 		} break;
 
 		default:
@@ -159,6 +169,28 @@ void FishingSystem::build_ui() {
 	prog->set_anchors_preset(Control::PRESET_CENTER_BOTTOM);
 	layer->add_child(prog);
 	prog->hide();
+
+	// 蓄力条（张力条上面一行）：按住 F 时从 0 涨到满，松手抛出去。
+	// 用暖黄→橙的填充色，和张力条（绿区/黄游标）区分开。
+	charge_bg = memnew(ColorRect);
+	charge_bg->set_color(Color(0.05f, 0.05f, 0.08f, 0.72f));
+	charge_bg->set_anchors_preset(Control::PRESET_CENTER_BOTTOM);
+	charge_bg->set_offset(SIDE_LEFT, -180.0f);
+	charge_bg->set_offset(SIDE_RIGHT, 180.0f);
+	charge_bg->set_offset(SIDE_TOP, -104.0f);
+	charge_bg->set_offset(SIDE_BOTTOM, -92.0f);
+	layer->add_child(charge_bg);
+	charge_bg->hide();
+
+	charge_fill = memnew(ColorRect);
+	charge_fill->set_color(Color(1.0f, 0.72f, 0.22f, 0.95f));
+	charge_fill->set_anchors_preset(Control::PRESET_CENTER_BOTTOM);
+	charge_fill->set_offset(SIDE_LEFT, -180.0f);
+	charge_fill->set_offset(SIDE_RIGHT, -180.0f);
+	charge_fill->set_offset(SIDE_TOP, -104.0f);
+	charge_fill->set_offset(SIDE_BOTTOM, -92.0f);
+	layer->add_child(charge_fill);
+	charge_fill->hide();
 
 	// 音效播放器与音频资源载入
 	ResourceLoader *rl = ResourceLoader::get_singleton();
@@ -260,6 +292,220 @@ void FishingSystem::build_tackle() {
 		fish->add_child(tail);
 	}
 	fish->hide();
+
+	// —— 鱼竿：细长锥形竿身 + 深色握把 + 金色卷线器 ——
+	// 竿沿本地 -Z 摆放（这样 look_at 指向哪、竿就指哪）
+	const float ROD_LEN = 2.45f;
+	rod_pivot = memnew(Node3D);
+	rod_pivot->set_name("FishingRod");
+	add_child(rod_pivot);
+	{
+		Ref<CylinderMesh> rm;
+		rm.instantiate();
+		rm->set_top_radius(0.008f);
+		rm->set_bottom_radius(0.026f);
+		rm->set_height(ROD_LEN);
+		rm->set_radial_segments(7);
+		rm->set_rings(1);
+		MeshInstance3D *rod = memnew(MeshInstance3D);
+		rod->set_mesh(rm);
+		rod->set_material_override(mat_of(Color(0.36f, 0.21f, 0.11f)));
+		rod->set_rotation(Vector3(-Math::PI * 0.5f, 0.0f, 0.0f)); // 竿轴 Y → 本地 -Z
+		rod->set_position(Vector3(0.0f, 0.0f, -ROD_LEN * 0.5f));  // 竿根落在枢轴上
+		rod_pivot->add_child(rod);
+
+		Ref<CylinderMesh> gm;
+		gm.instantiate();
+		gm->set_top_radius(0.030f);
+		gm->set_bottom_radius(0.033f);
+		gm->set_height(0.26f);
+		gm->set_radial_segments(8);
+		MeshInstance3D *grip = memnew(MeshInstance3D);
+		grip->set_mesh(gm);
+		grip->set_material_override(mat_of(Color(0.15f, 0.11f, 0.09f)));
+		grip->set_rotation(Vector3(-Math::PI * 0.5f, 0.0f, 0.0f));
+		grip->set_position(Vector3(0.0f, 0.0f, -0.13f));
+		rod_pivot->add_child(grip);
+
+		Ref<CylinderMesh> rlm;
+		rlm.instantiate();
+		rlm->set_top_radius(0.042f);
+		rlm->set_bottom_radius(0.042f);
+		rlm->set_height(0.05f);
+		rlm->set_radial_segments(10);
+		MeshInstance3D *reel = memnew(MeshInstance3D);
+		reel->set_mesh(rlm);
+		reel->set_material_override(mat_of(Color(0.78f, 0.74f, 0.32f)));
+		reel->set_rotation(Vector3(Math::PI * 0.5f, 0.0f, 0.0f));
+		reel->set_position(Vector3(0.0f, -0.055f, -0.30f));
+		rod_pivot->add_child(reel);
+	}
+	rod_pivot->hide();
+
+	// —— 鱼线：每帧重建的、始终面向相机的细薄带（Godot 的 LINE 只有 1px，太细看不见）——
+	// 顶点是世界坐标（update_rod 里每帧重建），所以本节点必须挂在场景树里、
+	// 且全局变换保持单位阵。**别忘了 add_child** —— 漏了它线就永远不渲染，
+	// 而且 get_node_or_null("FishingLine") 也找不到（上一版就是漏了这一行）。
+	line = memnew(MeshInstance3D);
+	line->set_name("FishingLine");
+	add_child(line);
+	{
+		Ref<ImmediateMesh> im;
+		im.instantiate();
+		line->set_mesh(im);
+		Ref<StandardMaterial3D> lm;
+		lm.instantiate();
+		lm->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED); // 鱼线是亮的细丝，不吃光照
+		lm->set_albedo(Color(0.92f, 0.95f, 1.0f, 0.88f));
+		lm->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+		// **必须关背面剔除**。这条带子的绕序是反的（侧向量取的是 seg×to_cam，
+		// 出来的面法线朝相机，但 Godot 判正面用的是另一套绕序），默认 CULL_BACK
+		// 会把整条线剔掉 —— 表现就是"节点在、AABB 也在、就是什么都看不到"。
+		// 薄带子双面渲染没有额外代价，直接关掉最省事。
+		lm->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
+		line->set_material_override(lm);
+	}
+	line->hide();
+}
+
+// 竿梢的世界坐标（本地 -Z 方向 ROD_LEN 处）
+Vector3 FishingSystem::rod_tip_world() const {
+	if (rod_pivot == nullptr) {
+		return Vector3();
+	}
+	return rod_pivot->get_global_transform().xform(Vector3(0.0f, 0.0f, -2.45f));
+}
+
+// 每帧摆竿 + 拉线：竿跟着玩家手走，朝向在"举着"和"指着浮漂"之间切换；
+// 线从竿梢连到浮漂，中间按距离给一点下垂。
+void FishingSystem::update_rod() {
+	if (rod_pivot == nullptr || player == nullptr) {
+		return;
+	}
+	// 举竿条件：正在钓鱼（state != 0）或者正在按 F 蓄力。
+	// **不再"靠近水就举竿"** —— 用户明确要求：站在岸边只是提示，按 F 才举竿。
+	// 松手抛竿那一帧 tick_idle 已经把 state 置成 1，所以不会有"竿闪一下又消失"。
+	bool show = (state != 0) || charging;
+	if (!show) {
+		if (rod_pivot->is_visible()) {
+			rod_pivot->hide();
+			line->hide();
+		}
+		return;
+	}
+	if (!rod_pivot->is_visible()) {
+		rod_pivot->show();
+	}
+
+	Vector3 fwd = player->get_facing();
+	fwd.y = 0.0f;
+	if (fwd.length_squared() < 0.0001f) {
+		fwd = Vector3(0.0f, 0.0f, -1.0f);
+	}
+	fwd = fwd.normalized();
+	Vector3 right = fwd.cross(Vector3(0.0f, 1.0f, 0.0f));
+	if (right.length_squared() < 0.0001f) {
+		right = Vector3(1.0f, 0.0f, 0.0f);
+	}
+	right = right.normalized();
+
+	// 握竿手：身前右侧、胸口略高
+	Vector3 hand = player->get_global_position() + Vector3(0.0f, 1.24f, 0.0f)
+			+ right * 0.30f + fwd * 0.20f;
+
+	// 竿的姿态：**始终斜举在身前**，不去"指着浮漂"。
+	// 上一版让竿梢瞄浮漂，结果浮漂一旦落在手边或水面比手低很多，
+	// 竿就变成朝下戳地 —— 真人钓鱼也不会把竿指着漂，竿的作用是把线架高。
+	// 线自己从竿梢垂到浮漂，那才是钓鱼该有的样子。
+	float up = 0.86f + cast_swing * 0.34f; // 甩竿瞬间再抬高一点
+	float fw = 0.54f;
+	if (state == 2) {
+		// 咬钩：竿往后仰、往上带（像在控鱼）
+		up = 1.02f;
+		fw = 0.68f;
+	}
+	if (charging) {
+		// 蓄力：竿往后仰，蓄得越满仰得越多 —— 像真的把线拉回来攒劲，
+		// 松手那一下 cast_swing 再把竿甩出去，一来一回才有个"抛"的动作。
+		up = 0.86f + charge * 0.42f;
+		fw = 0.54f - charge * 0.30f;
+	}
+	if (cast_swing > 0.0f) {
+		fw += cast_swing * 0.55f; // 甩出去：竿梢向前压
+	}
+	Vector3 dir = (fwd * fw + Vector3(0.0f, 1.0f, 0.0f) * up).normalized();
+	if (dir.length_squared() < 0.0001f) {
+		dir = Vector3(0.0f, 1.0f, 0.0f);
+	}
+	dir = dir.normalized();
+	// 兜底：无论上面怎么算，竿朝下的角度都不许超过约 13°。
+	// 竿长 2.45m，再往下压梢部就贴地/入水了。
+	const float MIN_DIR_Y = -0.22f;
+	if (dir.y < MIN_DIR_Y) {
+		dir.y = MIN_DIR_Y;
+		dir = dir.normalized();
+	}
+	if (dir.y > 0.92f) { // 太竖直会让 look_at 退化，观感也不对
+		dir.y = 0.92f;
+		dir = dir.normalized();
+	}
+	rod_pivot->look_at_from_position(hand, hand + dir, Vector3(0.0f, 1.0f, 0.0f));
+
+	if (cast_swing > 0.0f) {
+		cast_swing = Math::max(cast_swing - (float)get_process_delta_time() * 2.2f, 0.0f);
+	}
+
+	// —— 鱼线：竿梢 → 浮漂，10 段、面向相机的薄带 ——
+	if (state == 0 || bobber == nullptr || !bobber->is_visible()) {
+		line->hide();
+		return;
+	}
+	line->show();
+	line->set_global_transform(Transform3D());
+
+	Vector3 tip = rod_tip_world();
+	Vector3 bpos = bobber->get_global_position();
+	float dist = tip.distance_to(bpos);
+	float sag = Math::min(dist * 0.045f, 0.32f); // 线自重下垂（拉紧时几乎是一条直线）
+
+	Camera3D *cam = get_viewport() != nullptr ? get_viewport()->get_camera_3d() : nullptr;
+	Vector3 cam_pos = cam != nullptr ? cam->get_global_position() : tip + Vector3(0.0f, 6.0f, 0.0f);
+
+	Ref<ImmediateMesh> im = line->get_mesh();
+	im->clear_surfaces();
+	im->surface_begin(Mesh::PRIMITIVE_TRIANGLE_STRIP);
+	const int SEGS = 10;
+	const float HALF_W = 0.017f; // 细丝，但得看得见：0.012 在几米外只有两三个像素，玩家根本找不着
+	Vector3 prev = tip;
+	for (int i = 0; i <= SEGS; i++) {
+		float t = (float)i / (float)SEGS;
+		Vector3 p = tip.lerp(bpos, t);
+		p.y -= std::sin(t * (float)Math::PI) * sag;
+		Vector3 nxt = (i < SEGS) ? tip.lerp(bpos, (float)(i + 1) / (float)SEGS) : p;
+		Vector3 seg = nxt - prev;
+		if (seg.length_squared() < 1e-9f) {
+			seg = bpos - tip;
+		}
+		if (seg.length_squared() < 1e-9f) {
+			seg = Vector3(0.0f, -1.0f, 0.0f);
+		}
+		seg = seg.normalized();
+		Vector3 to_cam = cam_pos - p;
+		if (to_cam.length_squared() < 1e-6f) {
+			to_cam = Vector3(0.0f, 0.0f, 1.0f);
+		}
+		to_cam = to_cam.normalized();
+		Vector3 side = seg.cross(to_cam);
+		if (side.length_squared() < 1e-8f) {
+			side = Vector3(1.0f, 0.0f, 0.0f);
+		}
+		side = side.normalized() * HALF_W;
+		im->surface_set_normal(Vector3(0.0f, 1.0f, 0.0f));
+		im->surface_add_vertex(p - side);
+		im->surface_add_vertex(p + side);
+		prev = p;
+	}
+	im->surface_end();
 }
 
 bool FishingSystem::check_near_shore(const Vector3 &p_pos) const {
@@ -269,42 +515,57 @@ bool FishingSystem::check_near_shore(const Vector3 &p_pos) const {
 		return true;
 	}
 
-	// 2. 站在水上荷叶上：脚底标高贴近水面（荷叶平台）
-	Vector2 p(p_pos.x, p_pos.z);
-	float d_nw = (p - Vector2(-14.0f, 66.0f)).length();
-	float d_ne = (p - Vector2(16.0f, 56.0f)).length();
-	float d_south = (p - Vector2(-15.0f, 8.0f)).length();
-	float b_dx = (p_pos.x - (-6.0f)) / 13.0f;
-	float b_dz = (p_pos.z - 26.0f) / 18.0f;
-	float d_bridge = std::sqrt(b_dx * b_dx + b_dz * b_dz);
-
-	if (p_pos.y > water_level - 0.15f && p_pos.y < water_level + 0.35f) {
-		if (d_nw < 44.0f || d_ne < 32.0f || d_south < 22.0f || d_bridge < 0.95f) {
-			return true;
+	// 2. 有高度场就用真实水边判定。
+	//
+	// **为什么不再用写死的湖心距离**：湖盆是 heightfield 挖出来的
+	// （basin = 1 - sstepf(r*0.5, r*1.02, d)，再叠 ±6.5m 的岸线域扭曲），
+	// 水面（terrain_height == water_level）实际落在 d ≈ 0.6r 附近，
+	// 西北湖大约 36m —— 而老判定带写的是 42~52m。也就是说玩家站在离水
+	// 6~16m 的草地上就被判定成"可以钓鱼"，抛出去 5.2m 当然还在草地上。
+	// 现在直接问地形：脚边 6m 内有没有"水深够下竿"的地方。
+	if (terrain != nullptr) {
+		// 站在深水里不能钓；脚底贴着水面（荷叶/浅滩）算例外
+		if (terrain->water_depth_at(p_pos.x, p_pos.z) > 0.25f
+				&& Math::abs(p_pos.y - water_level) > 0.35f) {
+			return false;
 		}
+		const float NEED_DEPTH = 0.6f;  // 能下竿的最小水深
+		const float REACH = 6.0f;       // 站得离水边不超过这么远
+		for (int ring = 1; ring <= 6; ring++) {
+			float r = (float)ring;
+			for (int k = 0; k < 16; k++) {
+				float a = (float)k * 0.3926991f; // 2π / 16
+				if (terrain->water_depth_at(p_pos.x + std::cos(a) * r,
+							p_pos.z + std::sin(a) * r) >= NEED_DEPTH) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
-	// 3. 湖岸边陆地：在水面以上的各段岸边带
+	// 3. 拿不到地形时的退化路径：老的固定半径判定
 	if (p_pos.y <= water_level) {
 		return false;
 	}
-	// 西北大湖岸边 (44m，岸边触发带 42~52m)
-	if (d_nw >= 42.0f && d_nw <= 52.0f) {
+	float d_nw = (Vector2(p_pos.x, p_pos.z) - Vector2(-14.0f, 66.0f)).length();
+	float d_ne = (Vector2(p_pos.x, p_pos.z) - Vector2(16.0f, 56.0f)).length();
+	float d_south = (Vector2(p_pos.x, p_pos.z) - Vector2(-15.0f, 8.0f)).length();
+	float b_dx = (p_pos.x - (-6.0f)) / 13.0f;
+	float b_dz = (p_pos.z - 26.0f) / 18.0f;
+	float d_bridge = std::sqrt(b_dx * b_dx + b_dz * b_dz);
+	if (d_nw >= 34.0f && d_nw <= 46.0f) {
 		return true;
 	}
-	// 东北阳光水域岸边 (32m，岸边触发带 30~40m)
-	if (d_ne >= 30.0f && d_ne <= 40.0f) {
+	if (d_ne >= 24.0f && d_ne <= 36.0f) {
 		return true;
 	}
-	// 南湖湾岸边 (22m，岸边触发带 20~29m)
-	if (d_south >= 20.0f && d_south <= 29.0f) {
+	if (d_south >= 16.0f && d_south <= 27.0f) {
 		return true;
 	}
-	// 石桥水峡岸边 (椭圆归一化距离 0.85~1.40)
-	if (d_bridge >= 0.85f && d_bridge <= 1.40f) {
+	if (d_bridge >= 0.70f && d_bridge <= 1.30f) {
 		return true;
 	}
-
 	return false;
 }
 
@@ -316,10 +577,12 @@ void FishingSystem::set_result(const String &p_text, float p_seconds) {
 	state_t = p_seconds; // 复用 state_t 做结算展示计时
 }
 
-void FishingSystem::start_cast() {
+void FishingSystem::start_cast(float p_charge) {
 	state = 1;
+	cast_swing = 1.0f; // 起手一记前挥
 	play_sound(snd_cast, -8.0f);
 	Vector3 pp = player->get_global_position();
+	cast_origin = pp;
 	bool on_bridge = (Math::abs(pp.z - 26.0f) < 2.5f && pp.x > -20.0f && pp.x < 8.0f && pp.y > 0.0f);
 
 	Vector3 facing = player->get_facing();
@@ -330,30 +593,60 @@ void FishingSystem::start_cast() {
 		fdir = Vector2(0.0f, 1.0f);
 	}
 
-	if (on_bridge) {
-		// 桥上垂钓：顺着玩家朝向往栏杆外甩出 4.8m，浮漂落在桥下水面
-		bobber_pos = Vector3(pp.x + fdir.x * 4.8f, water_level + 0.02f, pp.z + fdir.y * 4.8f);
-	} else {
-		// 岸边或荷叶上垂钓：若玩家朝向大致朝向水面，则顺着玩家朝向抛竿，否则朝最近湖心抛
-		Vector2 p(pp.x, pp.z);
-		Vector2 c_nw(-14.0f, 66.0f);
-		Vector2 c_ne(16.0f, 56.0f);
-		Vector2 c_south(-15.0f, 8.0f);
-		Vector2 c_mid(-6.0f, 26.0f);
-		Vector2 to_c = c_nw - p;
-		if ((c_ne - p).length_squared() < to_c.length_squared()) {
-			to_c = c_ne - p;
-		}
-		if ((c_south - p).length_squared() < to_c.length_squared()) {
-			to_c = c_south - p;
-		}
-		if ((c_mid - p).length_squared() < to_c.length_squared()) {
-			to_c = c_mid - p;
-		}
-		Vector2 c_dir = to_c.normalized();
-		Vector2 cast_dir = (fdir.dot(c_dir) > -0.2f) ? fdir : c_dir;
-		bobber_pos = Vector3(pp.x + cast_dir.x * 5.2f, water_level + 0.02f, pp.z + cast_dir.y * 5.2f);
+	// 蓄力 → 抛竿距离。轻点一下抛得近，蓄满抛到最远。
+	// 之前是固定 5.2m —— 玩家侧着站、或者岸边比想象的宽，浮漂就落在草地上了。
+	const float CAST_MIN = 3.2f;
+	const float CAST_MAX = 13.0f;
+	float cast_d = CAST_MIN + (CAST_MAX - CAST_MIN) * Math::clamp(p_charge, 0.0f, 1.0f);
+
+	// 候选方向：玩家朝向优先，其次往"最近湖心"方向并拢。
+	// 每个方向都沿射线找第一个真在水里的落点，谁先成功用谁。
+	Vector2 p(pp.x, pp.z);
+	Vector2 c_nw(-14.0f, 66.0f);
+	Vector2 c_ne(16.0f, 56.0f);
+	Vector2 c_south(-15.0f, 8.0f);
+	Vector2 c_mid(-6.0f, 26.0f);
+	Vector2 to_c = c_nw - p;
+	if ((c_ne - p).length_squared() < to_c.length_squared()) {
+		to_c = c_ne - p;
 	}
+	if ((c_south - p).length_squared() < to_c.length_squared()) {
+		to_c = c_south - p;
+	}
+	if ((c_mid - p).length_squared() < to_c.length_squared()) {
+		to_c = c_mid - p;
+	}
+	Vector2 c_dir = to_c.length_squared() > 1e-4f ? to_c.normalized() : Vector2(0.0f, -1.0f);
+
+	Vector2 target;
+	bool found = false;
+	if (on_bridge) {
+		// 桥上：往栏杆外（玩家朝向）为主，水面就在桥下，距离不用远
+		float bd = Math::min(cast_d, 8.0f);
+		found = find_water_spot(p, fdir, bd, 1.5f, target);
+		if (!found) {
+			found = find_water_spot(p, c_dir, bd, 1.5f, target);
+		}
+	} else {
+		Vector2 dirs[6];
+		dirs[0] = fdir;
+		dirs[1] = (fdir * 0.5f + c_dir * 0.5f);
+		dirs[2] = c_dir;
+		dirs[3] = (fdir * 0.25f + c_dir * 0.75f);
+		dirs[4] = c_dir.rotated(0.6f);
+		dirs[5] = c_dir.rotated(-0.6f);
+		for (int i = 0; i < 6 && !found; i++) {
+			if (dirs[i].length_squared() < 1e-6f) {
+				continue;
+			}
+			found = find_water_spot(p, dirs[i].normalized(), cast_d, 2.4f, target);
+		}
+	}
+	if (!found) {
+		// 兜底（理论上不会走到）：朝湖心丢固定距离
+		target = p + c_dir * Math::max(cast_d, 5.2f);
+	}
+	bobber_pos = Vector3(target.x, water_level + 0.05f, target.y);
 
 	// 定鱼：30% 大鱼
 	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
@@ -420,11 +713,16 @@ void FishingSystem::finish_escaped() {
 
 void FishingSystem::cancel_fishing() {
 	state = 0;
+	charging = false;
+	charge = 0.0f;
 	if (bobber != nullptr) {
 		bobber->hide();
 	}
 	if (fish != nullptr) {
 		fish->hide();
+	}
+	if (line != nullptr) {
+		line->hide(); // 收竿就把线收了
 	}
 	if (hint != nullptr) {
 		hint->hide();
@@ -435,9 +733,13 @@ void FishingSystem::cancel_fishing() {
 		bar_cur->hide();
 		prog->hide();
 	}
+	if (charge_bg != nullptr) {
+		charge_bg->hide();
+		charge_fill->hide();
+	}
 }
 
-void FishingSystem::tick_idle(float p_delta, bool f_edge) {
+void FishingSystem::tick_idle(float p_delta, bool f_down, bool f_release) {
 	// 结算展示计时（如有）
 	if (result != nullptr && result->is_visible()) {
 		state_t -= p_delta;
@@ -448,24 +750,100 @@ void FishingSystem::tick_idle(float p_delta, bool f_edge) {
 
 	Vector3 pp = player->get_global_position();
 	near_shore = check_near_shore(pp);
-	if (near_shore) {
-		bool on_bridge = (Math::abs(pp.z - 26.0f) < 2.5f && pp.x > -20.0f && pp.x < 8.0f && pp.y > 0.0f);
+
+	// 离开岸边：蓄力作废、提示收起
+	if (!near_shore) {
+		if (hint != nullptr && hint->is_visible()) {
+			hint->hide();
+		}
+		if (charge_bg != nullptr && charge_bg->is_visible()) {
+			charge_bg->hide();
+			charge_fill->hide();
+		}
+		charging = false;
+		charge = 0.0f;
+		return;
+	}
+
+	bool on_bridge = (Math::abs(pp.z - 26.0f) < 2.5f && pp.x > -20.0f && pp.x < 8.0f && pp.y > 0.0f);
+
+	// —— 蓄力：按住 F 涨条，松手抛竿 ——
+	if (f_down) {
+		if (!charging) {
+			charging = true;
+			charge = 0.0f;
+		}
+		charge = Math::min(charge + p_delta / CHARGE_TIME, 1.0f);
 		if (hint != nullptr) {
-			if (on_bridge) {
-				hint->set_text(String::utf8("按 F 桥上抛竿钓鱼"));
+			// 满蓄力给个明确反馈，否则玩家不知道还能不能更远
+			if (charge >= 0.999f) {
+				hint->set_text(String::utf8("蓄满力！松手抛竿"));
 			} else {
-				hint->set_text(String::utf8("按 F 抛竿钓鱼"));
+				hint->set_text(String::utf8("蓄力中……松手抛竿"));
 			}
 			if (!hint->is_visible()) {
 				hint->show();
 			}
 		}
-		if (f_edge) {
-			start_cast();
+		if (charge_bg != nullptr) {
+			const float bar_l = -180.0f, bar_w = 360.0f;
+			charge_bg->show();
+			charge_fill->show();
+			charge_fill->set_offset(SIDE_LEFT, bar_l);
+			charge_fill->set_offset(SIDE_RIGHT, bar_l + charge * bar_w);
+			charge_fill->set_offset(SIDE_TOP, -104.0f);
+			charge_fill->set_offset(SIDE_BOTTOM, -92.0f);
 		}
-	} else if (hint != nullptr && hint->is_visible()) {
-		hint->hide();
+		return;
 	}
+
+	if (f_release && charging) {
+		charging = false;
+		float c = charge;
+		charge = 0.0f;
+		if (charge_bg != nullptr) {
+			charge_bg->hide();
+			charge_fill->hide();
+		}
+		start_cast(c);
+		return;
+	}
+
+	// 待机提示
+	if (hint != nullptr) {
+		if (on_bridge) {
+			hint->set_text(String::utf8("按住 F 蓄力，松手桥上抛竿"));
+		} else {
+			hint->set_text(String::utf8("按住 F 蓄力，松手抛竿"));
+		}
+		if (!hint->is_visible()) {
+			hint->show();
+		}
+	}
+	if (charge_bg != nullptr && charge_bg->is_visible()) {
+		charge_bg->hide();
+		charge_fill->hide();
+	}
+}
+
+// 沿 p_dir 从 p_max_d 往回扫，返回第一个"水深够"的落点。
+// 从远往近扫是故意的：玩家蓄了多少力就想到多远，落在最远处才算兑现；
+// 只有远处是岸、近处才有水时才往前收。
+bool FishingSystem::find_water_spot(const Vector2 &p_from, const Vector2 &p_dir,
+		float p_max_d, float p_min_d, Vector2 &r_out) const {
+	if (terrain == nullptr || p_dir.length_squared() < 1e-6f) {
+		return false;
+	}
+	const float MIN_DEPTH = 0.85f; // 浮漂要真浮起来，鱼影还得在水面下 0.85m
+	Vector2 d = p_dir.normalized();
+	for (float t = p_max_d; t >= p_min_d; t -= 0.3f) {
+		Vector2 q = p_from + d * t;
+		if (terrain->water_depth_at(q.x, q.y) >= MIN_DEPTH) {
+			r_out = q;
+			return true;
+		}
+	}
+	return false;
 }
 
 void FishingSystem::tick_waiting(float p_delta, bool f_edge) {
@@ -473,9 +851,10 @@ void FishingSystem::tick_waiting(float p_delta, bool f_edge) {
 		cancel_fishing();
 		return;
 	}
-	// 走开 3m 自动收竿
+	// 走开就自动收竿（相对抛竿点算，不是相对浮漂 —— 蓄满力能抛 13m，
+	// 拿浮漂当参照的话玩家刚站好就触发收竿了）
 	Vector3 pp = player->get_global_position();
-	if (pp.distance_to(bobber_pos) > 12.0f) {
+	if (pp.distance_to(cast_origin) > 6.0f) {
 		cancel_fishing();
 		return;
 	}

@@ -13,7 +13,7 @@ namespace godot {
 FootprintManager *FootprintManager::singleton = nullptr;
 
 void FootprintManager::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("spawn_footprint", "type", "pos", "yaw_rad", "scale"), &FootprintManager::spawn_footprint, DEFVAL(1.0f));
+	ClassDB::bind_method(D_METHOD("spawn_footprint", "type", "pos", "yaw_rad", "scale", "surface"), &FootprintManager::spawn_footprint, DEFVAL(1.0f), DEFVAL(-1));
 
 	BIND_ENUM_CONSTANT(TYPE_HUMAN_LEFT);
 	BIND_ENUM_CONSTANT(TYPE_HUMAN_RIGHT);
@@ -188,7 +188,7 @@ void FootprintManager::_process(double delta) {
 	}
 }
 
-void FootprintManager::spawn_footprint(FootprintType type, const Vector3 &pos, float yaw_rad, float scale) {
+void FootprintManager::spawn_footprint(FootprintType type, const Vector3 &pos, float yaw_rad, float scale, int surface) {
 	// 湖水以下或悬崖深坑不留脚印
 	if (pos.y < -0.45f) {
 		return;
@@ -215,31 +215,52 @@ void FootprintManager::spawn_footprint(FootprintType type, const Vector3 &pos, f
 		}
 	}
 
-	// 地表颜色及存留寿命判定：
-	if (snow > 0.15f) {
+	// 印痕颜色与存留寿命：先看脚下是什么地面，再看天气。
+	// 硬质地面（石板/木地板）踩不出泥印，只留浅灰擦痕——不区分的话
+	// 走在石桥上会印出一串泥脚印，很出戏。
+	const bool snowy = snow > 0.15f;
+	const bool rainy = rain > 0.20f;
+	if (surface == 3) {
+		// 石桥石板：干燥石面擦痕（薄薄一层灰），雪天则是压实的雪印
+		if (snowy) {
+			s.base_color = Color(0.52f, 0.57f, 0.68f, 0.80f);
+			s.max_age = 30.0f;
+		} else {
+			s.base_color = Color(0.58f, 0.57f, 0.54f, 0.42f);
+			s.max_age = 11.0f;
+		}
+	} else if (surface == 4) {
+		// 木地板：浅木色磨痕
+		s.base_color = Color(0.46f, 0.34f, 0.22f, 0.40f);
+		s.max_age = 13.0f;
+	} else if (surface == 5) {
+		// 球场草坪：草被踩倒压出的深绿痕
+		s.base_color = Color(0.15f, 0.27f, 0.11f, 0.46f);
+		s.max_age = 15.0f;
+	} else if (snowy) {
 		// 雪地印痕：踩踏压实后的冷灰冰晶阴影色，极富立体下凹感
-		s.base_color = Color(0.38f, 0.44f, 0.58f, 0.85f);
+		s.base_color = Color(0.40f, 0.46f, 0.60f, 0.92f);
 		s.max_age = 35.0f; // 雪地脚印保存持久
-	} else if (rain > 0.20f) {
+	} else if (rainy) {
 		// 雨天湿泥印痕：深润泥水浸润色
-		s.base_color = Color(0.18f, 0.14f, 0.10f, 0.65f);
+		s.base_color = Color(0.17f, 0.13f, 0.09f, 0.78f);
 		s.max_age = 22.0f;
 	} else {
-		// 干燥荒草/泥土路面：轻微土壤夯实暗痕
-		s.base_color = Color(0.24f, 0.20f, 0.15f, 0.38f);
+		// 干燥荒草/泥土路面：土壤夯实暗痕（比旧版更深，否则浅色沙地上看不见）
+		s.base_color = Color(0.26f, 0.21f, 0.15f, 0.58f);
 		s.max_age = 18.0f;
 	}
 
-	// 尺寸适配
+	// 尺寸适配（人脚印 32cm 宽 × 48cm 长——旧尺寸在草地上几乎看不出）
 	Vector3 sz;
 	if (type == TYPE_HUMAN_LEFT || type == TYPE_HUMAN_RIGHT) {
-		sz = Vector3(0.28f * scale, 0.70f, 0.42f * scale);
+		sz = Vector3(0.32f * scale, 0.70f, 0.48f * scale);
 	} else if (type == TYPE_HOOF) {
-		sz = Vector3(0.26f * scale, 0.70f, 0.30f * scale);
+		sz = Vector3(0.29f * scale, 0.70f, 0.34f * scale);
 	} else if (type == TYPE_PAW) {
-		sz = Vector3(0.18f * scale, 0.50f, 0.20f * scale);
+		sz = Vector3(0.21f * scale, 0.50f, 0.23f * scale);
 	} else { // TYPE_RABBIT
-		sz = Vector3(0.22f * scale, 0.50f, 0.28f * scale);
+		sz = Vector3(0.25f * scale, 0.50f, 0.32f * scale);
 	}
 
 	s.decal->set_texture(Decal::TEXTURE_ALBEDO, textures[type]);

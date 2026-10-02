@@ -48,6 +48,20 @@ class FishingSystem : public Node {
 	bool f_prev = false;
 	bool near_shore = false;
 
+	// —— 蓄力抛竿 ——
+	// 按住 F 蓄力（0→1 约 1.1s），松手按蓄力大小决定抛多远。
+	// 之前是"按一下 F 固定抛 5.2m"——玩家侧身站着就把浮漂丢草地上了。
+	bool charging = false;
+	float charge = 0.0f;
+	static constexpr float CHARGE_TIME = 1.1f; // 蓄满所需秒数
+	Vector3 cast_origin;                       // 抛竿时玩家位置（走开就自动收竿）
+
+	// 地形查询（懒查找一次）：用来确认落点真的在水里
+	class TerrainBuilder *terrain = nullptr;
+	// 沿 dir 从 max_d 往回扫，找第一个水深够的落点；找不到返回 false
+	bool find_water_spot(const Vector2 &p_from, const Vector2 &p_dir,
+			float p_max_d, float p_min_d, Vector2 &r_out) const;
+
 	// 鱼与浮漂
 	Node3D *bobber = nullptr;
 	Node3D *fish = nullptr;
@@ -55,6 +69,13 @@ class FishingSystem : public Node {
 	bool big_fish = false;
 	float nibble_t = 0.0f;   // 距咬钩剩余秒数
 	float swim_phase = 0.0f; // 游动相位
+
+	// 鱼竿与鱼线（竿 = 细长锥形圆柱 + 握把 + 卷线器；线 = 每帧重建的面向相机薄带）
+	Node3D *rod_pivot = nullptr;        // 竿的枢轴：位置=握竿手，-Z 轴 = 竿指向
+	class MeshInstance3D *line = nullptr;
+	float cast_swing = 0.0f;            // 抛竿挥动动画剩余时间
+	void update_rod();                  // 每帧摆竿 + 拉线
+	Vector3 rod_tip_world() const;
 
 	// 控力小游戏数据
 	float tension = 0.0f;      // 0..1 张力
@@ -75,6 +96,8 @@ class FishingSystem : public Node {
 	ColorRect *bar_cur = nullptr;  // 当前张力游标（黄）
 	ColorRect *prog = nullptr;   // 上鱼进度细条
 	Label *result = nullptr;     // 中央结算
+	ColorRect *charge_bg = nullptr;   // 蓄力条底槽
+	ColorRect *charge_fill = nullptr; // 蓄力条填充（张力条上方一行）
 
 	// 音效
 	class AudioStreamPlayer *audio_player = nullptr;
@@ -96,13 +119,13 @@ public:
 private:
 	void build_ui();
 	void build_tackle();     // 建浮漂+鱼影模型（初始隐藏）
-	void start_cast();
+	void start_cast(float p_charge);
 	void start_hook();
 	void finish_caught();
 	void finish_escaped();
 	void cancel_fishing();
 	bool check_near_shore(const Vector3 &p_pos) const;
-	void tick_idle(float p_delta, bool f_edge);
+	void tick_idle(float p_delta, bool f_down, bool f_release);
 	void tick_waiting(float p_delta, bool f_edge);
 	void tick_hooking(float p_delta, bool hold);
 	void tick_leaping(float p_delta);

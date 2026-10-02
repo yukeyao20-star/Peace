@@ -19,6 +19,17 @@ uniform float sway_strength : hint_range(0.0, 0.3) = 0.05; // 摆幅（米，实
 uniform float sway_base_y = -0.2; // 从这个本地高度开始算"离根距离"
 uniform float sway_span = 0.4;    // 本地高度跨度（到梢部）
 uniform float sway_speed : hint_range(0.0, 6.0) = 1.6;
+uniform float flutter_strength : hint_range(0.0, 0.3) = 0.0; // 叶片碎抖幅度（树冠开；草/灌木保持 0 不受影响）
+uniform float flutter_scale = 5.5; // 碎抖的空间频率（越大越碎、相邻叶团越不同步）
+uniform float bottom_shade : hint_range(0.3, 1.2) = 0.78; // 根部/背光面的压暗系数（树冠调更低 → 上浅下深更明显）
+// —— 叶片透光（backlight）——
+// 叶子是薄的、半透的：太阳在叶子背面时，光会透过来把那一片照得发亮。
+// 这件事对树冠特别重要 —— 树冠朝相机的那半边往往是背光面，只靠天光（偏蓝）
+// 照亮就会糊成一片墨绿。加一层透光暖光，背光面立刻活过来、也回到草木的绿。
+// sun_dir 由 SkyCycle 每帧写入（TerrainBuilder::update_sky_driven）。
+uniform vec3 sun_dir = vec3(0.3, 0.8, 0.5);
+uniform float backlight : hint_range(0.0, 1.5) = 0.0;   // 透光强度（只有树冠开）
+uniform vec3 backlight_color : source_color = vec3(1.0, 0.93, 0.72); // 透出来的光偏暖（阳光穿过叶绿素）
 uniform float snow_amount : hint_range(0.0, 1.0) = 0.0; // 雪盖强度（天气机驱动）
 uniform vec3 snow_color : source_color = vec3(0.93, 0.95, 0.99);
 uniform float alpha : hint_range(0.0, 1.0) = 1.0; // 整体不透明度（树枝雪毯用：雪量驱动淡入；其余植被默认 1 不受影响）
@@ -73,6 +84,20 @@ void vertex() {
 	vec2 lean = gust_dir * gust_v * 0.14 * w * w;
 	VERTEX.x += lean.x;
 	VERTEX.z += lean.y;
+	// 叶片碎抖：相位按世界坐标高频取（flutter_scale ≈ 5.5/m）。
+	// 同一棵树的两个叶团相距不到 1m，相位差就有好几弧度 → 各自抖各自的，
+	// 而不是整坨树冠一起平移。频率也给得比主摆动快（2.7×/4.3×），像叶子在风里抖。
+	// 默认 0：草、灌木、芦苇完全不受影响，只有树冠材质把它打开。
+	if (flutter_strength > 0.0) {
+		float f1 = sin(TIME * sway_speed * 2.7
+				+ dot(wp, vec3(flutter_scale, flutter_scale * 0.63, flutter_scale * 1.21)));
+		float f2 = sin(TIME * sway_speed * 4.3
+				+ dot(wp, vec3(-flutter_scale * 0.87, flutter_scale * 1.13, flutter_scale * 0.79)));
+		float fl = (f1 * 0.62 + f2 * 0.38) * flutter_strength * (0.45 + 0.55 * w);
+		VERTEX.x += fl;
+		VERTEX.z += fl * 0.72;
+		VERTEX.y += fl * 0.30;
+	}
 	// 雪压：积雪越厚梢部越往下坠（w² 让只有梢部明显下沉）
 	VERTEX.y -= snow_amount * w * w * 0.06;
 	// 踩草波纹：草叶主要是"向下压伏"（折叠伏倒），外推只做一点点——
@@ -117,9 +142,12 @@ void vertex() {
 }
 
 void fragment() {
-	// 根深梢浅渐变（根 0.78 → 梢 1.04：深绿柔和过渡）
+	// 根深梢浅渐变（根部 bottom_shade → 梢部 1.04）
+	// 树冠把 bottom_shade 调到 0.74：每个叶团的底面略压暗，
+	// 叠上"越高的团越亮"就出来一整棵树上浅下深的层次。
+	// （别压太狠 —— 这一项要再乘实例色和高度项，三处下限叠起来会把树压成墨绿疙瘩。）
 	// + 旷野之息明暗色浪（幅度 0.14，不让亮波把深绿洗浅）
-	vec3 base = albedo.rgb * COLOR.rgb * mix(0.78, 1.04, h_rel)
+	vec3 base = albedo.rgb * COLOR.rgb * mix(bottom_shade, 1.04, h_rel)
 			* (1.0 + (gust_v - 0.3) * 0.14);
 	// 叶片纹理：叶形轮廓 alpha + 明暗细节（草的"贴图感"，边缘 scissor 裁出叶形）
 	float shape_a = 1.0;
@@ -135,6 +163,14 @@ void fragment() {
 			* snow_amount;
 	// 雪色保留 15% 实例色底味（草雪偏绿、冠雪偏深，MC 雪层覆在方块上的层次）
 	ALBEDO = mix(base, snow_color * (0.85 + 0.15 * COLOR.rgb), cov);
+	// 叶片透光：法线背对太阳时，光从叶子背面透过来（越"侧对"太阳越明显）。
+	// NORMAL 在片元里是视图空间，先用 INV_VIEW_MATRIX 转回世界空间再和太阳方向比。
+	// 这一项加在 ALBEDO 上而不是自发光：它是"被照亮"，要跟着叶色走、也要吃遮挡。
+	if (backlight > 0.0) {
+		vec3 wn = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+		float trans = pow(max(-dot(wn, normalize(sun_dir)), 0.0), 1.5);
+		ALBEDO += backlight_color * (trans * backlight * (1.0 - cov));
+	}
 	ROUGHNESS = mix(1.0, 0.5, cov);
 	METALLIC = 0.0;
 	ALPHA = alpha * shape_a;
