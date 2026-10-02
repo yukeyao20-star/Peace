@@ -2,6 +2,17 @@
 
 「湖畔家园 Homestead」v0.1.0 发布指南。工程为纯 C++ GDExtension（Godot 4.7.2 标准版，非 .NET），导出配置见 `project/export_presets.cfg`（macOS / Windows Desktop / Linux 三个 preset）。
 
+> **懒人路线**：下面所有步骤已经封成 `tools/package.sh`，一条命令跑完
+> 编库 → 导出 → 压 zip → 组 deb → 校验：
+>
+> ```bash
+> ./tools/package.sh --publish     # --publish 顺带把三个产物同步到 site/download/
+> ```
+>
+> 常用变体：`--no-build`（库已是本轮）、`--only=linux`（只出一个平台）、
+> `--no-deb`（不组 deb）、`JOBS=1`（串行编译，scons 卡死时的逃生口）。
+> 想手工逐步做、或脚本哪一步报错要单独排查，看下面第二、三节。
+
 ## 一、发布前置条件
 
 导出前必须满足以下条件，否则导出包无法运行或直接导出失败：
