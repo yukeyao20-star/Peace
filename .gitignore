@@ -1,0 +1,44 @@
+# ---- Godot ----
+project/.godot/
+project/*.import
+project/**/*.import
+# 注：export_presets.cfg 是发布配置（三平台预设/图标/过滤），无本机绝对路径，需入库
+
+# GDExtension 编译产物（保留 .gdextension 描述文件本身）
+project/bin/*/
+!project/bin/*.gdextension
+
+# ---- 构建产物 ----
+bin/
+build/
+*.o
+*.os
+*.obj
+*.a
+*.dylib
+*.so
+*.dll
+*.lib
+*.exp
+*.pdb
+
+# ---- 本机构建 / 发布产物 ----
+builds/
+dist/
+release/
+project/export/
+__pycache__/
+compile_commands.json
+*.old
+*.tmp
+
+# ---- SCons ----
+.sconsign.dblite
+.scons-cache/
+.sconf_temp/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+*.swp
+.DS_Store

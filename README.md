@@ -1,0 +1,142 @@
+# 湖畔家园 Homestead
+
+一款 Godot 4 + 纯 C++（GDExtension）打造的治愈系 3D 探索小品：清晨的湖畔，木屋、石拱桥、果园与湿地。追逐昼夜与天气的变化，采浆果、开木箱、打井水、推门看屋——听鸟鸣、踩雪地，看月亮从满月到新月轮转。
+
+**当前状态：可玩沙盒 v0.1.0** —— 玩法目标闭环与完整氛围世界均已可用，持续迭代中。
+
+| 概览 | 石桥 | 宅基地 |
+|------|------|--------|
+| ![全岛概览](docs/shot_0_overview.png) | ![石桥](docs/shot_1_bridge.png) | ![宅基地小屋](docs/shot_2_cabin.png) |
+
+更多截图（雪景/结冰/月相/HUD 特写）见 `docs/` 目录。面向玩家的玩法说明见 **[docs/PLAYING.md](docs/PLAYING.md)**。
+
+- **引擎**：Godot 4.7.2 标准版（Forward+），不使用 .NET / C#
+- **游戏逻辑**：纯 C++（GDExtension，godot-cpp 10.0）
+- **目标平台**：macOS · Windows · Linux
+
+---
+
+## 游戏特色
+
+- **程序化大地图**：固定种子生成 fbm 地形 + 湖盆 + 环山 + 宅基地压平；植被、浆果丛、蘑菇、倒木、碎石等全部 MultiMesh 散布，泥土小径与石拱桥全程程序化/CSG 搭建，无外部模型资产。
+- **昼夜循环**：4 分钟一天，太阳/月亮运行、星空、HUD 时钟（时段/天气/月相/天数/气温）；月相按公式 8 天一轮转（第 1 天满月），月盘带陨石坑与暗面地照。
+- **天气系统**：晴 / 多云 / 小雨 / 大雨 / 雪五态平滑过渡，雨雪粒子跟随主角。
+- **分级积雪**：随雪量推进，湖面渐冻结冰（浅水先冻、冰面裂缝镜面反光），地面、贴地植被、树冠雪毯、蘑菇伞顶按海拔分档依次覆雪，低处先积雪。
+- **水面着色器**：波浪、折射、深度吸收、菲涅尔、泡沫、焦散，雨天湖面涟漪、降温结冰。
+- **可交互物**：木屋门（推门前倾动画）、百叶窗、木箱、水井、浆果丛（采摘后 45 秒重新结果），准星提示 + E 键交互。
+- **氛围生物**：鸟（雨天收翼不鸣）、兔子（夜晚回窝趴睡）、蝴蝶（雨雪静栖草丛）、萤火虫（晴夜飞舞）、蘑菇夜光、烟囱炊烟。
+- **程序化音效**：脚步声按地表切换草地/雪地/雨天湿泥/石桥石板四种合成音色，鸟鸣三种，采摘"啵"声，全部运行期合成、无音频文件。
+- **玩法目标**：采摘浆果达成目标数，GameDirector 结算（左上进度 + 中央结算画面）。
+
+## 操作说明
+
+| 按键 | 动作 |
+|------|------|
+| `W` `A` `S` `D` | 移动 |
+| `空格` | 跳跃 |
+| `E` | 互动（准星对准可交互对象出现提示时） |
+
+> 注：键位未走 project.godot 的 InputMap（工程无 `[input]` 段），而是由 C++ 侧直接读取物理按键（`src/player.cpp`）。
+
+## 从源码运行
+
+**依赖**：
+
+- Godot 4.7.2 **标准版**（不要 .NET / mono 版）：[godotengine.org](https://godotengine.org/download) 或 `brew install --cask godot`
+- Python 3 + SCons（`pip install scons`）
+- git 子模块 godot-cpp
+
+```bash
+# 1) 一次性环境
+git submodule update --init --recursive
+
+# 2) 首次构建调试版动态库（会连带编译 godot-cpp，需几分钟）
+scons platform=macos target=template_debug
+
+# 3) 首次运行前必须无头导入一次工程资源（否则报 Cannot get class）
+/Applications/Godot.app/Contents/MacOS/Godot --headless --editor --quit --path project
+
+# 4) 运行游戏（或用编辑器打开 project/ 后按 F5）
+/Applications/Godot.app/Contents/MacOS/Godot --path project
+```
+
+## 工程结构
+
+```
+3Dgame/
+├── src/                        # C++ 游戏逻辑（全部玩法代码在这里）
+│   ├── register_types.{h,cpp}  # GDExtension 入口：登记所有自定义类
+│   ├── player.{h,cpp}          # 主角：移动/跳跃/相机/交互扫描/脚步声
+│   ├── terrain_builder.{h,cpp} # 地形生成与全场景 MultiMesh 散布（固定种子）
+│   ├── sky_cycle.{h,cpp}       # 昼夜/天气/月相驱动
+│   ├── hud_clock.{h,cpp}       # HUD 时钟（时段/天气/月相/天数/气温）
+│   ├── game_director.{h,cpp}   # 玩法目标与结算 HUD
+│   ├── save_system.{h,cpp}     # 存档系统（user:// 配置文件，天数/进度恢复）
+│   ├── ambience.{h,cpp}        # 环境音（风/雨/虫鸣/雪风，程序化合成）
+│   ├── interactable.h          # 交互物抽象基类
+│   ├── berry_bush / door / window / chest / well ...
+│   └── bird / rabbit / butterfly_swarm ...   # 氛围生物
+├── project/                    # Godot 工程（用编辑器打开这个目录）
+│   ├── world.tscn              # 主场景（全场景搭建）
+│   ├── export_presets.cfg      # 三平台导出预设（macOS / Windows / Linux）
+│   ├── assets/*.gdshader       # 水面/植被风/雪地/月亮 等着色器
+│   ├── assets/fonts/           # Noto Sans SC（中文 UI）
+│   └── bin/game3d.gdextension  # 告诉 Godot 去哪里加载各平台 C++ 库
+├── godot-cpp/                  # C++ 绑定（git 子模块，勿手改）
+├── SConstruct                  # 构建脚本（SCons）
+└── .github/workflows/build.yml # 三平台 CI 构建
+```
+
+## 验证三连
+
+改动代码后的快速自检：
+
+```bash
+# 1) 编译通过（无 error）
+scons platform=macos target=template_debug
+
+# 2) 无头跑 120 帧，应 0 报错
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path project --quit-after 120
+
+# 3) 正常运行应流畅 60 帧
+/Applications/Godot.app/Contents/MacOS/Godot --path project
+```
+
+## 导出发布
+
+1. 安装与编辑器版本一致的导出模板（编辑器菜单 → 管理导出模板，或手动放入
+   `~/Library/Application Support/Godot/export_templates/4.7.2.stable/`）。
+2. `project/export_presets.cfg` 已配置三平台预设（macOS / Windows / Linux），
+   导出路径统一指向 `../release/`（macOS → `game3d.dmg`，Windows → `game3d.exe`，Linux → `game3d.x86_64`）。
+3. 导出前需先构建对应平台的 **template_release** 动态库并就位
+   `project/bin/<平台>/`（macOS 上手动构建当前平台即可；其他平台产物由
+   GitHub Actions 流水线产出，不建议从 macOS 交叉编译）。
+4. 命令行导出（或编辑器 → 项目 → 导出）。GDExtension 工程导出时 `.gdextension`
+   会打包进 `Contents/Resources/*.pck`，对应动态库自动复制到
+   `Contents/Frameworks/`，无需额外 resource filter：
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path project \
+  --export-release "macOS" ../release/game3d.dmg
+```
+
+## 跨平台构建（CI）
+
+三平台动态库由 `.github/workflows/build.yml` 自动构建：每次 push / PR / 手动触发时，
+在 `ubuntu-24.04` / `macos-latest` / `windows-latest` 三个 runner 上分别执行
+`scons platform=<linux|macos|windows> target=template_release` 与 `target=template_debug`
+各一次，并将 `project/bin/<平台>/` 上传为 artifact（`game3d-<平台>`）。
+拿到各平台动态库后即可按上面第 3 步在对应平台执行导出。
+
+| 平台 | 构建命令 | 动态库产物 |
+|------|----------|-----------|
+| macOS | `scons platform=macos` | `libgame3d.macos.template_*.dylib` |
+| Windows | `scons platform=windows` | `game3d.windows.template_*.x86_64.dll` |
+| Linux | `scons platform=linux` | `libgame3d.linux.template_*.x86_64.so` |
+
+## 许可证
+
+- 游戏代码：自研。
+- 引擎：[Godot Engine](https://godotengine.org)（MIT License）。
+- 工程模板结构源自 [godot-cpp-template](https://github.com/godotengine/godot-cpp-template)（MIT）。
+- 内置字体 [Noto Sans SC](https://fonts.google.com/noto/specimen/Noto+Sans+SC)（SIL Open Font License 1.1，见 `project/assets/fonts/OFL.txt`）。

@@ -1,0 +1,34 @@
+# 本文件供 VS Code 搜索（内置 ripgrep）及 grep/rg 等工具使用
+# 资源管理器里的隐藏规则在 .vscode/settings.json，两者分工不同
+#
+# ---- 构建产物 / 缓存 ----
+*.o
+*.os
+*.obj
+*.pyc
+__pycache__/
+.sconsign.dblite
+.sconf_temp/
+.scons-cache/
+compile_commands.json
+
+# ---- 本机构建 / 发布产物（产物都在这里，别搜进去） ----
+/bin/
+/builds/
+/dist/
+/release/
+/docs/
+*.tmp
+*.old
+
+# ---- Godot 编辑器缓存 ----
+project/.godot/
+
+# ---- godot-cpp 第三方：整个排除，只保留手写头文件可搜索 ----
+# （gen/ 下 900+ 个生成头文件太吵，查 API 直接终端 rg）
+godot-cpp/**
+!godot-cpp/include/**
+!godot-cpp/gdextension/**
+
+# ---- 系统 ----
+.DS_Store

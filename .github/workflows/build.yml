@@ -1,0 +1,47 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux, os: ubuntu-24.04 }
+          - { platform: macos, os: macos-latest }
+          - { platform: windows, os: windows-latest }
+
+    steps:
+      - name: Checkout (with godot-cpp submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install SCons
+        run: python -m pip install scons
+
+      - name: Build (release)
+        shell: bash
+        run: scons platform=${{ matrix.platform }} target=template_release
+
+      - name: Build (debug)
+        shell: bash
+        run: scons platform=${{ matrix.platform }} target=template_debug
+
+      - name: Upload extension binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: game3d-${{ matrix.platform }}
+          path: project/bin/${{ matrix.platform }}
+          if-no-files-found: error

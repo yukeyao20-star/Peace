@@ -1,0 +1,1149 @@
+[gd_scene format=3 uid="uid://dbeg3mirje8xf"]
+
+[ext_resource type="Shader" uid="uid://18kinsfkywv4" path="res://assets/toon.gdshader" id="1_toon"]
+
+[sub_resource type="ProceduralSkyMaterial" id="SkyMat_sky"]
+sky_top_color = Color(0.32, 0.54, 0.88, 1)
+sky_horizon_color = Color(0.82, 0.88, 0.95, 1)
+ground_bottom_color = Color(0.36, 0.48, 0.38, 1)
+ground_horizon_color = Color(0.76, 0.84, 0.79, 1)
+sun_angle_max = 12.0
+
+[sub_resource type="Sky" id="Sky_1"]
+sky_material = SubResource("SkyMat_sky")
+
+[sub_resource type="Environment" id="Env_1"]
+background_mode = 2
+sky = SubResource("Sky_1")
+ambient_light_source = 3
+ambient_light_energy = 0.4
+tonemap_mode = 2
+tonemap_white = 2.0
+ssr_enabled = true
+ssao_enabled = true
+ssao_intensity = 1.6
+glow_enabled = true
+glow_intensity = 0.12
+fog_enabled = true
+fog_light_color = Color(0.8, 0.87, 0.95, 1)
+fog_density = 0.0035
+fog_sky_affect = 0.15
+
+[sub_resource type="ShaderMaterial" id="StoneMat"]
+render_priority = 0
+shader = ExtResource("1_toon")
+shader_parameter/albedo = Color(0.64, 0.63, 0.58, 1)
+shader_parameter/rim = 0.3
+shader_parameter/roughness_value = 0.95
+
+[sub_resource type="ShaderMaterial" id="StoneDarkMat"]
+render_priority = 0
+shader = ExtResource("1_toon")
+shader_parameter/albedo = Color(0.55, 0.54, 0.49, 1)
+shader_parameter/rim = 0.3
+shader_parameter/roughness_value = 0.95
+
+[sub_resource type="ShaderMaterial" id="CrackMat"]
+render_priority = 0
+shader = ExtResource("1_toon")
+shader_parameter/albedo = Color(0.2, 0.18, 0.15, 1)
+shader_parameter/rim = 0.1
+shader_parameter/roughness_value = 1.0
+
+[sub_resource type="ShaderMaterial" id="MossMat"]
+render_priority = 0
+shader = ExtResource("1_toon")
+shader_parameter/albedo = Color(0.3, 0.4, 0.2, 1)
+shader_parameter/rim = 0.3
+shader_parameter/roughness_value = 0.95
+
+[sub_resource type="StandardMaterial3D" id="LampGlowMat"]
+albedo_color = Color(1, 0.85, 0.55, 1)
+emission_enabled = true
+emission = Color(1, 0.72, 0.35, 1)
+emission_energy_multiplier = 1.6
+
+[sub_resource type="ShaderMaterial" id="WoodWallMat"]
+render_priority = 0
+shader = ExtResource("1_toon")
+shader_parameter/albedo = Color(0.8, 0.62, 0.4, 1)
+shader_parameter/rim = 0.35
+shader_parameter/roughness_value = 0.9
+
+[sub_resource type="ShaderMaterial" id="WoodDarkMat"]
+render_priority = 0
+shader = ExtResource("1_toon")
+shader_parameter/albedo = Color(0.5, 0.33, 0.2, 1)
+shader_parameter/rim = 0.3
+shader_parameter/roughness_value = 0.9
+
+[sub_resource type="PrismMesh" id="GableMesh"]
+size = Vector3(7, 1.7, 6.2)
+
+[sub_resource type="ShaderMaterial" id="RoofMat"]
+render_priority = 0
+shader = ExtResource("1_toon")
+shader_parameter/albedo = Color(0.58, 0.26, 0.19, 1)
+shader_parameter/rim = 0.3
+shader_parameter/roughness_value = 0.85
+
+[sub_resource type="StandardMaterial3D" id="SmokeMat"]
+transparency = 1
+shading_mode = 0
+vertex_color_use_as_albedo = true
+billboard_mode = 3
+billboard_keep_scale = true
+particles_anim_h_frames = 1
+particles_anim_v_frames = 1
+particles_anim_loop = false
+
+[sub_resource type="QuadMesh" id="SmokeQuad"]
+material = SubResource("SmokeMat")
+size = Vector2(0.4, 0.4)
+
+[sub_resource type="Gradient" id="SmokeGradient"]
+offsets = PackedFloat32Array(0, 0.3, 1)
+colors = PackedColorArray(0.8, 0.8, 0.82, 0, 0.78, 0.78, 0.8, 0.35, 0.9, 0.9, 0.92, 0)
+
+[sub_resource type="ShaderMaterial" id="LinenMat"]
+render_priority = 0
+shader = ExtResource("1_toon")
+shader_parameter/albedo = Color(0.93, 0.9, 0.84, 1)
+shader_parameter/rim = 0.3
+shader_parameter/roughness_value = 0.95
+
+[sub_resource type="ShaderMaterial" id="GlassMat"]
+render_priority = 0
+shader = ExtResource("1_toon")
+shader_parameter/albedo = Color(0.55, 0.78, 0.88, 1)
+shader_parameter/rim = 0.7
+shader_parameter/roughness_value = 0.2
+
+[sub_resource type="ShaderMaterial" id="FenceMat"]
+render_priority = 0
+shader = ExtResource("1_toon")
+shader_parameter/albedo = Color(0.72, 0.53, 0.32, 1)
+shader_parameter/rim = 0.35
+shader_parameter/roughness_value = 0.9
+
+[sub_resource type="StandardMaterial3D" id="FireflyMat"]
+transparency = 1
+shading_mode = 0
+vertex_color_use_as_albedo = true
+billboard_mode = 3
+billboard_keep_scale = true
+particles_anim_h_frames = 1
+particles_anim_v_frames = 1
+particles_anim_loop = false
+
+[sub_resource type="QuadMesh" id="FireflyQuad"]
+material = SubResource("FireflyMat")
+size = Vector2(0.13, 0.13)
+
+[sub_resource type="Gradient" id="FireflyGradient"]
+offsets = PackedFloat32Array(0, 0.45, 0.7, 1)
+colors = PackedColorArray(0.9, 1, 0.45, 0, 0.95, 1, 0.5, 1, 0.95, 1, 0.5, 0.15, 0.9, 1, 0.45, 0)
+
+[sub_resource type="CapsuleShape3D" id="PlayerShape"]
+radius = 0.35
+height = 1.8
+
+[sub_resource type="CapsuleMesh" id="PlayerMesh"]
+radius = 0.35
+height = 1.8
+
+[sub_resource type="ShaderMaterial" id="PlayerToon"]
+render_priority = 0
+shader = ExtResource("1_toon")
+shader_parameter/albedo = Color(0.95, 0.42, 0.32, 1)
+shader_parameter/rim = 0.75
+shader_parameter/roughness_value = 0.8
+
+[node name="World" type="Node3D" unique_id=1196752643]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1262015186]
+environment = SubResource("Env_1")
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=519700898]
+transform = Transform3D(1, 0, 0, 0, 0.707107, -0.707107, 0, 0.707107, 0.707107, 0, 10, 0)
+light_color = Color(1, 0.96, 0.87, 1)
+light_energy = 1.2
+shadow_enabled = true
+directional_shadow_max_distance = 150.0
+
+[node name="Terrain" type="TerrainBuilder" parent="." unique_id=1991770611]
+
+[node name="StoneBridge" type="CSGCombiner3D" parent="." unique_id=1769341411]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0, 26)
+use_collision = true
+
+[node name="ArchBody" type="CSGPolygon3D" parent="StoneBridge" unique_id=1167725244]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2.1)
+polygon = PackedVector2Array(-15, -2.6, -6, -2.6, -5, -1.605, -4, -0.899, -3, -0.398, -2, -0.06, -1, 0.136, 0, 0.2, 1, 0.136, 2, -0.06, 3, -0.398, 4, -0.899, 5, -1.605, 6, -2.6, 15, -2.6, 15, -0.2, 7.5, 0.75, 0, 1.3, -7.5, 0.75, -15, -0.2)
+depth = 4.2
+material = SubResource("StoneMat")
+
+[node name="ParapetSouth" type="CSGPolygon3D" parent="StoneBridge" unique_id=1147225664]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2.1)
+polygon = PackedVector2Array(-15, -0.4, 15, -0.4, 15, 0.3, 7.5, 1.25, 0, 1.8, -7.5, 1.25, -15, 0.3)
+depth = 0.35
+material = SubResource("StoneDarkMat")
+
+[node name="ParapetNorth" type="CSGPolygon3D" parent="StoneBridge" unique_id=342627261]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1.75)
+polygon = PackedVector2Array(-15, -0.4, 15, -0.4, 15, 0.3, 7.5, 1.25, 0, 1.8, -7.5, 1.25, -15, 0.3)
+depth = 0.35
+material = SubResource("StoneDarkMat")
+
+[node name="Post01" type="CSGBox3D" parent="StoneBridge" unique_id=450527324]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.83, 1.925)
+size = Vector3(0.32, 0.3, 0.32)
+material = SubResource("StoneDarkMat")
+
+[node name="Post02" type="CSGBox3D" parent="StoneBridge" unique_id=1801673612]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 1.51, 1.925)
+size = Vector3(0.32, 0.3, 0.32)
+material = SubResource("StoneDarkMat")
+
+[node name="Post03" type="CSGBox3D" parent="StoneBridge" unique_id=648675359]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.95, 1.925)
+size = Vector3(0.32, 0.3, 0.32)
+material = SubResource("StoneDarkMat")
+
+[node name="Post04" type="CSGBox3D" parent="StoneBridge" unique_id=475018479]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 1.51, 1.925)
+size = Vector3(0.32, 0.3, 0.32)
+material = SubResource("StoneDarkMat")
+
+[node name="Post05" type="CSGBox3D" parent="StoneBridge" unique_id=510927549]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.83, 1.925)
+size = Vector3(0.32, 0.3, 0.32)
+material = SubResource("StoneDarkMat")
+
+[node name="Post06" type="CSGBox3D" parent="StoneBridge" unique_id=1929955532]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.83, -1.925)
+size = Vector3(0.32, 0.3, 0.32)
+material = SubResource("StoneDarkMat")
+
+[node name="Post07" type="CSGBox3D" parent="StoneBridge" unique_id=182993904]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 1.51, -1.925)
+size = Vector3(0.32, 0.3, 0.32)
+material = SubResource("StoneDarkMat")
+
+[node name="Post08" type="CSGBox3D" parent="StoneBridge" unique_id=1640142345]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.95, -1.925)
+size = Vector3(0.32, 0.3, 0.32)
+material = SubResource("StoneDarkMat")
+
+[node name="Post09" type="CSGBox3D" parent="StoneBridge" unique_id=140781031]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 1.51, -1.925)
+size = Vector3(0.32, 0.3, 0.32)
+material = SubResource("StoneDarkMat")
+
+[node name="Post10" type="CSGBox3D" parent="StoneBridge" unique_id=787601737]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.83, -1.925)
+size = Vector3(0.32, 0.3, 0.32)
+material = SubResource("StoneDarkMat")
+
+[node name="PillarW1" type="CSGBox3D" parent="StoneBridge" unique_id=1871834627]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -14.6, 0.2, 1.875)
+size = Vector3(0.45, 0.8, 0.45)
+material = SubResource("StoneMat")
+
+[node name="PillarW2" type="CSGBox3D" parent="StoneBridge" unique_id=1639031302]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -14.6, 0.2, -1.875)
+size = Vector3(0.45, 0.8, 0.45)
+material = SubResource("StoneMat")
+
+[node name="PillarE1" type="CSGBox3D" parent="StoneBridge" unique_id=548411290]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14.6, 0.2, 1.875)
+size = Vector3(0.45, 0.8, 0.45)
+material = SubResource("StoneMat")
+
+[node name="PillarE2" type="CSGBox3D" parent="StoneBridge" unique_id=1152116524]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14.6, 0.2, -1.875)
+size = Vector3(0.45, 0.8, 0.45)
+material = SubResource("StoneMat")
+
+[node name="AbutmentW" type="CSGBox3D" parent="StoneBridge" unique_id=319839785]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16.1, -1.5, 0)
+size = Vector3(2.2, 2.6, 4.2)
+material = SubResource("StoneDarkMat")
+
+[node name="AbutmentE" type="CSGBox3D" parent="StoneBridge" unique_id=1105060848]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16.1, -1.5, 0)
+size = Vector3(2.2, 2.6, 4.2)
+material = SubResource("StoneDarkMat")
+
+[node name="WingWN" type="CSGBox3D" parent="StoneBridge" unique_id=1296535099]
+transform = Transform3D(0.765, 0, -0.644, 0, 1, 0, 0.644, 0, 0.765, -17.1, -0.7, 2.4)
+size = Vector3(2.8, 1.6, 0.5)
+material = SubResource("StoneDarkMat")
+
+[node name="WingWS" type="CSGBox3D" parent="StoneBridge" unique_id=46814322]
+transform = Transform3D(0.765, 0, 0.644, 0, 1, 0, -0.644, 0, 0.765, -17.1, -0.7, -2.4)
+size = Vector3(2.8, 1.6, 0.5)
+material = SubResource("StoneDarkMat")
+
+[node name="WingEN" type="CSGBox3D" parent="StoneBridge" unique_id=587038097]
+transform = Transform3D(-0.765, 0, -0.644, 0, 1, 0, 0.644, 0, -0.765, 17.1, -0.7, 2.4)
+size = Vector3(2.8, 1.6, 0.5)
+material = SubResource("StoneDarkMat")
+
+[node name="WingES" type="CSGBox3D" parent="StoneBridge" unique_id=877723688]
+transform = Transform3D(-0.765, 0, 0.644, 0, 1, 0, -0.644, 0, -0.765, 17.1, -0.7, -2.4)
+size = Vector3(2.8, 1.6, 0.5)
+material = SubResource("StoneDarkMat")
+
+[node name="Crack01" type="CSGBox3D" parent="StoneBridge" unique_id=545557945]
+transform = Transform3D(0.99207, -0.12567, 0, 0.12567, 0.99207, 0, 0, 0, 1, -11.5, 0.238, 0.6)
+size = Vector3(0.9, 0.04, 0.1)
+material = SubResource("CrackMat")
+
+[node name="Crack02" type="CSGBox3D" parent="StoneBridge" unique_id=324497317]
+transform = Transform3D(0.98096, -0.12426, 0.14944, 0.12567, 0.99207, 0, -0.14823, 0.01878, 0.98877, -8.8, 0.58, -0.7)
+size = Vector3(0.6, 0.04, 0.08)
+material = SubResource("CrackMat")
+
+[node name="Crack03" type="CSGBox3D" parent="StoneBridge" unique_id=1458388584]
+transform = Transform3D(0.99233, -0.07277, -0.09983, 0.07313, 0.99732, 0, 0.09956, -0.0073, 0.995, -4.5, 0.965, 0.2)
+size = Vector3(1.1, 0.04, 0.09)
+material = SubResource("CrackMat")
+
+[node name="Crack04" type="CSGBox3D" parent="StoneBridge" unique_id=1434855336]
+transform = Transform3D(0.99414, 0.07289, 0.07991, -0.07313, 0.99732, 0, -0.0797, -0.00584, 0.9968, 1.5, 1.185, -0.5)
+size = Vector3(0.7, 0.04, 0.12)
+material = SubResource("CrackMat")
+
+[node name="Crack05" type="CSGBox3D" parent="StoneBridge" unique_id=1376191268]
+transform = Transform3D(0.99732, 0.07313, 0, -0.07313, 0.99732, 0, 0, 0, 1, 6.2, 0.84, 0.8)
+size = Vector3(1.3, 0.04, 0.08)
+material = SubResource("CrackMat")
+
+[node name="Crack06" type="CSGBox3D" parent="StoneBridge" unique_id=160139691]
+transform = Transform3D(0.98493, 0.12478, -0.11971, -0.12567, 0.99207, 0, 0.11876, 0.01504, 0.99281, 10.5, 0.365, -0.3)
+size = Vector3(0.8, 0.04, 0.09)
+material = SubResource("CrackMat")
+
+[node name="Crack07" type="CSGBox3D" parent="StoneBridge" unique_id=1457594689]
+transform = Transform3D(0.99207, 0.12567, 0, -0.12567, 0.99207, 0, 0, 0, 1, 13.6, -0.028, 0.4)
+size = Vector3(0.5, 0.04, 0.1)
+material = SubResource("CrackMat")
+
+[node name="Moss01" type="CSGBox3D" parent="StoneBridge" unique_id=266759596]
+transform = Transform3D(0.99207, -0.12567, 0, 0.12567, 0.99207, 0, 0, 0, 1, -13, 0.061, 1.45)
+size = Vector3(1.2, 0.025, 0.4)
+material = SubResource("MossMat")
+
+[node name="Moss02" type="CSGBox3D" parent="StoneBridge" unique_id=581193969]
+transform = Transform3D(0.99207, -0.12567, 0, 0.12567, 0.99207, 0, 0, 0, 1, -9.5, 0.505, -1.5)
+size = Vector3(0.9, 0.025, 0.35)
+material = SubResource("MossMat")
+
+[node name="Moss03" type="CSGBox3D" parent="StoneBridge" unique_id=155983135]
+transform = Transform3D(0.99732, -0.07313, 0, 0.07313, 0.99732, 0, 0, 0, 1, -6.5, 0.831, 1.55)
+size = Vector3(1, 0.025, 0.3)
+material = SubResource("MossMat")
+
+[node name="Moss04" type="CSGBox3D" parent="StoneBridge" unique_id=1965765792]
+transform = Transform3D(0.99732, 0.07313, 0, -0.07313, 0.99732, 0, 0, 0, 1, 3.8, 1.029, -1.5)
+size = Vector3(1.1, 0.025, 0.4)
+material = SubResource("MossMat")
+
+[node name="Moss05" type="CSGBox3D" parent="StoneBridge" unique_id=936434566]
+transform = Transform3D(0.99207, 0.12567, 0, -0.12567, 0.99207, 0, 0, 0, 1, 12, 0.188, 1.5)
+size = Vector3(1.4, 0.025, 0.45)
+material = SubResource("MossMat")
+
+[node name="Moss06" type="CSGBox3D" parent="StoneBridge" unique_id=1139319060]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16.4, -0.275, 2.115)
+size = Vector3(1.5, 0.45, 0.03)
+material = SubResource("MossMat")
+
+[node name="Moss07" type="CSGBox3D" parent="StoneBridge" unique_id=1559208685]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16.5, -0.3, -2.115)
+size = Vector3(1.2, 0.38, 0.03)
+material = SubResource("MossMat")
+
+[node name="Moss08" type="CSGBox3D" parent="StoneBridge" unique_id=1218533824]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16.5, -0.28, 2.115)
+size = Vector3(1.6, 0.5, 0.03)
+material = SubResource("MossMat")
+
+[node name="Moss09" type="CSGBox3D" parent="StoneBridge" unique_id=1692168632]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16.4, -0.26, -2.115)
+size = Vector3(1.3, 0.42, 0.03)
+material = SubResource("MossMat")
+
+[node name="Moss10" type="CSGBox3D" parent="StoneBridge" unique_id=1322624767]
+transform = Transform3D(0.765, 0, -0.644, 0, 1, 0, 0.644, 0, 0.765, -17.1, 0.1125, 2.4)
+size = Vector3(2.3, 0.025, 0.38)
+material = SubResource("MossMat")
+
+[node name="Moss11" type="CSGBox3D" parent="StoneBridge" unique_id=1730477797]
+transform = Transform3D(0.765, 0, 0.644, 0, 1, 0, -0.644, 0, 0.765, -17.1, 0.1125, -2.4)
+size = Vector3(2.1, 0.025, 0.36)
+material = SubResource("MossMat")
+
+[node name="Moss12" type="CSGBox3D" parent="StoneBridge" unique_id=938876007]
+transform = Transform3D(-0.765, 0, -0.644, 0, 1, 0, 0.644, 0, -0.765, 17.1, 0.1125, 2.4)
+size = Vector3(2.2, 0.025, 0.37)
+material = SubResource("MossMat")
+
+[node name="Moss13" type="CSGBox3D" parent="StoneBridge" unique_id=2100652387]
+transform = Transform3D(-0.765, 0, 0.644, 0, 1, 0, -0.644, 0, -0.765, 17.1, 0.1125, -2.4)
+size = Vector3(2.4, 0.025, 0.4)
+material = SubResource("MossMat")
+
+[node name="LampW_Base" type="CSGBox3D" parent="StoneBridge" unique_id=234016410]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16.1, -0.08, 1.6)
+size = Vector3(0.5, 0.24, 0.5)
+material = SubResource("StoneDarkMat")
+
+[node name="LampW_Pole" type="CSGCylinder3D" parent="StoneBridge" unique_id=2101562141]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16.1, 0.74, 1.6)
+radius = 0.085
+height = 1.4
+material = SubResource("StoneDarkMat")
+
+[node name="LampW_Box" type="CSGBox3D" parent="StoneBridge" unique_id=450154277]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16.1, 1.62, 1.6)
+size = Vector3(0.3, 0.36, 0.3)
+material = SubResource("StoneDarkMat")
+
+[node name="LampW_Glow" type="CSGBox3D" parent="StoneBridge" unique_id=104280359]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16.1, 1.62, 1.6)
+size = Vector3(0.34, 0.24, 0.34)
+material = SubResource("LampGlowMat")
+
+[node name="LampW_Cap" type="CSGBox3D" parent="StoneBridge" unique_id=1756463939]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16.1, 1.845, 1.6)
+size = Vector3(0.46, 0.09, 0.46)
+material = SubResource("StoneDarkMat")
+
+[node name="LampW_Tip" type="CSGBox3D" parent="StoneBridge" unique_id=1484597290]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16.1, 1.95, 1.6)
+size = Vector3(0.18, 0.12, 0.18)
+material = SubResource("StoneDarkMat")
+
+[node name="LampE_Base" type="CSGBox3D" parent="StoneBridge" unique_id=1162392548]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16.1, -0.08, -1.6)
+size = Vector3(0.5, 0.24, 0.5)
+material = SubResource("StoneDarkMat")
+
+[node name="LampE_Pole" type="CSGCylinder3D" parent="StoneBridge" unique_id=339295791]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16.1, 0.74, -1.6)
+radius = 0.085
+height = 1.4
+material = SubResource("StoneDarkMat")
+
+[node name="LampE_Box" type="CSGBox3D" parent="StoneBridge" unique_id=1982125334]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16.1, 1.62, -1.6)
+size = Vector3(0.3, 0.36, 0.3)
+material = SubResource("StoneDarkMat")
+
+[node name="LampE_Glow" type="CSGBox3D" parent="StoneBridge" unique_id=1233636922]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16.1, 1.62, -1.6)
+size = Vector3(0.34, 0.24, 0.34)
+material = SubResource("LampGlowMat")
+
+[node name="LampE_Cap" type="CSGBox3D" parent="StoneBridge" unique_id=2008485576]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16.1, 1.845, -1.6)
+size = Vector3(0.46, 0.09, 0.46)
+material = SubResource("StoneDarkMat")
+
+[node name="LampE_Tip" type="CSGBox3D" parent="StoneBridge" unique_id=483021634]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16.1, 1.95, -1.6)
+size = Vector3(0.18, 0.12, 0.18)
+material = SubResource("StoneDarkMat")
+
+[node name="Homestead" type="Node3D" parent="." unique_id=130267118]
+transform = Transform3D(0.707, 0, -0.707, 0, 1, 0, 0.707, 0, 0.707, 12, 0.35, 8)
+
+[node name="Cabin" type="CSGCombiner3D" parent="Homestead" unique_id=444009868]
+use_collision = true
+
+[node name="FrontLeft" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1920820932]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.825, 1.35, 2.61)
+size = Vector3(2.55, 2.7, 0.18)
+material = SubResource("WoodWallMat")
+
+[node name="FrontRight" type="CSGBox3D" parent="Homestead/Cabin" unique_id=646397030]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.825, 1.35, 2.61)
+size = Vector3(2.55, 2.7, 0.18)
+material = SubResource("WoodWallMat")
+
+[node name="Lintel" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1354732186]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.4, 2.61)
+size = Vector3(1.1, 0.6, 0.18)
+material = SubResource("WoodWallMat")
+
+[node name="BackWall" type="CSGBox3D" parent="Homestead/Cabin" unique_id=128375320]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.35, -2.61)
+size = Vector3(6.2, 2.7, 0.18)
+material = SubResource("WoodWallMat")
+
+[node name="LeftWall" type="CSGBox3D" parent="Homestead/Cabin" unique_id=168041499]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.01, 1.35, 0)
+size = Vector3(0.18, 2.7, 5.4)
+material = SubResource("WoodWallMat")
+
+[node name="RightWall" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1446938609]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.01, 1.35, 0)
+size = Vector3(0.18, 2.7, 5.4)
+material = SubResource("WoodWallMat")
+
+[node name="MainFloor" type="CSGBox3D" parent="Homestead/Cabin" unique_id=983249226]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0)
+size = Vector3(6.2, 0.2, 5.4)
+material = SubResource("WoodDarkMat")
+
+[node name="StoBack" type="CSGBox3D" parent="Homestead/Cabin" unique_id=613355688]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.7, 1.05, -2.61)
+size = Vector3(3.2, 2.1, 0.18)
+material = SubResource("WoodWallMat")
+
+[node name="StoFront" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1660822009]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.7, 1.05, 0.41)
+size = Vector3(3.2, 2.1, 0.18)
+material = SubResource("WoodWallMat")
+
+[node name="StoRight" type="CSGBox3D" parent="Homestead/Cabin" unique_id=2051131643]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.21, 1.05, -1.1)
+size = Vector3(0.18, 2.1, 3.2)
+material = SubResource("WoodWallMat")
+
+[node name="StoFloor" type="CSGBox3D" parent="Homestead/Cabin" unique_id=713763312]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.7, 0.1, -1.1)
+size = Vector3(3.2, 0.2, 3.2)
+material = SubResource("WoodDarkMat")
+
+[node name="Gable" type="CSGMesh3D" parent="Homestead/Cabin" unique_id=276426605]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.55, 0)
+mesh = SubResource("GableMesh")
+material = SubResource("RoofMat")
+
+[node name="ShedRoof" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1105178266]
+transform = Transform3D(0.978, 0.208, 0, -0.208, 0.978, 0, 0, 0, 1, 4.7, 2.55, -1.1)
+size = Vector3(3.8, 0.16, 3.9)
+material = SubResource("RoofMat")
+
+[node name="Chimney" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1047664144]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.6, 3.95, -0.8)
+size = Vector3(0.5, 1.3, 0.5)
+material = SubResource("StoneMat")
+
+[node name="ChimneyCap" type="CSGBox3D" parent="Homestead/Cabin" unique_id=285259237]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.6, 4.62, -0.8)
+size = Vector3(0.66, 0.14, 0.66)
+material = SubResource("StoneDarkMat")
+
+[node name="ChimneySmoke" type="CPUParticles3D" parent="Homestead/Cabin" unique_id=1702199396]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.6, 4.85, -0.8)
+amount = 20
+lifetime = 3.5
+mesh = SubResource("SmokeQuad")
+direction = Vector3(0, 1, 0)
+spread = 14.0
+gravity = Vector3(0, 0.25, 0)
+initial_velocity_min = 0.3
+initial_velocity_max = 0.6
+damping_min = 0.4
+damping_max = 0.8
+scale_amount_min = 0.7
+scale_amount_max = 1.4
+color_ramp = SubResource("SmokeGradient")
+
+[node name="PorchFloor" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1502209798]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.09, 3.45)
+size = Vector3(3, 0.18, 1.5)
+material = SubResource("WoodDarkMat")
+
+[node name="PorchPostL" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1082199940]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.3, 1.23, 4)
+size = Vector3(0.16, 2.1, 0.16)
+material = SubResource("WoodDarkMat")
+
+[node name="PorchPostR" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1550409308]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3, 1.23, 4)
+size = Vector3(0.16, 2.1, 0.16)
+material = SubResource("WoodDarkMat")
+
+[node name="PorchRoof" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1822057113]
+transform = Transform3D(1, 0, 0, 0, 0.99, 0.139, 0, -0.139, 0.99, 0, 2.45, 3.55)
+size = Vector3(3.3, 0.12, 1.8)
+material = SubResource("RoofMat")
+
+[node name="DoorStep" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1134895200]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 4.35)
+size = Vector3(1.5, 0.28, 0.6)
+material = SubResource("StoneMat")
+
+[node name="BedFrame" type="CSGBox3D" parent="Homestead/Cabin" unique_id=2142717139]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0.38, -1.6)
+size = Vector3(2, 0.35, 1.1)
+material = SubResource("WoodDarkMat")
+
+[node name="BedBlanket" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1920917224]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0.65, -1.6)
+size = Vector3(1.9, 0.18, 1)
+material = SubResource("RoofMat")
+
+[node name="BedPillow" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1064873079]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.72, 0.8, -1.6)
+size = Vector3(0.45, 0.12, 0.85)
+material = SubResource("LinenMat")
+
+[node name="BedHeadboard" type="CSGBox3D" parent="Homestead/Cabin" unique_id=2076298229]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.96, 0.78, -1.6)
+size = Vector3(0.12, 0.8, 1.1)
+material = SubResource("WoodDarkMat")
+
+[node name="TableTop" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1866408621]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6, 0.86, 0.8)
+size = Vector3(1.3, 0.08, 0.9)
+material = SubResource("WoodWallMat")
+
+[node name="TableLeg1" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1023800042]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.05, 0.53, 0.45)
+size = Vector3(0.08, 0.66, 0.08)
+material = SubResource("WoodDarkMat")
+
+[node name="TableLeg2" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1969441696]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.15, 0.53, 0.45)
+size = Vector3(0.08, 0.66, 0.08)
+material = SubResource("WoodDarkMat")
+
+[node name="TableLeg3" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1185807706]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.05, 0.53, 1.15)
+size = Vector3(0.08, 0.66, 0.08)
+material = SubResource("WoodDarkMat")
+
+[node name="TableLeg4" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1401268073]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.15, 0.53, 1.15)
+size = Vector3(0.08, 0.66, 0.08)
+material = SubResource("WoodDarkMat")
+
+[node name="StoolSeat" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1049518758]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.9, 0.68, 1.9)
+size = Vector3(0.42, 0.06, 0.42)
+material = SubResource("WoodWallMat")
+
+[node name="StoolLeg1" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1279786092]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.78, 0.43, 1.78)
+size = Vector3(0.06, 0.46, 0.06)
+material = SubResource("WoodDarkMat")
+
+[node name="StoolLeg2" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1412680436]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.02, 0.43, 1.78)
+size = Vector3(0.06, 0.46, 0.06)
+material = SubResource("WoodDarkMat")
+
+[node name="StoolLeg3" type="CSGBox3D" parent="Homestead/Cabin" unique_id=969219600]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.78, 0.43, 2.02)
+size = Vector3(0.06, 0.46, 0.06)
+material = SubResource("WoodDarkMat")
+
+[node name="StoolLeg4" type="CSGBox3D" parent="Homestead/Cabin" unique_id=880054888]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.02, 0.43, 2.02)
+size = Vector3(0.06, 0.46, 0.06)
+material = SubResource("WoodDarkMat")
+
+[node name="Rug" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1956028048]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.2, 0.21, 0.3)
+size = Vector3(1.8, 0.02, 1.2)
+material = SubResource("RoofMat")
+
+[node name="WinFrameFL" type="CSGBox3D" parent="Homestead/Cabin" unique_id=426640902]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.8, 1.7, 2.68)
+size = Vector3(1.3, 1.1, 0.12)
+material = SubResource("WoodDarkMat")
+
+[node name="WinGlassFL" type="CSGBox3D" parent="Homestead/Cabin" unique_id=834106026]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.8, 1.7, 2.7)
+size = Vector3(1.14, 0.94, 0.16)
+material = SubResource("GlassMat")
+
+[node name="WinFrameFR" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1542241328]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 1.7, 2.68)
+size = Vector3(1, 1, 0.12)
+material = SubResource("WoodDarkMat")
+
+[node name="WinGlassFR" type="CSGBox3D" parent="Homestead/Cabin" unique_id=624677376]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 1.7, 2.7)
+size = Vector3(0.86, 0.86, 0.16)
+material = SubResource("GlassMat")
+
+[node name="WinFrameL" type="CSGBox3D" parent="Homestead/Cabin" unique_id=583473240]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.12, 1.7, 0.3)
+size = Vector3(0.12, 1.1, 1.3)
+material = SubResource("WoodDarkMat")
+
+[node name="WinGlassL" type="CSGBox3D" parent="Homestead/Cabin" unique_id=925296039]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.14, 1.7, 0.3)
+size = Vector3(0.16, 0.94, 1.14)
+material = SubResource("GlassMat")
+
+[node name="WinFrameB" type="CSGBox3D" parent="Homestead/Cabin" unique_id=897524155]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.2, 1.7, -2.7)
+size = Vector3(1.3, 1.1, 0.12)
+material = SubResource("WoodDarkMat")
+
+[node name="WinGlassB" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1398249523]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.2, 1.7, -2.72)
+size = Vector3(1.14, 0.94, 0.16)
+material = SubResource("GlassMat")
+
+[node name="StoDoor" type="CSGBox3D" parent="Homestead/Cabin" unique_id=820463122]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.7, 0.85, 0.52)
+size = Vector3(0.95, 1.7, 0.1)
+material = SubResource("WoodDarkMat")
+
+[node name="StoWin" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1758024158]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.6, 1.45, 0.52)
+size = Vector3(0.58, 0.5, 0.12)
+material = SubResource("GlassMat")
+
+[node name="TrimFront" type="CSGBox3D" parent="Homestead/Cabin" unique_id=154572178]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, 2.72)
+size = Vector3(6.2, 0.12, 0.08)
+material = SubResource("WoodDarkMat")
+
+[node name="CornerL" type="CSGBox3D" parent="Homestead/Cabin" unique_id=1576699625]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.05, 1.35, 2.64)
+size = Vector3(0.16, 2.7, 0.16)
+material = SubResource("WoodDarkMat")
+
+[node name="CornerR" type="CSGBox3D" parent="Homestead/Cabin" unique_id=481009817]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.05, 1.35, 2.64)
+size = Vector3(0.16, 2.7, 0.16)
+material = SubResource("WoodDarkMat")
+
+[node name="LogB1" type="CSGCylinder3D" parent="Homestead/Cabin" unique_id=859463806]
+transform = Transform3D(0, -1, 0, 1, 0, 0, 0, 0, 1, 6.8, 0.11, -2.42)
+radius = 0.11
+height = 1.0
+material = SubResource("WoodDarkMat")
+
+[node name="LogB2" type="CSGCylinder3D" parent="Homestead/Cabin" unique_id=419446633]
+transform = Transform3D(0, -1, 0, 1, 0, 0, 0, 0, 1, 6.8, 0.11, -2.19)
+radius = 0.11
+height = 1.0
+material = SubResource("WoodDarkMat")
+
+[node name="LogB3" type="CSGCylinder3D" parent="Homestead/Cabin" unique_id=2023540378]
+transform = Transform3D(0, -1, 0, 1, 0, 0, 0, 0, 1, 6.8, 0.11, -1.96)
+radius = 0.11
+height = 1.0
+material = SubResource("WoodDarkMat")
+
+[node name="LogB4" type="CSGCylinder3D" parent="Homestead/Cabin" unique_id=205979066]
+transform = Transform3D(0, -1, 0, 1, 0, 0, 0, 0, 1, 6.8, 0.11, -1.73)
+radius = 0.11
+height = 1.0
+material = SubResource("WoodDarkMat")
+
+[node name="LogT1" type="CSGCylinder3D" parent="Homestead/Cabin" unique_id=135347528]
+transform = Transform3D(0, -1, 0, 1, 0, 0, 0, 0, 1, 6.8, 0.3, -2.305)
+radius = 0.11
+height = 1.0
+material = SubResource("WoodDarkMat")
+
+[node name="LogT2" type="CSGCylinder3D" parent="Homestead/Cabin" unique_id=206825327]
+transform = Transform3D(0, -1, 0, 1, 0, 0, 0, 0, 1, 6.8, 0.3, -2.075)
+radius = 0.11
+height = 1.0
+material = SubResource("WoodDarkMat")
+
+[node name="LogT3" type="CSGCylinder3D" parent="Homestead/Cabin" unique_id=148818021]
+transform = Transform3D(0, -1, 0, 1, 0, 0, 0, 0, 1, 6.8, 0.3, -1.845)
+radius = 0.11
+height = 1.0
+material = SubResource("WoodDarkMat")
+
+[node name="CabinDoor" type="CabinDoor" parent="Homestead" unique_id=283008900]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 2.72)
+
+[node name="ShutterFL" type="ShutterWindow" parent="Homestead" unique_id=961442186]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.8, 1.7, 2.74)
+
+[node name="ShutterFR" type="ShutterWindow" parent="Homestead" unique_id=1553994358]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 1.7, 2.74)
+
+[node name="ShutterL" type="ShutterWindow" parent="Homestead" unique_id=2054913136]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -3.18, 1.7, 0.3)
+
+[node name="ShutterB" type="ShutterWindow" parent="Homestead" unique_id=134835095]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 1.2, 1.7, -2.76)
+
+[node name="Chest" type="Chest" parent="Homestead" unique_id=1345245932]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.55, 0.2, -2.2)
+
+[node name="Fence" type="CSGCombiner3D" parent="Homestead" unique_id=1968727068]
+use_collision = true
+
+[node name="PostB1" type="CSGBox3D" parent="Homestead/Fence" unique_id=109802076]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0.575, -5)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostB2" type="CSGBox3D" parent="Homestead/Fence" unique_id=1236974960]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0.575, -5)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostB3" type="CSGBox3D" parent="Homestead/Fence" unique_id=1499982836]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0.575, -5)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostB4" type="CSGBox3D" parent="Homestead/Fence" unique_id=474951729]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0.575, -5)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostB5" type="CSGBox3D" parent="Homestead/Fence" unique_id=512001051]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0.575, -5)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostB6" type="CSGBox3D" parent="Homestead/Fence" unique_id=284614390]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0.575, -5)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostB7" type="CSGBox3D" parent="Homestead/Fence" unique_id=1299022836]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0.575, -5)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostB8" type="CSGBox3D" parent="Homestead/Fence" unique_id=103996712]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 0.575, -5)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostB9" type="CSGBox3D" parent="Homestead/Fence" unique_id=1653482288]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0.575, -5)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostL1" type="CSGBox3D" parent="Homestead/Fence" unique_id=1457923004]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0.575, -3)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostL2" type="CSGBox3D" parent="Homestead/Fence" unique_id=947887585]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0.575, -1)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostL3" type="CSGBox3D" parent="Homestead/Fence" unique_id=2078254003]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0.575, 1)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostL4" type="CSGBox3D" parent="Homestead/Fence" unique_id=2147048308]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0.575, 3)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostR1" type="CSGBox3D" parent="Homestead/Fence" unique_id=1682175031]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0.575, -3)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostR2" type="CSGBox3D" parent="Homestead/Fence" unique_id=239082785]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0.575, -1)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostR3" type="CSGBox3D" parent="Homestead/Fence" unique_id=1458110354]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0.575, 1)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostR4" type="CSGBox3D" parent="Homestead/Fence" unique_id=1141459033]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0.575, 3)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostF1" type="CSGBox3D" parent="Homestead/Fence" unique_id=1712829440]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0.575, 5)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostF2" type="CSGBox3D" parent="Homestead/Fence" unique_id=38962644]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0.575, 5)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="GatePostL" type="CSGBox3D" parent="Homestead/Fence" unique_id=1011197187]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.95, 0.7, 5)
+size = Vector3(0.2, 1.4, 0.2)
+material = SubResource("WoodDarkMat")
+
+[node name="GatePostR" type="CSGBox3D" parent="Homestead/Fence" unique_id=498091739]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.95, 0.7, 5)
+size = Vector3(0.2, 1.4, 0.2)
+material = SubResource("WoodDarkMat")
+
+[node name="GateCapL" type="CSGBox3D" parent="Homestead/Fence" unique_id=1564888769]
+transform = Transform3D(0.707, -0.707, 0, 0.707, 0.707, 0, 0, 0, 1, -0.95, 1.48, 5)
+size = Vector3(0.26, 0.26, 0.26)
+material = SubResource("WoodDarkMat")
+
+[node name="GateCapR" type="CSGBox3D" parent="Homestead/Fence" unique_id=1092850062]
+transform = Transform3D(0.707, -0.707, 0, 0.707, 0.707, 0, 0, 0, 1, 0.95, 1.48, 5)
+size = Vector3(0.26, 0.26, 0.26)
+material = SubResource("WoodDarkMat")
+
+[node name="PostF5" type="CSGBox3D" parent="Homestead/Fence" unique_id=20819037]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0.575, 5)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostF6" type="CSGBox3D" parent="Homestead/Fence" unique_id=1576816100]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0.575, 5)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="PostF7" type="CSGBox3D" parent="Homestead/Fence" unique_id=1379497661]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 0.575, 5)
+size = Vector3(0.18, 1.15, 0.18)
+material = SubResource("FenceMat")
+
+[node name="RailBack1" type="CSGBox3D" parent="Homestead/Fence" unique_id=1257039811]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0.42, -5)
+size = Vector3(16.18, 0.12, 0.07)
+material = SubResource("FenceMat")
+
+[node name="RailBack2" type="CSGBox3D" parent="Homestead/Fence" unique_id=916198186]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0.82, -5)
+size = Vector3(16.18, 0.12, 0.07)
+material = SubResource("FenceMat")
+
+[node name="RailLeft1" type="CSGBox3D" parent="Homestead/Fence" unique_id=442826040]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0.42, 0)
+size = Vector3(0.07, 0.12, 10.18)
+material = SubResource("FenceMat")
+
+[node name="RailLeft2" type="CSGBox3D" parent="Homestead/Fence" unique_id=1941022979]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0.82, 0)
+size = Vector3(0.07, 0.12, 10.18)
+material = SubResource("FenceMat")
+
+[node name="RailRight1" type="CSGBox3D" parent="Homestead/Fence" unique_id=47113936]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0.42, 0)
+size = Vector3(0.07, 0.12, 10.18)
+material = SubResource("FenceMat")
+
+[node name="RailRight2" type="CSGBox3D" parent="Homestead/Fence" unique_id=149726805]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0.82, 0)
+size = Vector3(0.07, 0.12, 10.18)
+material = SubResource("FenceMat")
+
+[node name="RailFront1" type="CSGBox3D" parent="Homestead/Fence" unique_id=2069564583]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.975, 0.42, 5)
+size = Vector3(6.23, 0.12, 0.07)
+material = SubResource("FenceMat")
+
+[node name="RailFront2" type="CSGBox3D" parent="Homestead/Fence" unique_id=1018822884]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.975, 0.82, 5)
+size = Vector3(6.23, 0.12, 0.07)
+material = SubResource("FenceMat")
+
+[node name="RailFront3" type="CSGBox3D" parent="Homestead/Fence" unique_id=1191295250]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.975, 0.42, 5)
+size = Vector3(8.23, 0.12, 0.07)
+material = SubResource("FenceMat")
+
+[node name="RailFront4" type="CSGBox3D" parent="Homestead/Fence" unique_id=1526671311]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.975, 0.82, 5)
+size = Vector3(8.23, 0.12, 0.07)
+material = SubResource("FenceMat")
+
+[node name="GateDoor" type="CSGBox3D" parent="Homestead/Fence" unique_id=2080881645]
+transform = Transform3D(0.766, 0, -0.643, 0, 1, 0, 0.643, 0, 0.766, -0.3, 0.6, 5.55)
+size = Vector3(1.7, 0.9, 0.06)
+material = SubResource("FenceMat")
+
+[node name="GateLatch" type="CSGBox3D" parent="Homestead/Fence" unique_id=472520738]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.24, 0.65, 6)
+size = Vector3(0.1, 0.08, 0.12)
+material = SubResource("WoodDarkMat")
+
+[node name="HingeL1" type="CSGBox3D" parent="Homestead/Fence" unique_id=764128933]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.89, 0.35, 5.06)
+size = Vector3(0.05, 0.2, 0.1)
+material = SubResource("WoodDarkMat")
+
+[node name="HingeL2" type="CSGBox3D" parent="Homestead/Fence" unique_id=913461371]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.89, 0.85, 5.06)
+size = Vector3(0.05, 0.2, 0.1)
+material = SubResource("WoodDarkMat")
+
+[node name="Path" type="CSGCombiner3D" parent="Homestead" unique_id=2076316460]
+use_collision = true
+
+[node name="Stone1" type="CSGCylinder3D" parent="Homestead/Path" unique_id=879465345]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3, 0.38, 6.6)
+radius = 0.34
+height = 0.1
+material = SubResource("StoneMat")
+
+[node name="Stone2" type="CSGCylinder3D" parent="Homestead/Path" unique_id=1213207529]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.25, 0.38, 7.3)
+radius = 0.34
+height = 0.1
+material = SubResource("StoneMat")
+
+[node name="Stone3" type="CSGCylinder3D" parent="Homestead/Path" unique_id=430778605]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3, 0.38, 8)
+radius = 0.34
+height = 0.1
+material = SubResource("StoneMat")
+
+[node name="Stone4" type="CSGCylinder3D" parent="Homestead/Path" unique_id=298878488]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.2, 0.38, 8.7)
+radius = 0.34
+height = 0.1
+material = SubResource("StoneMat")
+
+[node name="Well" type="Well" parent="Homestead" unique_id=1193317876]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0, 1.8)
+
+[node name="BerryBush1" type="BerryBush" parent="Homestead" unique_id=39356784]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.4, 0, 4.9)
+
+[node name="BerryBush2" type="BerryBush" parent="Homestead" unique_id=2019984154]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.6, 0, 5.9)
+
+[node name="BerryBush3" type="BerryBush" parent="Homestead" unique_id=1891544738]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.6, 0, 5.6)
+
+[node name="Fireflies" type="CPUParticles3D" parent="." unique_id=1033966735]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13, 1.4, 20)
+amount = 45
+lifetime = 6.0
+randomness = 0.5
+mesh = SubResource("FireflyQuad")
+emission_shape = 3
+emission_box_extents = Vector3(12, 1.8, 8)
+spread = 180.0
+gravity = Vector3(0, 0.05, 0)
+initial_velocity_min = 0.35
+initial_velocity_max = 0.85
+linear_accel_min = -0.15
+linear_accel_max = 0.15
+radial_accel_min = -0.25
+radial_accel_max = 0.25
+tangential_accel_min = -0.45
+tangential_accel_max = 0.45
+orbit_velocity_min = -0.06
+orbit_velocity_max = 0.06
+damping_min = 0.0
+damping_max = 0.02
+scale_amount_min = 0.6
+scale_amount_max = 1.3
+color_ramp = SubResource("FireflyGradient")
+
+[node name="SkyCycle" type="SkyCycle" parent="." unique_id=2111357219]
+sun_path = NodePath("../Sun")
+env_path = NodePath("../WorldEnvironment")
+fireflies_path = NodePath("../Fireflies")
+
+[node name="Bird1" type="Bird" parent="." unique_id=345462864]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 12, -10)
+
+[node name="Bird2" type="Bird" parent="." unique_id=1633154096]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -25, 10, 5)
+
+[node name="Bird3" type="Bird" parent="." unique_id=836632762]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 13, -20)
+
+[node name="Bird4" type="Bird" parent="." unique_id=1464054942]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 11, 33)
+
+[node name="Bird5" type="Bird" parent="." unique_id=1875983193]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 10, 22)
+
+[node name="Rabbit1" type="Rabbit" parent="." unique_id=1480712290]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 0.35, 4.5)
+
+[node name="Rabbit2" type="Rabbit" parent="." unique_id=634489497]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14, 0.35, 11)
+
+[node name="Player" type="Player" parent="." unique_id=1321005318]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, -28)
+collision_mask = 3
+
+[node name="Collision" type="CollisionShape3D" parent="Player" unique_id=1121897435]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("PlayerShape")
+
+[node name="Model" type="Node3D" parent="Player" unique_id=756236343]
+
+[node name="Body" type="MeshInstance3D" parent="Player/Model" unique_id=2042033877]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+mesh = SubResource("PlayerMesh")
+surface_material_override/0 = SubResource("PlayerToon")
+
+[node name="Camera3D" type="Camera3D" parent="Player" unique_id=474395271]
+transform = Transform3D(1, 0, 0, 0, 0.74740934, 0.6643638, 0, -0.6643638, 0.74740934, 0, 8, 9)
+fov = 55.0
+
+[node name="HUDClock" type="HUDClock" parent="." unique_id=406269843]
+sky_cycle_path = NodePath("../SkyCycle")
+
+[node name="Butterflies" type="ButterflySwarm" parent="." unique_id=1407488790]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, -24)
+
+[node name="GameDirector" type="GameDirector" parent="." unique_id=1818518943]
+
+[node name="Ambience" type="Ambience" parent="." unique_id=564152197]
+
+[node name="SaveSystem" type="SaveSystem" parent="." unique_id=614608393]
+
+[node name="FarmCat1" type="FarmAnimal" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 1.2, 2)
+kind = 0
+
+[node name="FarmCat2" type="FarmAnimal" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 1.2, 3)
+kind = 0
+
+[node name="FarmDog1" type="FarmAnimal" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 1.2, 13)
+kind = 1
+
+[node name="FarmCow1" type="FarmAnimal" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 26, 1.2, -2)
+kind = 2
+
+[node name="FarmCow2" type="FarmAnimal" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 31, 1.2, -8)
+kind = 2
+
+[node name="FarmCow3" type="FarmAnimal" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 1.2, -12)
+kind = 2
+
+[node name="FarmSheep1" type="FarmAnimal" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 38, 1.2, -4)
+kind = 3
+
+[node name="FarmSheep2" type="FarmAnimal" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 43, 1.2, -10)
+kind = 3
+
+[node name="FarmSheep3" type="FarmAnimal" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 1.2, -14)
+kind = 3
+
+[node name="FarmSheep4" type="FarmAnimal" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 47, 1.2, -6)
+kind = 3
+
+[node name="FishingSystem" type="FishingSystem" parent="."]
+
+[node name="FootprintManager" type="FootprintManager" parent="."]

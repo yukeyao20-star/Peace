@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://c6m8nw1c64kry"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_cube"]
+size = Vector3(1.2, 1.2, 1.2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cube"]
+albedo_color = Color(0.25, 0.55, 0.95, 1)
+metallic = 0.2
+roughness = 0.35
+
+[node name="Main" type="Node3D" unique_id=742913329]
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=785623632]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 6)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=869517321]
+transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 4, 0)
+
+[node name="Spinner" type="Spinner" parent="." unique_id=2075000741]
+transform = Transform3D(0.90445125, 0, 0.4267512, 0, 1, 0, -0.4267512, 0, 0.90445125, 0, 0, 0)
+
+[node name="Cube" type="MeshInstance3D" parent="Spinner" unique_id=896418373]
+mesh = SubResource("BoxMesh_cube")
+surface_material_override/0 = SubResource("StandardMaterial3D_cube")
