@@ -18,6 +18,9 @@
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
+#include <godot_cpp/classes/audio_stream_player3d.hpp>
+#include <godot_cpp/classes/audio_stream.hpp>
+
 namespace godot {
 
 class CabinDoor : public Interactable {
@@ -28,6 +31,10 @@ private:
 	float open_t = 0.0f;      // 当前开合进度 0(关)..1(开)
 	float open_target = 0.0f; // 目标进度
 	float open_sign = 1.0f;   // 开门旋转方向（+1 往里推，-1 往外拉）
+
+	AudioStreamPlayer3D *audio_player = nullptr;
+	Ref<AudioStream> snd_open;
+	Ref<AudioStream> snd_close;
 
 	void build(Ref<Shader> p_shader);
 
@@ -40,6 +47,7 @@ public:
 
 	virtual String get_prompt() const override;
 	virtual Vector3 get_interact_pos() const override;
+	virtual float get_interact_distance() const override { return 1.8f; }
 	virtual void interact(const Vector3 &p_player_pos) override;
 
 	bool is_open() const { return open_target > 0.5f; }

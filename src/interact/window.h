@@ -13,6 +13,9 @@
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
+#include <godot_cpp/classes/audio_stream_player3d.hpp>
+#include <godot_cpp/classes/audio_stream.hpp>
+
 namespace godot {
 
 class ShutterWindow : public Interactable {
@@ -25,6 +28,10 @@ private:
 	float width = 1.14f;      // 窗洞宽度（决定百叶板尺寸）
 	float height = 0.94f;     // 窗洞高度
 
+	AudioStreamPlayer3D *audio_player = nullptr;
+	Ref<AudioStream> snd_open;
+	Ref<AudioStream> snd_close;
+
 	void build(Ref<Shader> p_shader);
 
 protected:
@@ -36,6 +43,8 @@ public:
 
 	virtual String get_prompt() const override;
 	virtual Vector3 get_interact_pos() const override;
+	virtual float get_interact_distance() const override { return 2.4f; }
+	virtual bool requires_line_of_sight() const override { return false; }
 	virtual void interact(const Vector3 &p_player_pos) override;
 
 	bool is_open() const { return open_target > 0.5f; }

@@ -29,6 +29,9 @@
 using namespace godot;
 
 void FishingSystem::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("get_state"), &FishingSystem::get_state);
+	ClassDB::bind_method(D_METHOD("is_charging"), &FishingSystem::is_charging);
+	ClassDB::bind_method(D_METHOD("is_near_shore"), &FishingSystem::is_near_shore);
 }
 
 void FishingSystem::_notification(int p_what) {
@@ -76,8 +79,15 @@ void FishingSystem::_notification(int p_what) {
 			bool f_edge = f_down && !f_prev;    // 按下（等待阶段用来收竿）
 			bool f_release = !f_down && f_prev; // 松手 = 蓄力结束、抛出去
 			f_prev = f_down;
-			bool hold = input->is_key_pressed(KEY_SPACE)
-					|| input->is_mouse_button_pressed(MOUSE_BUTTON_LEFT);
+			// 搏斗阶段：彻底去除空格键，仅保留鼠标左键控力
+			bool hold = input->is_mouse_button_pressed(MOUSE_BUTTON_LEFT);
+
+			if (!f_down) {
+				f_consumed = false; // 物理松开 F 键后，才解除消耗限制
+			}
+			if (cast_cooldown > 0.0f) {
+				cast_cooldown -= delta;
+			}
 
 			switch (state) {
 				case 0: tick_idle(delta, f_down, f_release); break;
@@ -417,23 +427,43 @@ void FishingSystem::update_rod() {
 	// 上一版让竿梢瞄浮漂，结果浮漂一旦落在手边或水面比手低很多，
 	// 竿就变成朝下戳地 —— 真人钓鱼也不会把竿指着漂，竿的作用是把线架高。
 	// 线自己从竿梢垂到浮漂，那才是钓鱼该有的样子。
-	float up = 0.86f + cast_swing * 0.34f; // 甩竿瞬间再抬高一点
+	float up = 0.86f;
 	float fw = 0.54f;
-	if (state == 2) {
-		// 咬钩：竿往后仰、往上带（像在控鱼）
-		up = 1.02f;
-		fw = 0.68f;
+
+	if (state == 1) {
+		// 待机守候：竿梢随着微风与呼吸轻盈起伏
+		float breath = std::sin(swim_phase * 1.6f) * 0.04f;
+		up += breath;
+		fw -= breath * 0.4f;
+	} else if (state == 2) {
+		// 咬钩搏斗：竿身弓起后仰，高频剧烈震颤，伴随收线起伏韵律与侧向拽拉！
+		float struggle_vibe = std::sin(swim_phase * 24.0f) * 0.08f * (big_fish ? 1.6f : 1.0f);
+		float reel_pump = std::sin(catch_prog * 8.0f) * 0.14f;
+		float tension_pull = tension * 0.32f;
+		up = 1.08f + struggle_vibe + reel_pump + tension_pull;
+		fw = 0.50f - tension_pull * 0.40f;
 	}
+
 	if (charging) {
-		// 蓄力：竿往后仰，蓄得越满仰得越多 —— 像真的把线拉回来攒劲，
-		// 松手那一下 cast_swing 再把竿甩出去，一来一回才有个"抛"的动作。
-		up = 0.86f + charge * 0.42f;
-		fw = 0.54f - charge * 0.30f;
+		// 蓄力：大幅向后仰起积蓄力量
+		up = 0.86f + charge * 0.55f;
+		fw = 0.54f - charge * 0.42f;
 	}
 	if (cast_swing > 0.0f) {
-		fw += cast_swing * 0.55f; // 甩出去：竿梢向前压
+		// 抛竿甩击：强力向前下压抽击，随后柔和回弹
+		float whip = std::sin(cast_swing * 3.14159f);
+		fw += whip * 0.75f;
+		up -= whip * 0.32f;
 	}
-	Vector3 dir = (fwd * fw + Vector3(0.0f, 1.0f, 0.0f) * up).normalized();
+
+	Vector3 dir = (fwd * fw + Vector3(0.0f, 1.0f, 0.0f) * up);
+	if (state == 2 && fish != nullptr) {
+		// 竿梢偏向大鱼挣扎拉扯的方位
+		Vector3 to_fish = (fish->get_global_position() - hand).normalized();
+		float side_pull = right.dot(to_fish) * 0.28f;
+		dir += right * side_pull;
+	}
+	dir = dir.normalized();
 	if (dir.length_squared() < 0.0001f) {
 		dir = Vector3(0.0f, 1.0f, 0.0f);
 	}
@@ -621,31 +651,61 @@ void FishingSystem::start_cast(float p_charge) {
 	Vector2 target;
 	bool found = false;
 	if (on_bridge) {
-		// 桥上：往栏杆外（玩家朝向）为主，水面就在桥下，距离不用远
+		// 桥上：往栏杆外（玩家朝向）为主，水面就在桥下
 		float bd = Math::min(cast_d, 8.0f);
-		found = find_water_spot(p, fdir, bd, 1.5f, target);
+		found = find_water_spot(p, fdir, bd, 1.2f, target);
 		if (!found) {
-			found = find_water_spot(p, c_dir, bd, 1.5f, target);
+			found = find_water_spot(p, c_dir, bd, 1.2f, target);
 		}
 	} else {
-		Vector2 dirs[6];
+		// 严密扇面扫描：以玩家朝向与最近湖心为基准展开扇面采样
+		Vector2 dirs[12];
 		dirs[0] = fdir;
-		dirs[1] = (fdir * 0.5f + c_dir * 0.5f);
-		dirs[2] = c_dir;
-		dirs[3] = (fdir * 0.25f + c_dir * 0.75f);
-		dirs[4] = c_dir.rotated(0.6f);
-		dirs[5] = c_dir.rotated(-0.6f);
-		for (int i = 0; i < 6 && !found; i++) {
+		dirs[1] = (fdir * 0.7f + c_dir * 0.3f);
+		dirs[2] = (fdir * 0.4f + c_dir * 0.6f);
+		dirs[3] = c_dir;
+		dirs[4] = fdir.rotated(0.35f);
+		dirs[5] = fdir.rotated(-0.35f);
+		dirs[6] = c_dir.rotated(0.35f);
+		dirs[7] = c_dir.rotated(-0.35f);
+		dirs[8] = fdir.rotated(0.70f);
+		dirs[9] = fdir.rotated(-0.70f);
+		dirs[10] = c_dir.rotated(0.70f);
+		dirs[11] = c_dir.rotated(-0.70f);
+		for (int i = 0; i < 12 && !found; i++) {
 			if (dirs[i].length_squared() < 1e-6f) {
 				continue;
 			}
-			found = find_water_spot(p, dirs[i].normalized(), cast_d, 2.4f, target);
+			found = find_water_spot(p, dirs[i].normalized(), cast_d, 1.8f, target);
 		}
 	}
+
+	// 严禁抛到陆地！如果各个方向都没找到足够水深的水域，绝不盲目抛向地面！
 	if (!found) {
-		// 兜底（理论上不会走到）：朝湖心丢固定距离
-		target = p + c_dir * Math::max(cast_d, 5.2f);
+		state = 0; // 取消抛竿，退回等待
+		charging = false;
+		charge = 0.0f;
+		cast_cooldown = 0.35f;
+		if (hint != nullptr) {
+			hint->set_text(String::utf8("⚠️ 此处无法下竿，请面朝水深足够的水面！"));
+			hint->show();
+		}
+		return;
 	}
+
+	// 最终双重硬核校验：确保目标点水深绝对大于 0.45m（绝对在水面之下）
+	if (terrain != nullptr && terrain->water_depth_at(target.x, target.y) < 0.45f) {
+		state = 0;
+		charging = false;
+		charge = 0.0f;
+		cast_cooldown = 0.35f;
+		if (hint != nullptr) {
+			hint->set_text(String::utf8("⚠️ 目标水域过浅，请重新对准湖水！"));
+			hint->show();
+		}
+		return;
+	}
+
 	bobber_pos = Vector3(target.x, water_level + 0.05f, target.y);
 
 	// 定鱼：30% 大鱼
@@ -678,7 +738,7 @@ void FishingSystem::start_hook() {
 	state = 2;
 	play_sound(snd_bite, -7.0f);
 	if (hint != nullptr) {
-		hint->set_text(String::utf8("咬钩了！按住 空格/左键 控力，保持在绿区！"));
+		hint->set_text(String::utf8("咬钩了！按住 鼠标左键 控力，保持在绿区！"));
 		hint->show();
 	}
 	bar_bg->show();
@@ -715,6 +775,8 @@ void FishingSystem::cancel_fishing() {
 	state = 0;
 	charging = false;
 	charge = 0.0f;
+	f_consumed = true;     // 关键：收竿是由按下 F 触发的，标记已消耗，物理松手前绝不进入蓄力
+	cast_cooldown = 0.25f; // 短暂保护冷却，防止连击
 	if (bobber != nullptr) {
 		bobber->hide();
 	}
@@ -768,7 +830,8 @@ void FishingSystem::tick_idle(float p_delta, bool f_down, bool f_release) {
 	bool on_bridge = (Math::abs(pp.z - 26.0f) < 2.5f && pp.x > -20.0f && pp.x < 8.0f && pp.y > 0.0f);
 
 	// —— 蓄力：按住 F 涨条，松手抛竿 ——
-	if (f_down) {
+	// 只有当按键未被收竿消耗 (f_consumed == false) 且不在冷却期内，才允许蓄力
+	if (f_down && !f_consumed && cast_cooldown <= 0.0f) {
 		if (!charging) {
 			charging = true;
 			charge = 0.0f;
@@ -797,24 +860,32 @@ void FishingSystem::tick_idle(float p_delta, bool f_down, bool f_release) {
 		return;
 	}
 
-	if (f_release && charging) {
+	if (f_release) {
+		if (charging && !f_consumed && cast_cooldown <= 0.0f) {
+			charging = false;
+			float c = charge;
+			charge = 0.0f;
+			if (charge_bg != nullptr) {
+				charge_bg->hide();
+				charge_fill->hide();
+			}
+			start_cast(c);
+			return;
+		}
 		charging = false;
-		float c = charge;
 		charge = 0.0f;
-		if (charge_bg != nullptr) {
+		if (charge_bg != nullptr && charge_bg->is_visible()) {
 			charge_bg->hide();
 			charge_fill->hide();
 		}
-		start_cast(c);
-		return;
 	}
 
 	// 待机提示
 	if (hint != nullptr) {
 		if (on_bridge) {
-			hint->set_text(String::utf8("按住 F 蓄力，松手桥上抛竿"));
+			hint->set_text(String::utf8("长按 F 蓄力抛钩 (松开抛出)"));
 		} else {
-			hint->set_text(String::utf8("按住 F 蓄力，松手抛竿"));
+			hint->set_text(String::utf8("长按 F 蓄力抛钩 (松开抛出)"));
 		}
 		if (!hint->is_visible()) {
 			hint->show();

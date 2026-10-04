@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="湖畔家园 Homestead"
+config/name="Peace"
 config/description="Godot 4 + GDExtension (C++) 开发的 3D 治愈系小世界：湖畔木屋、石桥、四季昼夜与天气，采浆果、开木箱、喂自己一把雪。"
 config/version="0.1.0"
 run/main_scene="res://world.tscn"
@@ -19,11 +19,8 @@ config/icon="res://icon.svg"
 
 [display]
 
-; 画面自适应：基准 1080p，窗口可拉伸、启动最大化；
-; canvas_items 模式下 3D 按窗口原生分辨率渲染（不糊），UI 等比缩放
 window/size/viewport_width=1920
 window/size/viewport_height=1080
-window/size/resizable=true
 window/size/mode=2
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
@@ -31,6 +28,4 @@ window/stretch/aspect="expand"
 [rendering]
 
 textures/vram_compression/import_etc2_astc=true
-; 边缘抗锯齿：桥面/引道、桥体与地形的接缝在远处会因为几何走样而闪，
-; 2x MSAA 是最省的一档（草地上开销很小）
 anti_aliasing/quality/msaa_3d=1

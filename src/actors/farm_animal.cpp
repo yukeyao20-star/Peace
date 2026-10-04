@@ -6,9 +6,11 @@
 #include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/capsule_mesh.hpp>
 #include <godot_cpp/classes/collision_shape3d.hpp>
+#include <godot_cpp/classes/cpu_particles3d.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/cylinder_shape3d.hpp>
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/gradient.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/physics_direct_space_state3d.hpp>
 #include <godot_cpp/classes/physics_ray_query_parameters3d.hpp>
@@ -23,6 +25,7 @@
 
 #include "footprint_manager.h"
 #include "sky_cycle.h"
+#include "../world/terrain_builder.h"
 
 using namespace godot;
 
@@ -156,27 +159,65 @@ void FarmAnimal::build_model() {
 		}
 		tail = part(body, ball(0.09f, 0.15f), wool, Vector3(0.0, 0.72, -0.68)); // 小尾巴球
 	} else if (kind == 2) {
-		// —— 牛：白底箱体 + 黑色斑块 + 粉色鼻头 + 小短角 ——
-		Ref<Material> hide = mat_of(Color(0.90f, 0.88f, 0.84f));
-		Ref<Material> patch = mat_of(Color(0.16f, 0.15f, 0.15f));
-		Ref<Material> nose = mat_of(Color(0.85f, 0.62f, 0.60f));
-		Ref<Material> horn = mat_of(Color(0.80f, 0.74f, 0.60f));
-		part(body, box(0.72f, 0.72f, 1.25f), hide, Vector3(0.0, 0.82, 0.0));
-		part(body, box(0.30f, 0.34f, 0.02f), patch, Vector3(-0.365f, 0.86, 0.18)); // 左斑块
-		part(body, box(0.36f, 0.30f, 0.02f), patch, Vector3(0.365f, 0.78, -0.22)); // 右斑块
-		part(body, box(0.24f, 0.26f, 0.30f), patch, Vector3(0.10f, 1.22, -0.30)); // 背斑
+		// —— 奶牛：自然荷斯坦有机黑白花斑 + 歪眼罩斑块 + 额头白流星 + 腹底粉色乳房 + 双色小牛角 ——
+		Ref<Material> hide = mat_of(Color(0.95f, 0.94f, 0.91f));   // 温暖纯正牛奶白底色
+		Ref<Material> patch = mat_of(Color(0.13f, 0.12f, 0.13f));  // 柔和炭黑有机花斑
+		Ref<Material> nose = mat_of(Color(0.92f, 0.68f, 0.66f));   // 软嫩浅粉鼻口
+		Ref<Material> udder = mat_of(Color(0.93f, 0.74f, 0.72f));  // 腹下乳房粉色
+		Ref<Material> horn = mat_of(Color(0.85f, 0.80f, 0.68f));   // 象牙黄小短角
+		Ref<Material> hoof = mat_of(Color(0.25f, 0.23f, 0.22f));   // 蹄子
+
+		// 1. 躯干主干（白底）
+		part(body, box(0.72f, 0.72f, 1.25f), hide, Vector3(0.0f, 0.82f, 0.0f));
+
+		// 2. 有机黑白花斑（多层错落微椭圆包络，自然贴合躯干与背脊，消除硬切方块感）：
+		// (a) 左后臀大型花斑（由主斑与侧向小斑融合而成）
+		part(body, ball(0.26f, 0.48f), patch, Vector3(-0.355f, 0.85f, -0.22f), Vector3(0.25f, 1.15f, 1.35f));
+		part(body, ball(0.18f, 0.32f), patch, Vector3(-0.360f, 0.72f, -0.42f), Vector3(0.22f, 1.0f, 1.1f));
+		// (b) 右肩胛与颈前大鞍斑（从脊背自然斜跨右前胸）
+		part(body, ball(0.28f, 0.52f), patch, Vector3(0.355f, 0.88f, 0.26f), Vector3(0.25f, 1.15f, 1.35f));
+		part(body, ball(0.20f, 0.36f), patch, Vector3(0.360f, 0.70f, 0.05f), Vector3(0.22f, 0.95f, 1.1f));
+		// (c) 脊背中段不规则马鞍形黑斑（跨越背中线）
+		part(body, ball(0.24f, 0.44f), patch, Vector3(-0.06f, 1.17f, -0.05f), Vector3(1.35f, 0.25f, 1.25f));
+		part(body, ball(0.16f, 0.30f), patch, Vector3(0.12f, 1.17f, 0.15f), Vector3(1.15f, 0.25f, 1.1f));
+		// (d) 腹侧与肋骨处灵动的点缀圆斑（打破呆板对称）
+		part(body, ball(0.11f, 0.20f), patch, Vector3(-0.362f, 0.68f, 0.25f), Vector3(0.20f, 1.0f, 1.0f));
+		part(body, ball(0.09f, 0.16f), patch, Vector3(0.362f, 0.80f, -0.38f), Vector3(0.20f, 1.0f, 1.0f));
+
+		// 3. 腹底粉色乳房（奶牛标志性特征）
+		part(body, ball(0.16f, 0.24f), udder, Vector3(0.0f, 0.46f, -0.28f), Vector3(1.1f, 0.85f, 1.1f));
+		for (int ti = 0; ti < 4; ti++) {
+			Vector3 tp((ti % 2 == 0 ? -0.06f : 0.06f), 0.38f, (ti < 2 ? -0.23f : -0.33f));
+			part(body, stick(0.018f, 0.06f), udder, tp);
+		}
+
+		// 4. 奶牛头部
 		head = memnew(Node3D);
 		body->add_child(head);
-		head->set_position(Vector3(0.0, 0.98, 0.72));
-		part(head, box(0.40f, 0.42f, 0.42f), hide, Vector3(0.0, 0.0, 0.05));
-		part(head, box(0.30f, 0.20f, 0.12f), nose, Vector3(0.0, -0.10, 0.28)); // 粉鼻
-		part(head, stick(0.045f, 0.22f), horn, Vector3(-0.20f, 0.26, 0.0), Vector3(1, 1, 1), -0.5f);
-		part(head, stick(0.045f, 0.22f), horn, Vector3(0.20f, 0.26, 0.0), Vector3(1, 1, 1), 0.5f);
+		head->set_position(Vector3(0.0f, 0.98f, 0.72f));
+		part(head, box(0.40f, 0.42f, 0.42f), hide, Vector3(0.0f, 0.0f, 0.05f));
+		// 经典左侧歪眼罩黑斑（右侧保留大片白额与白星，生动可爱）
+		part(head, ball(0.16f, 0.28f), patch, Vector3(-0.14f, 0.09f, 0.16f), Vector3(1.0f, 1.1f, 0.4f));
+		// 黑色小牛角底座 + 奶黄小尖角
+		part(head, stick(0.045f, 0.22f), horn, Vector3(-0.20f, 0.26f, 0.0f), Vector3(1.0f, 1.0f, 1.0f), -0.5f);
+		part(head, stick(0.045f, 0.22f), horn, Vector3(0.20f, 0.26f, 0.0f), Vector3(1.0f, 1.0f, 1.0f), 0.5f);
+		// 憨厚圆润的粉色鼻头
+		part(head, box(0.32f, 0.20f, 0.14f), nose, Vector3(0.0f, -0.10f, 0.28f));
+		// 鼻孔细节
+		part(head, ball(0.024f, 0.03f), patch, Vector3(-0.08f, -0.10f, 0.355f));
+		part(head, ball(0.024f, 0.03f), patch, Vector3(0.08f, -0.10f, 0.355f));
+
+		// 5. 四肢与蹄子（左前腿黑、右前腿白袜，黑白交错）
 		for (int i = 0; i < 4; i++) {
-			Vector3 lp(i % 2 == 0 ? -0.24f : 0.24f, 0.23, i < 2 ? 0.42f : -0.42f);
-			legs[i] = part(body, stick(0.075f, 0.46f), patch, lp);
+			Vector3 lp(i % 2 == 0 ? -0.24f : 0.24f, 0.23f, i < 2 ? 0.42f : -0.42f);
+			Ref<Material> leg_mat = (i == 0 || i == 3) ? patch : hide;
+			legs[i] = part(body, stick(0.075f, 0.46f), leg_mat, lp);
+			// 黑色小蹄子
+			part(body, box(0.14f, 0.08f, 0.15f), hoof, lp + Vector3(0.0f, -0.21f, 0.01f));
 		}
-		tail = part(body, stick(0.035f, 0.55f), patch, Vector3(0.0, 0.85, -0.68), Vector3(1, 1, 1), 0.6f); // 尾
+		// 尾巴（顶端白、尾梢黑绒球）
+		tail = part(body, stick(0.035f, 0.52f), hide, Vector3(0.0f, 0.85f, -0.68f), Vector3(1.0f, 1.0f, 1.0f), 0.6f);
+		part(tail, ball(0.055f, 0.10f), patch, Vector3(0.0f, -0.28f, 0.0f));
 	} else {
 		// —— 猫 / 狗：小号身材，猫橘狗棕；狗垂耳猫尖耳，狗摇尾上翘 ——
 		bool cat = (kind == 0);
@@ -207,7 +248,9 @@ void FarmAnimal::build_model() {
 	if (tail != nullptr) {
 		tail_rest_rot = tail->get_rotation();
 	}
-	head_rest_pos = head->get_position();
+	if (head != nullptr) {
+		head_rest_pos = head->get_position();
+	}
 
 	// 物理碰撞体：挂载在 body 节点下，随身体旋转实时同步朝向；设置在 Layer 2
 	collider_body = memnew(AnimatableBody3D);
@@ -284,10 +327,17 @@ float FarmAnimal::ground_y(float p_x, float p_z) {
 void FarmAnimal::pick_target() {
 	std::uniform_real_distribution<float> ang(0.0f, 6.2831f);
 	std::uniform_real_distribution<float> rad(2.0f, home_radius);
-	for (int tries = 0; tries < 8; tries++) {
+	for (int tries = 0; tries < 12; tries++) {
 		float a = ang(rng);
 		float r = rad(rng);
 		Vector2 t = home + Vector2(std::cos(a), std::sin(a)) * r;
+
+		// 严禁小动物进入木屋室内与门廊区域 (中心 12, 8，半径 6.2m 内)
+		float d_cabin = Vector2(t.x - 12.0f, t.y - 8.0f).length();
+		if (d_cabin < 6.2f) {
+			continue;
+		}
+
 		float gy = ground_y(t.x, t.y);
 		// 不下水（水面 -0.55 留 0.1 余量）、不上房顶（不高于出生地 1.5m）
 		if (gy < 1e8f && gy > -0.45f && (home_ground_y < -1e8f || gy < home_ground_y + 1.5f)) {
@@ -484,6 +534,15 @@ void FarmAnimal::tick_behavior(float p_delta, float p_night, float p_wet) {
 				}
 			}
 			Vector2 dir = to / dist;
+			// 严格禁止穿墙进木屋：前方 0.8m 若进入木屋半径 6.0m 内，立即停步重新觅径
+			Vector2 next_p(gp.x + dir.x * 0.8f, gp.z + dir.y * 0.8f);
+			if (Vector2(next_p.x - 12.0f, next_p.y - 8.0f).length() < 6.0f) {
+				state = 0;
+				state_t = 0.5f;
+				pick_target();
+				break;
+			}
+
 			// 前方落点可站才迈步（防走下水/悬崖）
 			float ahead_y = ground_y(gp.x + dir.x * 0.6f, gp.z + dir.y * 0.6f);
 			if (ahead_y > 1e8f || ahead_y < -0.45f) {
@@ -544,5 +603,87 @@ void FarmAnimal::tick_behavior(float p_delta, float p_night, float p_wet) {
 				state = 1;
 			}
 		} break;
+	}
+
+	// 踩过发光蘑菇：带走荧光微粒在身子周围缓慢飘动，4秒后逐渐消失
+	update_shroom_glow_trail(p_delta);
+}
+
+void FarmAnimal::build_shroom_glow_trail() {
+	if (shroom_glow_trail != nullptr) {
+		return;
+	}
+	shroom_glow_trail = memnew(CPUParticles3D);
+	shroom_glow_trail->set_name("AnimalShroomGlowTrail");
+	shroom_glow_trail->set_use_local_coordinates(false); // 世界坐标系发射：动物走动时荧光微粒在身周和身后缓浮飘动
+
+	Ref<SphereMesh> mote;
+	mote.instantiate();
+	mote->set_radius(0.026f);
+	mote->set_height(0.052f);
+	mote->set_radial_segments(6);
+	mote->set_rings(3);
+
+	Ref<StandardMaterial3D> m;
+	m.instantiate();
+	m->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	m->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	m->set_albedo(Color(0.65f, 1.0f, 0.75f, 1.0f));
+	mote->set_material(m);
+
+	Ref<Gradient> ramp;
+	ramp.instantiate();
+	ramp->add_point(0.0f, Color(0.70f, 1.0f, 0.80f, 0.0f));
+	ramp->add_point(0.20f, Color(0.70f, 1.0f, 0.80f, 0.95f));
+	ramp->add_point(0.65f, Color(0.55f, 0.95f, 0.70f, 0.75f));
+	ramp->add_point(1.0f, Color(0.40f, 0.85f, 0.60f, 0.0f));
+
+	shroom_glow_trail->set_amount(22);
+	shroom_glow_trail->set_lifetime(2.6f);
+	shroom_glow_trail->set_lifetime_randomness(0.35f);
+	shroom_glow_trail->set_randomness_ratio(0.4f);
+	shroom_glow_trail->set_mesh(mote);
+	shroom_glow_trail->set_color_ramp(ramp);
+	shroom_glow_trail->set_direction(Vector3(0.0f, 1.0f, 0.0f));
+	shroom_glow_trail->set_spread(90.0f);
+	shroom_glow_trail->set_gravity(Vector3(0.0f, 0.04f, 0.0f));
+	shroom_glow_trail->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.05f);
+	shroom_glow_trail->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.18f);
+	shroom_glow_trail->set_param_min(CPUParticles3D::PARAM_SCALE, 0.7f);
+	shroom_glow_trail->set_param_max(CPUParticles3D::PARAM_SCALE, 1.35f);
+	shroom_glow_trail->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_SPHERE);
+	float r = (kind == 2) ? 0.85f : ((kind == 3) ? 0.65f : 0.45f);
+	float body_y = (kind == 2) ? 0.75f : ((kind == 3) ? 0.55f : 0.35f);
+	shroom_glow_trail->set_emission_sphere_radius(r);
+	shroom_glow_trail->set_position(Vector3(0.0f, body_y, 0.0f));
+	shroom_glow_trail->set_emitting(false);
+	add_child(shroom_glow_trail);
+}
+
+void FarmAnimal::update_shroom_glow_trail(float p_delta) {
+	TerrainBuilder *tb = nullptr;
+	if (get_parent() != nullptr) {
+		tb = Object::cast_to<TerrainBuilder>(get_parent()->get_node_or_null(NodePath("Terrain")));
+		if (tb == nullptr) {
+			tb = Object::cast_to<TerrainBuilder>(get_parent()->get_node_or_null(NodePath("TerrainBuilder")));
+		}
+	}
+	Vector3 gp = get_global_position();
+	if (tb != nullptr && tb->is_near_glowing_mushroom(gp, 1.35f)) {
+		shroom_glow_timer = 4.0f;
+	}
+
+	if (shroom_glow_timer > 0.0f) {
+		shroom_glow_timer -= p_delta;
+		if (shroom_glow_trail == nullptr) {
+			build_shroom_glow_trail();
+		}
+		if (shroom_glow_trail != nullptr) {
+			shroom_glow_trail->set_emitting(true);
+			float ratio = Math::clamp(shroom_glow_timer / 4.0f, 0.0f, 1.0f);
+			shroom_glow_trail->set_amount(Math::max(2, (int)(12.0f * ratio)));
+		}
+	} else if (shroom_glow_trail != nullptr && shroom_glow_trail->is_emitting()) {
+		shroom_glow_trail->set_emitting(false);
 	}
 }

@@ -62,6 +62,7 @@ private:
 	AudioStreamPlayer *birds = nullptr;     // 晨曦鸟鸣循环（birds_morning.mp3）
 	AudioStreamPlayer *water = nullptr;     // 湖水拍岸循环（water_lap.mp3）
 	AudioStreamPlayer *hearth = nullptr;    // 壁炉柴火循环（cabin_fireplace.mp3）
+	AudioStreamPlayer *bgm = nullptr;       // 治愈轻柔背景音乐（bgm_kalimba_night.wav）
 
 	Ref<AudioStream> snd_wind;         // 明亮风声循环（优先加载 wind_breeze.mp3）
 	Ref<AudioStreamWAV> snd_wind_snow; // 闷风声循环
@@ -70,6 +71,7 @@ private:
 	Ref<AudioStream> snd_birds;        // 晨曦鸟鸣（birds_morning.mp3）
 	Ref<AudioStream> snd_water;        // 湖水拍岸（water_lap.mp3）
 	Ref<AudioStream> snd_hearth;       // 壁炉柴火（cabin_fireplace.mp3）
+	Ref<AudioStream> snd_bgm;          // 治愈背景音乐（bgm_kalimba_night.wav）
 
 	float wind_gain = 0.0f;   // 各层线性增益（每帧向目标平滑趋近）
 	float snow_gain = 0.0f;

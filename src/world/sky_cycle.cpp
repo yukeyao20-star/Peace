@@ -9,6 +9,7 @@
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/environment.hpp>
 #include <godot_cpp/classes/gpu_particles3d.hpp>
+#include <godot_cpp/classes/material.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/multi_mesh.hpp>
@@ -30,6 +31,7 @@
 #include <godot_cpp/variant/aabb.hpp>
 #include <godot_cpp/variant/basis.hpp>
 #include <godot_cpp/variant/color.hpp>
+#include <godot_cpp/variant/string_name.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 #include <godot_cpp/variant/variant.hpp>
 #include <godot_cpp/variant/vector3.hpp>
@@ -58,6 +60,8 @@ void SkyCycle::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_day_length", "p_secs"), &SkyCycle::set_day_length);
 	ClassDB::bind_method(D_METHOD("get_day_length"), &SkyCycle::get_day_length);
 	ClassDB::bind_method(D_METHOD("get_day_count"), &SkyCycle::get_day_count);
+	// QA / 调试用：查询某个世界坐标点是否在屋檐下（与降水粒子剔除同一套遮蔽体）
+	ClassDB::bind_method(D_METHOD("is_sheltered", "world_pos"), &SkyCycle::is_sheltered);
 	ClassDB::bind_method(D_METHOD("get_phase_name"), &SkyCycle::get_phase_name);
 	ClassDB::bind_method(D_METHOD("get_moon_phase"), &SkyCycle::get_moon_phase);
 	ClassDB::bind_method(D_METHOD("get_night_factor"), &SkyCycle::get_night_factor);
@@ -107,6 +111,7 @@ void SkyCycle::_notification(int p_what) {
 			fireflies = Object::cast_to<CPUParticles3D>(get_node_or_null(fireflies_path));
 			build_rain();
 			build_snow();
+			build_precip_shelter(); // 必须在两份降水材质都建好之后
 			build_stars();
 			build_moon();
 			apply();
@@ -125,9 +130,9 @@ void SkyCycle::_notification(int p_what) {
 			if (weather_timer <= 0.0f) {
 				pick_next_weather();
 			}
-			cloud = Math::move_toward(cloud, cloud_target, (float)delta * 0.22f);
-			rain = Math::move_toward(rain, rain_target, (float)delta * 0.22f);
-			snow = Math::move_toward(snow, snow_target, (float)delta * 0.15f); // 雪来得更缓
+			cloud = Math::move_toward(cloud, cloud_target, (float)delta * 0.18f);
+			rain = Math::move_toward(rain, rain_target, (float)delta * 0.18f);
+			snow = Math::move_toward(snow, snow_target, (float)delta * 0.045f); // 积雪与消融过渡放缓3倍，从容自然
 			apply();
 			// —— 星空缓慢漂移（北极星附近的视运动，极简版绕竖轴慢转）——
 			if (stars != nullptr) {
@@ -214,7 +219,7 @@ void SkyCycle::pick_next_weather() {
 			cloud_target = 0.95f;
 			rain_target = 0.0f;
 			snow_target = 1.0f;
-			dur(20.0f, 35.0f);
+			dur(45.0f, 85.0f);
 			break;
 	}
 }
@@ -300,7 +305,9 @@ void SkyCycle::apply() {
 			const float az = 2.2f;
 			const Vector3 dir(std::cos(az) * std::cos(elev), std::sin(elev),
 					std::sin(az) * std::cos(elev));
-			moon->set_position(dir * 240.0f); // 星穹 260m 之内，确保挡在星星前面
+			Vector3 mpos = dir * 240.0f;
+			moon->set_position(mpos); // 星穹 260m 之内，确保挡在星星前面
+			moon->look_at(Vector3(0.0f, 0.0f, 0.0f), Vector3(0.0f, 1.0f, 0.0f)); // 始终正面朝向世界中心与地面观察者
 		}
 		const float alpha = night * (1.0f - cloud * 0.92f);
 		if (moon_shader_mat.is_valid()) {
@@ -390,15 +397,123 @@ void SkyCycle::apply() {
 	}
 }
 
+// 降水粒子材质：手写 billboard + 屋檐遮蔽，见 assets/precip.gdshader 文件头。
+// 加载失败时退回 StandardMaterial3D（雨雪会穿屋顶，但不至于没有雨）。
+// fixed_y 是材质级 uniform，所以雨丝与雪花必须各持一份材质。
+static Ref<Material> make_precip_material(Ref<ShaderMaterial> &r_out, bool p_fixed_y, const char *p_tag) {
+	Ref<Resource> res = ResourceLoader::get_singleton()->load("res://assets/precip.gdshader");
+	Ref<Shader> shader = Ref<Shader>(Object::cast_to<Shader>(res.ptr()));
+	if (shader.is_valid()) {
+		r_out.instantiate();
+		r_out->set_shader(shader);
+		r_out->set_shader_parameter("fixed_y", p_fixed_y);
+		r_out->set_shader_parameter("tint", Color(1.0f, 1.0f, 1.0f, 1.0f));
+		return r_out;
+	}
+	WARN_PRINT(String("SkyCycle: res://assets/precip.gdshader 加载失败（") + String(p_tag)
+			+ "），降水退回 StandardMaterial3D —— 雨雪会穿屋顶落进屋里。");
+	Ref<StandardMaterial3D> fb;
+	fb.instantiate();
+	fb->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	fb->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	fb->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true);
+	fb->set_billboard_mode(p_fixed_y ? BaseMaterial3D::BILLBOARD_FIXED_Y : BaseMaterial3D::BILLBOARD_ENABLED);
+	fb->set_flag(BaseMaterial3D::FLAG_BILLBOARD_KEEP_SCALE, true);
+	return fb;
+}
+
+// 采集木屋屋顶遮蔽体（局部空间盒体），写进降水着色器。
+// 木屋挂在 World/Homestead/Cabin；SkyCycle 与它同级挂在 World 下。
+void SkyCycle::build_precip_shelter() {
+	if (precip_shelter_ready || precip_mat.is_null()) {
+		return;
+	}
+	Node *world = get_parent();
+	Node3D *cabin = (world != nullptr)
+			? Object::cast_to<Node3D>(world->get_node_or_null(NodePath("Homestead/Cabin")))
+			: nullptr;
+	if (cabin == nullptr) {
+		WARN_PRINT("SkyCycle: 找不到 Homestead/Cabin，屋檐遮蔽未启用（雨雪会落进屋里）");
+		return;
+	}
+
+	Transform3D gt = cabin->get_global_transform();
+	shelter_origin = gt.get_origin();
+	// 木屋只有绕 Y 的旋转：局部 +X 在世界里的方向是 (cos yaw, 0, -sin yaw)
+	Vector3 xw = gt.basis.get_column(0);
+	float yaw = Math::atan2(-xw.z, xw.x);
+	shelter_cos = Math::cos(yaw);
+	shelter_sin = Math::sin(yaw);
+
+	auto add_box = [&](const Vector3 &lo, const Vector3 &hi, const Vector4 &slope) {
+		if (shelter_count >= MAX_SHELTERS) {
+			return;
+		}
+		shelters[shelter_count].lo = lo;
+		shelters[shelter_count].hi = hi;
+		shelters[shelter_count].slope = slope;
+		shelter_count++;
+	};
+
+	// 0 号：主屋 gable 坡屋顶。PrismMesh 的屋脊沿局部 Z 挤出，所以屋面沿 ±X 下斜：
+	//        屋脊 (x=0) y=5.8、檐口 (x=±4.4) y=3.8 → 斜率 2.0/4.4。
+	//        lo.y 取到地面以下，保证"从屋面到地板"整段都被剔除。
+	add_box(Vector3(-4.4f, -0.6f, -3.8f), Vector3(4.4f, 5.8f, 3.8f),
+			Vector4(2.0f / 4.4f, 0.0f, 0.0f, 0.0f));
+	// 1 号：东侧柴棚（单坡顶 12°，用平顶保守值；棚子小，0.3m 误差看不出来）
+	add_box(Vector3(4.0f, -0.6f, -3.4f), Vector3(7.46f, 3.2f, 0.6f),
+			Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+	// 2 号：南侧门廊雨棚（PorchRoof 中心 y=3.0、板厚 0.14）
+	add_box(Vector3(-2.0f, -0.6f, 3.3f), Vector3(2.0f, 3.07f, 5.4f),
+			Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+
+	// 把遮蔽体写进两份降水材质（雨丝 + 雪花）
+	Ref<ShaderMaterial> mats[2] = { precip_mat, precip_mat_snow };
+	const char *names_min[MAX_SHELTERS] = { "smin0", "smin1", "smin2" };
+	const char *names_max[MAX_SHELTERS] = { "smax0", "smax1", "smax2" };
+	const char *names_slope[MAX_SHELTERS] = { "sslope0", "sslope1", "sslope2" };
+	for (int m = 0; m < 2; ++m) {
+		if (mats[m].is_null()) {
+			continue;
+		}
+		mats[m]->set_shader_parameter("shelter_count", shelter_count);
+		mats[m]->set_shader_parameter("shelter_origin", shelter_origin);
+		mats[m]->set_shader_parameter("shelter_cos", shelter_cos);
+		mats[m]->set_shader_parameter("shelter_sin", shelter_sin);
+		for (int i = 0; i < shelter_count; ++i) {
+			mats[m]->set_shader_parameter(StringName(names_min[i]), shelters[i].lo);
+			mats[m]->set_shader_parameter(StringName(names_max[i]), shelters[i].hi);
+			mats[m]->set_shader_parameter(StringName(names_slope[i]), shelters[i].slope);
+		}
+	}
+	precip_shelter_ready = true;
+}
+
+bool SkyCycle::is_sheltered(const Vector3 &p_world) const {
+	if (shelter_count <= 0) {
+		return false;
+	}
+	Vector3 rel = p_world - shelter_origin;
+	// 世界 → 木屋局部（绕 Y 反转 yaw），与 precip.gdshader 里完全同一套算法
+	Vector3 lp(rel.x * shelter_cos - rel.z * shelter_sin,
+			rel.y,
+			rel.x * shelter_sin + rel.z * shelter_cos);
+	for (int i = 0; i < shelter_count; ++i) {
+		const ShelterBox &b = shelters[i];
+		if (lp.x <= b.lo.x || lp.x >= b.hi.x || lp.z <= b.lo.z || lp.z >= b.hi.z || lp.y <= b.lo.y) {
+			continue;
+		}
+		float top = b.hi.y - b.slope.x * std::abs(lp.x - b.slope.y) - b.slope.z * std::abs(lp.z - b.slope.w);
+		if (lp.y < top) {
+			return true;
+		}
+	}
+	return false;
+}
+
 void SkyCycle::build_rain() {
-	// 雨丝材质：竖直细长面片，Y 轴朝向相机
-	Ref<StandardMaterial3D> mat;
-	mat.instantiate();
-	mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
-	mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
-	mat->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true);
-	mat->set_billboard_mode(BaseMaterial3D::BILLBOARD_FIXED_Y);
-	mat->set_flag(BaseMaterial3D::FLAG_BILLBOARD_KEEP_SCALE, true);
+	// 雨丝材质：竖直细长面片，Y 轴朝向相机（fixed_y = true）
+	Ref<Material> mat = make_precip_material(precip_mat, true, "雨丝");
 
 	Ref<QuadMesh> quad;
 	quad.instantiate();
@@ -437,12 +552,8 @@ void SkyCycle::build_rain() {
 
 void SkyCycle::build_snow() {
 	// 雪花：小圆片、满幅 billboard、慢落 + 四散飘（spread 大制造横漂）
-	Ref<StandardMaterial3D> mat;
-	mat.instantiate();
-	mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
-	mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
-	mat->set_billboard_mode(BaseMaterial3D::BILLBOARD_ENABLED);
-	mat->set_flag(BaseMaterial3D::FLAG_BILLBOARD_KEEP_SCALE, true);
+	// fixed_y = false：雪花在各个角度看都是同一片（雨丝才需要锁竖）
+	Ref<Material> mat = make_precip_material(precip_mat_snow, false, "雪花");
 
 	Ref<QuadMesh> flake;
 	flake.instantiate();
@@ -545,8 +656,8 @@ void SkyCycle::build_moon() {
 	if (moon_shader_mat.is_valid()) {
 		Ref<SphereMesh> sphere;
 		sphere.instantiate();
-		sphere->set_radius(8.0f); // 240m 外张角约 2.4°，比真实月亮略大、夜里足够醒目
-		sphere->set_height(16.0f);
+		sphere->set_radius(5.2f); // 再缩小约 23%，精致紧凑，绝不臃肿
+		sphere->set_height(10.4f);
 		sphere->set_radial_segments(48); // 月相明暗界线平滑需要更高细分
 		sphere->set_rings(24);
 		sphere->set_material(moon_shader_mat);
@@ -572,8 +683,8 @@ void SkyCycle::build_moon() {
 
 	Ref<SphereMesh> sphere;
 	sphere.instantiate();
-	sphere->set_radius(8.0f);  // 240m 外张角约 2.4°，比真实月亮略大、夜里足够醒目
-	sphere->set_height(16.0f);
+	sphere->set_radius(6.0f);  // 缩小兜底尺寸
+	sphere->set_height(12.0f);
 	sphere->set_radial_segments(24);
 	sphere->set_rings(12);
 	sphere->set_material(moon_mat);

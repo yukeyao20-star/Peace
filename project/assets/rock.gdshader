@@ -7,6 +7,7 @@
 // 这是礁石和岸边干石头的关键区别（参考实拍：水下的石头是暗的）。
 
 shader_type spatial;
+render_mode cull_disabled, depth_draw_always;
 
 uniform float mottle : hint_range(0.0, 1.0) = 0.46;       // 斑驳强度
 uniform float mottle_scale : hint_range(0.1, 12.0) = 3.6; // 斑驳密度（一块石头跨 3~5 个噪声格才看得见）

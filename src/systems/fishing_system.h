@@ -48,6 +48,13 @@ class FishingSystem : public Node {
 	bool f_prev = false;
 	bool near_shore = false;
 
+public:
+	int get_state() const { return state; }
+	bool is_charging() const { return charging; }
+	bool is_near_shore() const { return near_shore; }
+
+protected:
+
 	// —— 蓄力抛竿 ——
 	// 按住 F 蓄力（0→1 约 1.1s），松手按蓄力大小决定抛多远。
 	// 之前是"按一下 F 固定抛 5.2m"——玩家侧身站着就把浮漂丢草地上了。
@@ -55,6 +62,8 @@ class FishingSystem : public Node {
 	float charge = 0.0f;
 	static constexpr float CHARGE_TIME = 1.1f; // 蓄满所需秒数
 	Vector3 cast_origin;                       // 抛竿时玩家位置（走开就自动收竿）
+	bool f_consumed = false;                   // 本次按压已被收竿消耗，松开前不许再蓄力
+	float cast_cooldown = 0.0f;                // 收竿/结算后的短暂保护冷却（秒）
 
 	// 地形查询（懒查找一次）：用来确认落点真的在水里
 	class TerrainBuilder *terrain = nullptr;

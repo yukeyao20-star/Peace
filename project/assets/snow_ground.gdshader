@@ -59,6 +59,15 @@ void fragment() {
 			+ vnoise(w_pos.xz * 2.2) * 0.28;
 	float cov = smoothstep(1.0 - snow_amount - 0.10, 1.0 - snow_amount + 0.10, cov_n)
 			* slope_m * height_m * snow_amount;
+
+	// 高山常年积雪（山顶雪盖）：海拔高于 13.5m 的高山地带自然凝结常年白雪，
+	// 随海拔升高覆盖越厚，在山峰与山脊处形成巍峨壮丽的雪山胜景（陡峭崖壁不易挂雪，平缓山脊与山顶纯白如玉）
+	float mountain_snow_edge = 14.5 + (cov_n - 0.5) * 4.5; // 随噪声自然参差生长的雪线
+	float peak_snow = smoothstep(mountain_snow_edge - 1.5, mountain_snow_edge + 4.5, w_pos.y);
+	float peak_slope = smoothstep(0.42, 0.72, up); // 稍微陡一点的山肩也能附着轻微冰雪
+	float mountain_cov = peak_snow * peak_slope;
+	cov = max(cov, mountain_cov);
+
 	// 细颗粒亮度扰动，防大面积纯色死白
 	float grain = vnoise(w_pos.xz * 5.0) - 0.5;
 	vec3 snow = snow_color * (1.0 + grain * 0.05);

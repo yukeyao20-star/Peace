@@ -10,6 +10,7 @@
 
 #include "player.h"
 #include "sky_cycle.h"
+#include "../systems/mesh_util.h"
 
 #include <cmath>
 #include <cstdio>
@@ -17,8 +18,12 @@
 #include <vector>
 
 #include <godot_cpp/classes/array_mesh.hpp>
+#include <godot_cpp/classes/audio_stream.hpp>
+#include <godot_cpp/classes/audio_stream_player3d.hpp>
+#include <godot_cpp/classes/box_shape3d.hpp>
 #include <godot_cpp/classes/character_body3d.hpp>
 #include <godot_cpp/classes/collision_shape3d.hpp>
+#include <godot_cpp/classes/concave_polygon_shape3d.hpp>
 #include <godot_cpp/classes/cpu_particles3d.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/cylinder_shape3d.hpp>
@@ -195,6 +200,7 @@ Ref<ArrayMesh> make_rock_mesh(int p_seg, int p_rings, float p_radius, float p_sq
 	st.instantiate();
 	st->begin(Mesh::PRIMITIVE_TRIANGLES);
 	st->set_smooth_group(-1); // 逐面法线 → flat shading（石头要的就是硬切面）
+	st->set_color(Color(0.46f, 0.44f, 0.41f)); // 默认自然花岗岩暖灰底色（防 MeshInstance3D 单体无 MultiMesh COLOR 时变成纯白）
 	for (int j = 0; j < p_rings; j++) {
 		for (int i = 0; i < p_seg; i++) {
 			const Vector3 &a = grid[j][i];
@@ -209,6 +215,91 @@ Ref<ArrayMesh> make_rock_mesh(int p_seg, int p_rings, float p_radius, float p_sq
 			if (j <= p_rings - 2) { // 底极点处 c==d
 				st->add_vertex(a);
 				st->add_vertex(c);
+				st->add_vertex(d);
+			}
+		}
+	}
+	st->generate_normals();
+	return st->commit();
+}
+
+// 灌木丛精细网格：参照石头(make_rock_mesh)与叶团(make_leaf_blob_mesh)的高标准，
+// 采用多层 FBM 噪声径向扰动，生成蓬松自然、团簇凹凸分明的低模有机灌木丛。
+// 配合顶底/侧向顶点色与叶面深浅色阶阴影，彻底消除简陋圆球塑料感。
+Ref<ArrayMesh> make_bush_mesh(float p_radius = 0.5f, float p_squash = 0.74f,
+		float p_amp = 0.32f, float p_freq = 1.6f, int p_seed = 8848,
+		int p_seg = 14, int p_rings = 9) {
+	Ref<FastNoiseLite> noise;
+	noise.instantiate();
+	noise->set_noise_type(FastNoiseLite::TYPE_SIMPLEX_SMOOTH);
+	noise->set_seed(p_seed);
+	noise->set_frequency(p_freq);
+	noise->set_fractal_type(FastNoiseLite::FRACTAL_FBM);
+	noise->set_fractal_octaves(3);
+	noise->set_fractal_gain(0.50f);
+	noise->set_fractal_lacunarity(2.0f);
+
+	Ref<FastNoiseLite> tint;
+	tint.instantiate();
+	tint->set_noise_type(FastNoiseLite::TYPE_SIMPLEX_SMOOTH);
+	tint->set_seed(p_seed + 1234);
+	tint->set_frequency(p_freq * 2.2f);
+	tint->set_fractal_type(FastNoiseLite::FRACTAL_FBM);
+	tint->set_fractal_octaves(2);
+	tint->set_fractal_lacunarity(2.0f);
+
+	std::vector<std::vector<Vector3>> grid(p_rings + 1);
+	std::vector<std::vector<Vector3>> bushc(p_rings + 1);
+
+	for (int j = 0; j <= p_rings; j++) {
+		float phi = (float)j / (float)p_rings * Math::PI;
+		float sy = Math::cos(phi);
+		float sr = Math::sin(phi);
+		grid[j].resize(p_seg + 1);
+		bushc[j].resize(p_seg + 1);
+		for (int i = 0; i <= p_seg; i++) {
+			float th = (float)i / (float)p_seg * Math::TAU;
+			Vector3 dir(sr * Math::cos(th), sy, sr * Math::sin(th));
+			float n = noise->get_noise_3d(dir.x * 1.8f, dir.y * 1.8f, dir.z * 1.8f);
+			// 底部微微收拢扎地
+			float base_taper = (sy < -0.2f) ? (1.0f - (-sy - 0.2f) * 0.35f) : 1.0f;
+			Vector3 p = dir * (p_radius * (1.0f + p_amp * n) * base_taper);
+			p.y *= p_squash;
+			grid[j][i] = p;
+
+			// 顶点明暗与叶片色阶：顶部受光黄绿明亮，下腹部自然环境阴影
+			float d = tint->get_noise_3d(dir.x * 2.5f, dir.y * 2.5f, dir.z * 2.5f);
+			float light_factor = Math::clamp(0.55f + 0.35f * sy + 0.30f * d, 0.0f, 1.0f);
+			Vector3 c_dark(0.78f, 0.90f, 0.65f); // 阴影深绿
+			Vector3 c_bright(1.15f, 1.20f, 0.78f); // 高光嫩黄绿
+			bushc[j][i] = c_dark.lerp(c_bright, light_factor);
+		}
+	}
+
+	Ref<SurfaceTool> st;
+	st.instantiate();
+	st->begin(Mesh::PRIMITIVE_TRIANGLES);
+	// 柔和面切角法线（介于硬石头与纯软球之间，保留低模簇块的质感）
+	for (int j = 0; j < p_rings; j++) {
+		for (int i = 0; i < p_seg; i++) {
+			const Vector3 &a = grid[j][i];
+			const Vector3 &b = grid[j][i + 1];
+			const Vector3 &c = grid[j + 1][i + 1];
+			const Vector3 &d = grid[j + 1][i];
+			if (j >= 1) {
+				st->set_color(Color(bushc[j][i].x, bushc[j][i].y, bushc[j][i].z));
+				st->add_vertex(a);
+				st->set_color(Color(bushc[j][i + 1].x, bushc[j][i + 1].y, bushc[j][i + 1].z));
+				st->add_vertex(b);
+				st->set_color(Color(bushc[j + 1][i + 1].x, bushc[j + 1][i + 1].y, bushc[j + 1][i + 1].z));
+				st->add_vertex(c);
+			}
+			if (j <= p_rings - 2) {
+				st->set_color(Color(bushc[j][i].x, bushc[j][i].y, bushc[j][i].z));
+				st->add_vertex(a);
+				st->set_color(Color(bushc[j + 1][i + 1].x, bushc[j + 1][i + 1].y, bushc[j + 1][i + 1].z));
+				st->add_vertex(c);
+				st->set_color(Color(bushc[j + 1][i].x, bushc[j + 1][i].y, bushc[j + 1][i].z));
 				st->add_vertex(d);
 			}
 		}
@@ -774,7 +865,9 @@ CPUParticles3D *make_spore_puff(const Vector3 &p_pos) {
 // ---------------------------------------------------------------- 基础
 
 void TerrainBuilder::_bind_methods() {
-	// 纯运行时生成器，暂不暴露 Inspector 属性；想调地图改 terrain_builder.h 里的参数
+	ClassDB::bind_method(D_METHOD("is_on_frozen_lake", "x", "z", "y"), &TerrainBuilder::is_on_frozen_lake);
+	ClassDB::bind_method(D_METHOD("is_in_bush", "x", "z", "y"), &TerrainBuilder::is_in_bush);
+	ClassDB::bind_method(D_METHOD("get_terrain_height", "x", "z"), &TerrainBuilder::get_terrain_height);
 }
 
 void TerrainBuilder::_notification(int p_what) {
@@ -787,6 +880,8 @@ void TerrainBuilder::_notification(int p_what) {
 			}
 			build_terrain();
 			build_water();
+			build_mountain_stream();
+			build_stream_bridge();
 			build_vegetation();
 			// 世界生成完之后还有一件轻量的常驻工作：按昼夜驱动蘑菇夜光
 			set_process(true);
@@ -951,6 +1046,67 @@ void TerrainBuilder::update_sky_driven() {
 			b.mat->set_shader_parameter("alpha", v); // 雪毯：随所在档位淡入，无雪隐形
 		}
 	}
+	// —— 湖泊与溪流水面雪天同步结冰与天气驱动 ——
+	if (stream_mat.is_valid()) {
+		stream_mat->set_shader_parameter("freeze_amount", snow);
+		stream_mat->set_shader_parameter("rain_amount", rain);
+		if (sky_cache != nullptr) {
+			stream_mat->set_shader_parameter("sun_dir", sky_cache->get_sun_dir());
+		}
+	}
+	bool is_frozen = (snow >= 0.20f);
+	if (lake_ice_col != nullptr) {
+		lake_ice_col->set_collision_layer_value(1, is_frozen);
+		lake_ice_col->set_collision_mask_value(1, is_frozen);
+	}
+	if (stream_ice_col != nullptr) {
+		stream_ice_col->set_collision_layer_value(1, is_frozen);
+		stream_ice_col->set_collision_mask_value(1, is_frozen);
+	}
+}
+
+// 湖面与小溪结冰判定：雪量 >= 0.20f 时水面凝结成冰，玩家踏上冰面进入滑冰状态
+bool TerrainBuilder::is_on_frozen_lake(float x, float z, float y) const {
+	if (sky_cache == nullptr) {
+		Node *p = get_parent();
+		if (p != nullptr) {
+			sky_cache = Object::cast_to<SkyCycle>(p->get_node_or_null(NodePath("SkyCycle")));
+		}
+	}
+	if (sky_cache == nullptr || sky_cache->get_snow_amount() < 0.20f) {
+		return false;
+	}
+
+	// 1. 大湖结冰判定：落在湖泊水体范围内（水深大于 0.12m）且脚底高度在冰面附近
+	float depth = water_depth_at(x, z);
+	if (depth > 0.12f && y >= water_level - 0.40f && y <= water_level + 0.65f) {
+		return true;
+	}
+
+	// 2. 高山小溪结冰判定：落在小溪水槽范围 (dist < 1.8m) 且脚底在小溪流面附近
+	float s_dist, s_t, s_wy;
+	get_stream_spline(x, z, s_dist, s_t, s_wy);
+	if (s_dist < 1.75f && s_t >= 0.0f && s_t <= 1.0f) {
+		if (y >= s_wy - 0.40f && y <= s_wy + 0.65f) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+// 检查某个物体是否在发光蘑菇附近走过
+bool TerrainBuilder::is_near_glowing_mushroom(const Vector3 &p_pos, float p_dist_thresh) const {
+	float thresh_sq = p_dist_thresh * p_dist_thresh;
+	for (const Vector3 &sp : shroom_positions) {
+		float dx = p_pos.x - sp.x;
+		float dz = p_pos.z - sp.z;
+		float dy = Math::abs(p_pos.y - sp.y);
+		if (dy < 1.6f && (dx * dx + dz * dz) < thresh_sq) {
+			return true;
+		}
+	}
+	return false;
 }
 
 // ------------------------------------------------------------- 高度场
@@ -981,6 +1137,70 @@ float TerrainBuilder::fbm(float x, float z) const {
 	return f / 1.75f;
 }
 
+// 高山溪流样条折线段与水面标高计算：
+// 1. 高山瀑布源头 (110, 110, y=22.0m) 汇集大雪山巅泉流，流至悬崖顶缘出水口 (100, 100, y=18.0m)；
+// 2. 贴壁倾泻 15.0m 飞流直下跌入瀑布深潭 (92, 92, y=3.0m)，浪花激荡；
+// 3. 奔腾小河经由 (78, 82, y=2.0m) 与 (56, 72, y=0.8m) 下切出自然深凹河谷；
+// 4. 经由木拱桥河口 (34, 62.5, y=-0.55m) 顺畅汇入东北大湖 (18, 56, y=-0.55m)
+void TerrainBuilder::get_stream_spline(float x, float z, float &r_dist, float &r_t, float &r_water_y) const {
+	const Vector2 pts[7] = {
+		Vector2(110.0f, 110.0f), // P0: 雪山峰顶之泉
+		Vector2(100.0f, 100.0f), // P1: 峭壁瀑布跌水顶口
+		Vector2(92.0f, 92.0f),   // P2: 瀑布底潭水面
+		Vector2(78.0f, 82.0f),   // P3: 瀑布深潭泄流河道
+		Vector2(56.0f, 72.0f),   // P4: 奔流小河中游
+		Vector2(38.0f, 64.0f),   // P5: 小河汇流湖口 (达到 -0.55m 大湖水面标高)
+		Vector2(18.0f, 56.0f)    // P6: 深入浩瀚大湖
+	};
+	const float seg_lens[6] = { 14.14f, 11.31f, 17.20f, 24.17f, 19.70f, 21.54f };
+	float lens[7];
+	lens[0] = 0.0f;
+	for (int i = 0; i < 6; ++i) {
+		lens[i + 1] = lens[i] + seg_lens[i];
+	}
+	const float total_l = lens[6];
+
+	Vector2 p(x, z);
+	float min_d = 1e9f;
+	float best_t = 0.0f;
+	int best_seg = 0;
+	float best_seg_t = 0.0f;
+
+	for (int i = 0; i < 6; ++i) {
+		Vector2 a = pts[i];
+		Vector2 b = pts[i + 1];
+		Vector2 ab = b - a;
+		float l2 = ab.length_squared();
+		float seg_t = l2 > 0.001f ? Math::clamp((p - a).dot(ab) / l2, 0.0f, 1.0f) : 0.0f;
+		Vector2 proj = a + ab * seg_t;
+		float d = (p - proj).length();
+		if (d < min_d) {
+			min_d = d;
+			best_seg = i;
+			best_seg_t = seg_t;
+			best_t = (lens[i] + seg_t * seg_lens[i]) / total_l;
+		}
+	}
+	r_dist = min_d;
+	r_t = best_t;
+
+	// 分段水面标高：
+	// 段0 (P0->P1): 雪山顶泉水奔涌 22.0m -> 18.0m
+	// 段1 (P1->P2): 峭壁瀑布倾泻 18.0m -> 3.0m (落差 15.0m)
+	// 段2 (P2->P3): 瀑布底潭出口缓降 3.0m -> 2.0m
+	// 段3 (P3->P4): 小河峡谷奔流 2.0m -> 0.8m
+	// 段4 (P4->P5): 河口流入湖湾 0.8m -> -0.55m
+	// 段5 (P5->P6): 汇入大湖平齐水面 -0.55m
+	const float node_y[7] = { 22.0f, 18.0f, 3.0f, 2.0f, 0.8f, -0.55f, -0.55f };
+	r_water_y = Math::lerp(node_y[best_seg], node_y[best_seg + 1], best_seg_t);
+}
+
+bool TerrainBuilder::is_near_stream(float x, float z, float margin) const {
+	float d, t, wy;
+	get_stream_spline(x, z, d, t, wy);
+	return d < (4.2f + margin);
+}
+
 float TerrainBuilder::terrain_height(float x, float z) const {
 	// 山丘：大起伏 + 中起伏 + 丘陵带 + 细节
 	float h = fbm(x * 0.016f, z * 0.016f) * 3.4f;
@@ -995,10 +1215,19 @@ float TerrainBuilder::terrain_height(float x, float z) const {
 		h *= 0.18f;
 	}
 
-	// 地图边缘抬升成环山，天然围住玩家
+	// 巍峨东北大雪山（居于 116, 116，山体底座延展 68 米，山峰拔高至 38 米）：
+	// 覆盖范围向西南延展至 (90, 90) 瀑布落脚点，形成瀑布倾泻依托的高峻山脊崖壁
+	float dist_to_mountain = std::hypot(x - 116.0f, z - 116.0f);
+	float m_ridge = 1.0f - sstepf(0.0f, 68.0f, dist_to_mountain);
+	float m_noise = value_noise(x * 0.045f, z * 0.045f) * 7.5f;
+	float m_height = m_ridge * m_ridge * (38.0f + m_noise);
+	h += m_height;
+
+	// 地图边缘抬升成险峻环山，天然围住玩家，山顶巍峨高耸入云并带有积雪（高达 16~25 米）
 	float half = map_size * 0.5f;
 	float edge = Math::max(std::abs(x), std::abs(z)) / half;
-	h += sstepf(0.74f, 1.0f, edge) * (5.5f + 3.0f * value_noise(x * 0.028f, z * 0.028f));
+	float edge_factor = sstepf(0.68f, 1.0f, edge);
+	h += edge_factor * edge_factor * (16.5f + 5.5f * value_noise(x * 0.028f, z * 0.028f));
 
 	// 壮阔复合大湖盆（全面扩建成大湖：西北浩瀚主湖 44m + 东北阳光水域 32m + 石桥水峡 13x18m + 南侧湖湾 22m）
 	// 引入双频海岸线 FBM 域扭曲（Domain Warping），使岸线自然蜿蜒，彻底消除几何直圆弧与呆板感
@@ -1018,8 +1247,53 @@ float TerrainBuilder::terrain_height(float x, float z) const {
 	// 4. 南侧湖湾（靠近小径与木屋南方的风景湾）
 	float b_south = 1.0f - sstepf(22.0f * 0.50f, 22.0f * 1.02f, (Vector2(wx, wz) - Vector2(-15.0f, 8.0f)).length());
 
+	// 溪流样条查询
+	float s_dist, s_t, s_wy;
+	get_stream_spline(x, z, s_dist, s_t, s_wy);
+
+	// ===== 瀑布、峡谷小河与河槽两岸精密塑形 =====
+	// 目标：地形地表与溪流/瀑布绝对严丝合缝！小河深陷于河槽内，瀑布紧贴山体峭壁飞流直下，绝不悬空！
+	if (s_t >= 0.0f && s_t <= 1.0f) {
+		// 溪谷走廊：将山体和地面顺滑引导至溪流水系
+		float w_canyon = 1.0f - sstepf(4.5f, 15.0f, s_dist);
+		float bank_h = s_wy + 0.35f; // 两岸天然堤岸高出水面 0.35m
+		float bed_h = s_wy - 0.70f;  // 河床深凹于水面下 0.70m，形成充沛水深
+
+		// 在河床中心 3.6m 范围内切削出宽阔凹陷河槽，水面半宽 2.4m 能完整平铺在深凹河槽内
+		float h_valley = bank_h;
+		if (s_dist < 3.6f) {
+			float w_bed = 1.0f - sstepf(1.6f, 3.6f, s_dist);
+			h_valley = lerpf(bank_h, bed_h, w_bed);
+		}
+		// 走廊过渡：走廊内将高山坡度平滑下削或谷地平滑抬升至峡谷河岸
+		h = lerpf(h, h_valley, w_canyon);
+
+		// 瀑布深潭 (Plunge Pool) 在 (92.0, 92.0)：水面 3.0m，潭底深凹至 1.8m (蓄水深潭，水深 1.2m)
+		float plunge_dist = std::hypot(x - 92.0f, z - 92.0f);
+		if (plunge_dist < 7.5f) {
+			float pool_basin = 1.0f - sstepf(2.0f, 7.5f, plunge_dist);
+			h = Math::min(h, lerpf(h, 1.80f, pool_basin * 0.95f));
+		}
+	}
+
 	float basin = Math::max(Math::max(b_nw, b_ne), Math::max(b_bridge, b_south));
+	// 小溪与大湖交接处标高保护：在小溪尚未降至大湖水面 (-0.55m) 的上游陆地段，
+	// 湖盆凹陷严格避让河道，防止大湖盆提前将地形沉降至 -0.55m 形成水面高度断层！
+	if (s_t >= 0.0f && s_t <= 1.0f && s_wy > -0.50f) {
+		float stream_protect = (1.0f - sstepf(2.4f, 7.5f, s_dist)) * sstepf(-0.55f, 0.20f, s_wy);
+		basin = Math::max(0.0f, basin * (1.0f - stream_protect));
+	}
 	h = lerpf(h, -2.85f, basin);
+
+	// 2. 峡谷小溪小木桥两岸草地引道贴平 (50.0, 69.4, rot_y=2.73)
+	// 横跨小溪：水面标高 0.43m，天然堤岸标高 0.85m
+	// 桥梁半跨 3.1m，垂直于水流方向两端桥台坐标：端点1 (51.24, 66.56), 端点2 (48.76, 72.24)
+	// 桥面两端木板顶标高为 0.95m (0.82m + 0.13m)，引道平滑贴至 0.95m 彻底消除上桥微小台阶硬边卡步！
+	float b_end1_dist = std::hypot(x - 51.24f, z - 66.56f);
+	float b_end2_dist = std::hypot(x - 48.76f, z - 72.24f);
+	float ramp_b = 1.0f - sstepf(0.6f, 3.8f, Math::min(b_end1_dist, b_end2_dist));
+	ramp_b *= sstepf(1.0f, 2.0f, s_dist); // 桥心避让水流
+	h = lerpf(h, 0.95f, ramp_b * 0.92f);
 
 	// 木桥两端的引道平台（与桥面齐平，方便上岸；丘陵带叠加后过渡带放宽到 13m 防陡坡顶脚）
 	Vector2 b1 = Vector2(x, z) - Vector2(bridge_end_west, lake_center.y);
@@ -1183,6 +1457,9 @@ void TerrainBuilder::build_terrain() {
 			c = c.lerp(Color(0.44f, 0.40f, 0.28f), wet_t * 0.55f);
 		}
 
+		// 终年雪线：用低频噪声让雪线上下起伏 ±1.8m，避免出现一条完美的等高线
+		float snow_line = 15.5f + (value_noise(x * 0.07f + 61.0f, z * 0.07f - 23.0f) - 0.5f) * 3.6f;
+
 		float rock_t = sstepf(0.55f, 0.95f, terrain_slope(x, z)); // 陡坡露岩
 		rock_t = Math::max(rock_t, sstepf(4.0f, 6.5f, h));        // 高山也露岩
 		if (rock_t > 0.0f) {
@@ -1194,7 +1471,25 @@ void TerrainBuilder::build_terrain() {
 			Color rock(lerpf(0.40f, 0.54f, band) + grain * 0.10f,
 					lerpf(0.37f, 0.50f, band) + grain * 0.09f,
 					lerpf(0.33f, 0.43f, band) + grain * 0.08f);
+			// 雪线以上的岩石带青白冰雪冻霜（与雪线同步起伏，两处过渡不会打架）
+			if (h > snow_line - 0.5f) {
+				float frost = sstepf(snow_line - 0.5f, snow_line + 6.5f, h);
+				rock = rock.lerp(Color(0.85f, 0.88f, 0.94f), frost * 0.65f);
+			}
 			c = c.lerp(rock, rock_t);
+		}
+
+		// 高山终年积雪顶峰：缓坡覆厚雪、陡壁只挂薄雪留出岩壁，雪面叠风蚀纹理
+		// 与裂缝噪声（否则山头就是一块死白，远看像没渲染完）。
+		if (h > snow_line) {
+			float snow_peak_t = sstepf(snow_line, snow_line + 7.0f, h);
+			float slope_factor = 1.0f - sstepf(0.55f, 1.15f, terrain_slope(x, z));
+			float crust = (value_noise(x * 0.9f, z * 0.9f) - 0.5f) * 0.22f
+					+ (value_noise(x * 2.7f + 13.0f, z * 2.7f + 5.0f) - 0.5f) * 0.10f;
+			float snow_mix = clampf(snow_peak_t * (0.35f + slope_factor * 0.75f) + crust, 0.0f, 1.0f);
+			// 陡壁处偏冷蓝（阴影雪），缓坡顶偏暖白（受光雪）
+			Color peak_snow(lerpf(0.90f, 0.99f, slope_factor), lerpf(0.93f, 0.99f, slope_factor), 1.0f);
+			c = c.lerp(peak_snow, snow_mix);
 		}
 
 		// 泥土小径（出生点 → 院门 / 石桥西岸），边缘略带磨损感
@@ -1203,6 +1498,16 @@ void TerrainBuilder::build_terrain() {
 			float wear = value_noise(x * 1.7f, z * 1.7f); // 路面斑驳
 			Color dirt(lerpf(0.50f, 0.56f, wear), lerpf(0.40f, 0.45f, wear), lerpf(0.26f, 0.30f, wear));
 			c = c.lerp(dirt, path_t);
+		}
+
+		// 溪流河床鹅卵石与湿润青苔石底：靠近溪流水槽中央呈现清润圆润的卵石青灰深色
+		float st_d, st_t, st_wy;
+		get_stream_spline(x, z, st_d, st_t, st_wy);
+		if (st_d < 3.2f && st_t >= 0.0f && st_t <= 1.0f) {
+			float creek_t = 1.0f - sstepf(0.4f, 2.8f, st_d);
+			float pebble_grain = value_noise(x * 3.2f, z * 3.2f);
+			Color pebble_bed(lerpf(0.32f, 0.45f, pebble_grain), lerpf(0.36f, 0.48f, pebble_grain), lerpf(0.28f, 0.38f, pebble_grain));
+			c = c.lerp(pebble_bed, creek_t * 0.88f);
 		}
 		return c;
 	};
@@ -1273,6 +1578,24 @@ void TerrainBuilder::build_water() {
 	mi->set_position(Vector3(-6.0f, water_level, 48.0f));
 	add_child(mi);
 
+	// 湖面结冰实体物理碰撞层（冬天下雪结冰时激活，使玩家能够稳稳踏在冰面上自由滑冰；晴雨天关闭恢复游泳/走水）
+	lake_ice_col = memnew(StaticBody3D);
+	lake_ice_col->set_name("LakeIceCollision");
+	lake_ice_col->set_position(Vector3(-6.0f, water_level, 48.0f));
+	{
+		CollisionShape3D *col_shape = memnew(CollisionShape3D);
+		col_shape->set_name("IcePlaneShape");
+		Ref<BoxShape3D> box;
+		box.instantiate();
+		box->set_size(Vector3(150.0f, 0.40f, 165.0f));
+		col_shape->set_shape(box);
+		col_shape->set_position(Vector3(0.0f, -0.20f, 0.0f)); // 冰层顶面严丝合缝对齐 water_level (-0.55m)
+		lake_ice_col->add_child(col_shape);
+	}
+	lake_ice_col->set_collision_layer_value(1, false); // 默认未结冰，关闭碰撞
+	lake_ice_col->set_collision_mask_value(1, false);
+	add_child(lake_ice_col);
+
 	// ---- 水深图（shore_map）----
 	// 为什么需要它：拍岸浪的相位是"离岸多远"的函数，但顶点着色器拿不到深度缓冲
 	// （hint_depth_texture / SCREEN_UV 只在 fragment 有效），所以顶点里用的水深
@@ -1321,8 +1644,627 @@ void TerrainBuilder::apply_shore_rocks() {
 	for (int i = n; i < MAX_ROCKS; ++i) {
 		arr[i] = Vector4(0.0f, -999.0f, 0.0f, 0.0f); // 空槽扔到天边，着色器里距离永远拉满
 	}
-	water_mat->set_shader_parameter("shore_rocks", arr);
-	water_mat->set_shader_parameter("shore_rock_count", n);
+}
+
+// ------------------------------------------------------------- 高山瀑布、小河水面与小木桥
+// 瀑布发源于高山悬崖 (104, 104, y=16.5m)，飞流直下跌入底潭 (84, 84, y=1.8m)，落差 12.4m；
+// 小河自底潭奔流而出，途经平原缓坡 (68, 76, y=1.0m) 与 (50, 70, y=0.2m)；
+// 穿过架设在湖湾河口的小木桥 (32, 62, y=-0.55m)，最终汇入东北大湖 (18, 56, y=-0.55m)
+void TerrainBuilder::build_mountain_stream() {
+	Ref<Resource> res = ResourceLoader::get_singleton()->load("res://assets/water.gdshader");
+	Ref<Shader> shader = Ref<Shader>(Object::cast_to<Shader>(res.ptr()));
+	if (shader.is_null()) {
+		return;
+	}
+
+	stream_mat.instantiate();
+	stream_mat->set_shader(shader);
+	stream_mat->set_shader_parameter("is_stream", true); // 开启高山溪流流水模式（绕开大湖水深图剔除）
+	stream_mat->set_shader_parameter("wave_height", 0.055f);
+	stream_mat->set_shader_parameter("wave_speed", 1.8f); // 溪水自然清澈流淌
+	stream_mat->set_shader_parameter("flow_dir", Vector2(-0.85f, -0.53f)); // 顺着山势奔流向西南大湖
+	stream_mat->set_shader_parameter("refraction_distort", 0.045f);
+	stream_mat->set_shader_parameter("shallow_color", Color(0.20f, 0.68f, 0.94f, 1.0f)); // 与大湖水色完全同源统一晶莹天蓝
+	stream_mat->set_shader_parameter("deep_color", Color(0.08f, 0.35f, 0.68f, 1.0f));   // 与大湖水色完全同源统一明丽湖蓝
+	stream_mat->set_shader_parameter("foam_color", Color(0.93f, 0.97f, 1.0f, 1.0f));
+	stream_mat->set_shader_parameter("foam_depth", 0.32f);
+
+	Ref<SurfaceTool> st;
+	st.instantiate();
+	st->begin(Mesh::PRIMITIVE_TRIANGLES);
+
+	// 沿着样条折线采样生成带状连续水面 Mesh (半宽 3.25m 深入两岸缓坡，被两岸地形自然咬合裁切，绝无多边形硬直生硬边)
+	const int NUM_SEGS = 160;
+	const float half_width = 3.25f;
+
+	const Vector2 pts[7] = {
+		Vector2(110.0f, 110.0f),
+		Vector2(100.0f, 100.0f),
+		Vector2(92.0f, 92.0f),
+		Vector2(78.0f, 82.0f),
+		Vector2(56.0f, 72.0f),
+		Vector2(38.0f, 64.0f),
+		Vector2(18.0f, 56.0f)
+	};
+	const float seg_lens[6] = { 14.14f, 11.31f, 17.20f, 24.17f, 19.70f, 21.54f };
+	const float node_y[7] = { 22.0f, 18.0f, 3.0f, 2.0f, 0.8f, -0.55f, -0.55f };
+	float lens[7];
+	lens[0] = 0.0f;
+	for (int i = 0; i < 6; ++i) {
+		lens[i + 1] = lens[i] + seg_lens[i];
+	}
+
+	auto eval_center = [&](float t) -> Vector3 {
+		float cur_dist = t * lens[6];
+		for (int i = 0; i < 6; ++i) {
+			if (cur_dist <= lens[i + 1] || i == 5) {
+				float seg_t = (cur_dist - lens[i]) / seg_lens[i];
+				seg_t = Math::clamp(seg_t, 0.0f, 1.0f);
+				Vector2 p2d = pts[i].lerp(pts[i + 1], seg_t);
+				float wy = Math::lerp(node_y[i], node_y[i + 1], seg_t);
+				return Vector3(p2d.x, wy, p2d.y);
+			}
+		}
+		return Vector3(18.0f, -0.55f, 56.0f);
+	};
+
+	// 生成上游雪山泉溪 (P0 -> P1) 与 下游峡谷清流 (P2 -> P5 入湖口)：
+	// 小溪水流在 P5 处标高精确达到 -0.55m 并与大湖浩瀚水面无缝交汇合流
+	for (int seg_pass = 0; seg_pass < 2; ++seg_pass) {
+		float dist_start = (seg_pass == 0) ? 0.0f : lens[2];
+		float dist_end = (seg_pass == 0) ? lens[1] : lens[5];
+		int seg_steps = (seg_pass == 0) ? 24 : 96;
+		Vector3 prev_left, prev_right;
+		for (int i = 0; i <= seg_steps; ++i) {
+			float d = Math::lerp(dist_start, dist_end, (float)i / (float)seg_steps);
+			float t = d / lens[6];
+			Vector3 c = eval_center(t);
+			Vector3 c_next = eval_center(Math::min(1.0f, t + 0.012f));
+			Vector3 fwd = (c_next - c);
+			Vector2 fwd2(fwd.x, fwd.z);
+			if (fwd2.length_squared() < 0.0001f) {
+				fwd2 = Vector2(-1.0f, -0.6f);
+			}
+			fwd2 = fwd2.normalized();
+			Vector2 norm2(-fwd2.y, fwd2.x);
+
+			// 当小溪接近入湖口 (seg_pass==1, 后半段接近终点) 时，水流平滑微展并平滑沉降至大湖水面之下，
+			// 让大湖浩瀚的水面网格自然覆盖在上方，小溪完全位于湖水之下，彻底杜绝交界处的任何硬边与图层断层！
+			float width_mul = 1.0f;
+			float y_offset = 0.0f;
+			if (seg_pass == 1) {
+				float end_ratio = (float)i / (float)seg_steps;
+				if (end_ratio > 0.75f) {
+					float taper_t = (end_ratio - 0.75f) / 0.25f;
+					width_mul = Math::lerp(1.0f, 1.35f, taper_t); // 喇叭形河口自然外展
+					y_offset = Math::lerp(0.0f, -0.22f, taper_t);  // 终段平滑沉降至湖水面下 22cm，完全被大湖水面包覆在下方！
+				}
+			}
+
+			Vector3 left_pt(c.x - norm2.x * half_width * width_mul, c.y + y_offset, c.z - norm2.y * half_width * width_mul);
+			Vector3 right_pt(c.x + norm2.x * half_width * width_mul, c.y + y_offset, c.z + norm2.y * half_width * width_mul);
+
+			if (i > 0) {
+				st->set_uv(Vector2(0.0f, (float)(i - 1) * 0.4f));
+				st->add_vertex(prev_left);
+				st->set_uv(Vector2(1.0f, (float)i * 0.4f));
+				st->add_vertex(right_pt);
+				st->set_uv(Vector2(1.0f, (float)(i - 1) * 0.4f));
+				st->add_vertex(prev_right);
+
+				st->set_uv(Vector2(0.0f, (float)(i - 1) * 0.4f));
+				st->add_vertex(prev_left);
+				st->set_uv(Vector2(0.0f, (float)i * 0.4f));
+				st->add_vertex(left_pt);
+				st->set_uv(Vector2(1.0f, (float)i * 0.4f));
+				st->add_vertex(right_pt);
+			}
+			prev_left = left_pt;
+			prev_right = right_pt;
+		}
+	}
+
+	st->generate_normals();
+	Ref<ArrayMesh> stream_mesh = st->commit();
+	MeshInstance3D *stream_mi = memnew(MeshInstance3D);
+	stream_mi->set_name("MountainStreamWater");
+	stream_mi->set_mesh(stream_mesh);
+	stream_mi->set_material_override(stream_mat);
+	stream_mi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+	add_child(stream_mi);
+
+	// 小溪结冰实体物理碰撞层（冬天下雪结冰时激活，使玩家能够稳稳踏在小溪冰面上滑冰）
+	stream_ice_col = memnew(StaticBody3D);
+	stream_ice_col->set_name("StreamIceCollision");
+	{
+		CollisionShape3D *stream_shape = memnew(CollisionShape3D);
+		stream_shape->set_name("StreamTrimeshShape");
+		stream_shape->set_shape(stream_mesh->create_trimesh_shape());
+		stream_ice_col->add_child(stream_shape);
+	}
+	stream_ice_col->set_collision_layer_value(1, false); // 默认未结冰，关闭碰撞
+	stream_ice_col->set_collision_mask_value(1, false);
+	add_child(stream_ice_col);
+
+	// 瀑布深潭水面网格 (Plunge Pool Lake Water) 在 (92.0, 3.0, 92.0)，扩建为半径约 7.2m 的壮阔蓄水深潭
+	{
+		Ref<SurfaceTool> pool_st;
+		pool_st.instantiate();
+		pool_st->begin(Mesh::PRIMITIVE_TRIANGLES);
+		const int POOL_SEGS = 32;
+		const float pool_rad = 7.2f;
+		Vector3 p_center(92.0f, 3.0f, 92.0f);
+		for (int k = 0; k < POOL_SEGS; ++k) {
+			float a0 = (float)k / (float)POOL_SEGS * Math::TAU;
+			float a1 = (float)(k + 1) / (float)POOL_SEGS * Math::TAU;
+			Vector3 p0 = p_center + Vector3(std::cos(a0) * pool_rad, 0.0f, std::sin(a0) * pool_rad);
+			Vector3 p1 = p_center + Vector3(std::cos(a1) * pool_rad, 0.0f, std::sin(a1) * pool_rad);
+			pool_st->set_uv(Vector2(0.5f, 0.5f));
+			pool_st->add_vertex(p_center);
+			pool_st->set_uv(Vector2(0.5f + 0.5f * std::cos(a0), 0.5f + 0.5f * std::sin(a0)));
+			pool_st->add_vertex(p0);
+			pool_st->set_uv(Vector2(0.5f + 0.5f * std::cos(a1), 0.5f + 0.5f * std::sin(a1)));
+			pool_st->add_vertex(p1);
+		}
+		pool_st->generate_normals();
+		MeshInstance3D *pool_mi = memnew(MeshInstance3D);
+		pool_mi->set_name("WaterfallPlungePool");
+		pool_mi->set_mesh(pool_st->commit());
+		pool_mi->set_material_override(stream_mat);
+		pool_mi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+		add_child(pool_mi);
+	}
+
+	// ===== 壮观飞瀑水帘专属实体网格 (Waterfall Curtains & Cascade System) =====
+	// 从悬崖顶部跌水口 (100.0, 18.2, 100.0) 飞流直下到深潭 (92.5, 3.0, 92.5)，高落差 15.2 米
+	// 采用真 3D 弧面抛物线落水、多层级奔涌水幕与两翼流苏瀑布，加载 waterfall.gdshader 打造顶级视觉
+	{
+		Ref<Resource> wf_res = ResourceLoader::get_singleton()->load("res://assets/waterfall.gdshader");
+		Ref<Shader> wf_shader = Ref<Shader>(Object::cast_to<Shader>(wf_res.ptr()));
+		Ref<ShaderMaterial> wf_mat;
+		wf_mat.instantiate();
+		if (wf_shader.is_valid()) {
+			wf_mat->set_shader(wf_shader);
+			wf_mat->set_shader_parameter("shallow_color", Color(0.24f, 0.78f, 0.88f, 0.85f));
+			wf_mat->set_shader_parameter("deep_color", Color(0.04f, 0.36f, 0.58f, 0.95f));
+			wf_mat->set_shader_parameter("foam_color", Color(0.98f, 1.0f, 1.0f, 1.0f));
+			wf_mat->set_shader_parameter("sun_dir", Vector3(0.35f, 0.82f, 0.45f));
+			wf_mat->set_shader_parameter("fall_speed", 6.8f);
+			wf_mat->set_shader_parameter("foam_amount", 0.65f);
+			wf_mat->set_shader_parameter("refraction_strength", 0.055f);
+			wf_mat->set_shader_parameter("sparkle_intensity", 2.6f);
+			wf_mat->set_shader_parameter("emission_strength", 0.32f);
+		}
+
+		// 1. 主瀑布 3D 弧面飞落水幕 (Main Curved Waterfall Mesh)
+		Ref<SurfaceTool> wf_st;
+		wf_st.instantiate();
+		wf_st->begin(Mesh::PRIMITIVE_TRIANGLES);
+
+		const int WF_V_SEGS = 48; // 垂直高分辨率细分
+		const int WF_H_SEGS = 16; // 横向圆弧截面细分
+		Vector3 top_pos(100.0f, 18.2f, 100.0f);
+		Vector3 btm_pos(92.5f, 3.0f, 92.5f);
+		Vector3 flow_fwd = (btm_pos - top_pos);
+		flow_fwd.y = 0.0f;
+		flow_fwd.normalize();
+		Vector3 wf_across(-flow_fwd.z, 0.0f, flow_fwd.x);
+
+		// 外层主浪 + 贴壁层内浪
+		for (int layer = 0; layer < 2; ++layer) {
+			float layer_fwd_off = (layer == 0) ? 0.25f : -0.18f;
+			for (int j = 0; j < WF_V_SEGS; ++j) {
+				float s0 = (float)j / (float)WF_V_SEGS;
+				float s1 = (float)(j + 1) / (float)WF_V_SEGS;
+
+				float arc0 = std::sin(s0 * Math::PI * 0.85f) * 1.30f;
+				float arc1 = std::sin(s1 * Math::PI * 0.85f) * 1.30f;
+
+				Vector3 c0 = top_pos.lerp(btm_pos, s0);
+				c0.y -= (s0 * s0 * 0.45f);
+				c0 += flow_fwd * (arc0 + layer_fwd_off);
+
+				Vector3 c1 = top_pos.lerp(btm_pos, s1);
+				c1.y -= (s1 * s1 * 0.45f);
+				c1 += flow_fwd * (arc1 + layer_fwd_off);
+
+				float w0 = Math::lerp(4.4f, 6.2f, s0);
+				float w1 = Math::lerp(4.4f, 6.2f, s1);
+
+				for (int k = 0; k < WF_H_SEGS; ++k) {
+					float u0 = (float)k / (float)WF_H_SEGS;
+					float u1 = (float)(k + 1) / (float)WF_H_SEGS;
+
+					// 水柱横向凸拱圆弧（中心向前拱起，两侧向后收敛）
+					float bulge0_a = std::sin(u0 * Math::PI) * 0.55f;
+					float bulge0_b = std::sin(u1 * Math::PI) * 0.55f;
+					float bulge1_a = std::sin(u0 * Math::PI) * 0.55f;
+					float bulge1_b = std::sin(u1 * Math::PI) * 0.55f;
+
+					Vector3 p00 = c0 + wf_across * ((u0 - 0.5f) * w0) + flow_fwd * bulge0_a;
+					Vector3 p01 = c0 + wf_across * ((u1 - 0.5f) * w0) + flow_fwd * bulge0_b;
+					Vector3 p10 = c1 + wf_across * ((u0 - 0.5f) * w1) + flow_fwd * bulge1_a;
+					Vector3 p11 = c1 + wf_across * ((u1 - 0.5f) * w1) + flow_fwd * bulge1_b;
+
+					// 正面双三角
+					wf_st->set_uv(Vector2(u0, s0));
+					wf_st->add_vertex(p00);
+					wf_st->set_uv(Vector2(u1, s1));
+					wf_st->add_vertex(p11);
+					wf_st->set_uv(Vector2(u1, s0));
+					wf_st->add_vertex(p01);
+
+					wf_st->set_uv(Vector2(u0, s0));
+					wf_st->add_vertex(p00);
+					wf_st->set_uv(Vector2(u0, s1));
+					wf_st->add_vertex(p10);
+					wf_st->set_uv(Vector2(u1, s1));
+					wf_st->add_vertex(p11);
+
+					// 背面双三角（确保进出水帘水幕皆清澈可见）
+					wf_st->set_uv(Vector2(u0, s0));
+					wf_st->add_vertex(p00);
+					wf_st->set_uv(Vector2(u1, s0));
+					wf_st->add_vertex(p01);
+					wf_st->set_uv(Vector2(u1, s1));
+					wf_st->add_vertex(p11);
+
+					wf_st->set_uv(Vector2(u0, s0));
+					wf_st->add_vertex(p00);
+					wf_st->set_uv(Vector2(u1, s1));
+					wf_st->add_vertex(p11);
+					wf_st->set_uv(Vector2(u0, s1));
+					wf_st->add_vertex(p10);
+				}
+			}
+		}
+
+		wf_st->generate_normals();
+		MeshInstance3D *wf_mi = memnew(MeshInstance3D);
+		wf_mi->set_name("WaterfallCurtain");
+		wf_mi->set_mesh(wf_st->commit());
+		wf_mi->set_material_override(wf_mat);
+		wf_mi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+		add_child(wf_mi);
+
+		// 2. 瀑布两翼流苏飞瀑 (Flanking Cascades)
+		auto build_side_veil = [&](const String &name, const Vector3 &v_top, const Vector3 &v_btm, float v_width) {
+			Ref<SurfaceTool> vst;
+			vst.instantiate();
+			vst->begin(Mesh::PRIMITIVE_TRIANGLES);
+			const int VSEGS = 32;
+			for (int j = 0; j < VSEGS; ++j) {
+				float s0 = (float)j / (float)VSEGS;
+				float s1 = (float)(j + 1) / (float)VSEGS;
+				Vector3 c0 = v_top.lerp(v_btm, s0);
+				Vector3 c1 = v_top.lerp(v_btm, s1);
+				c0.y -= (s0 * s0 * 0.35f);
+				c1.y -= (s1 * s1 * 0.35f);
+				Vector3 p00 = c0 - wf_across * (v_width * 0.5f);
+				Vector3 p01 = c0 + wf_across * (v_width * 0.5f);
+				Vector3 p10 = c1 - wf_across * (v_width * 0.5f);
+				Vector3 p11 = c1 + wf_across * (v_width * 0.5f);
+
+				vst->set_uv(Vector2(0.0f, s0)); vst->add_vertex(p00);
+				vst->set_uv(Vector2(1.0f, s1)); vst->add_vertex(p11);
+				vst->set_uv(Vector2(1.0f, s0)); vst->add_vertex(p01);
+
+				vst->set_uv(Vector2(0.0f, s0)); vst->add_vertex(p00);
+				vst->set_uv(Vector2(0.0f, s1)); vst->add_vertex(p10);
+				vst->set_uv(Vector2(1.0f, s1)); vst->add_vertex(p11);
+
+				// 双面
+				vst->set_uv(Vector2(0.0f, s0)); vst->add_vertex(p00);
+				vst->set_uv(Vector2(1.0f, s0)); vst->add_vertex(p01);
+				vst->set_uv(Vector2(1.0f, s1)); vst->add_vertex(p11);
+
+				vst->set_uv(Vector2(0.0f, s0)); vst->add_vertex(p00);
+				vst->set_uv(Vector2(1.0f, s1)); vst->add_vertex(p11);
+				vst->set_uv(Vector2(0.0f, s1)); vst->add_vertex(p10);
+			}
+			vst->generate_normals();
+			MeshInstance3D *v_mi = memnew(MeshInstance3D);
+			v_mi->set_name(name);
+			v_mi->set_mesh(vst->commit());
+			v_mi->set_material_override(wf_mat);
+			v_mi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+			add_child(v_mi);
+		};
+
+		build_side_veil("WaterfallVeilLeft",
+			Vector3(97.6f, 17.6f, 102.4f), Vector3(90.8f, 3.0f, 95.0f), 2.2f);
+		build_side_veil("WaterfallVeilRight",
+			Vector3(102.4f, 17.6f, 97.6f), Vector3(95.0f, 3.0f, 90.8f), 2.2f);
+	}
+
+	// 瀑布跌水底潭翻滚白沫与激浪水花 (92.5, 3.2, 92.5) —— 采用柔和 billboard 水雾贴片与水滴粒子
+	{
+		Ref<Texture2D> splash_dot = make_splash_dot();
+		Ref<Mesh> mist_quad = make_splash_quad(splash_dot);
+
+		Ref<Gradient> framp;
+		framp.instantiate();
+		framp->add_point(0.0f, Color(1.0f, 1.0f, 1.0f, 0.0f));
+		framp->add_point(0.15f, Color(1.0f, 1.0f, 1.0f, 0.45f));
+		framp->add_point(0.55f, Color(1.0f, 1.0f, 1.0f, 0.35f));
+		framp->add_point(0.85f, Color(1.0f, 1.0f, 1.0f, 0.15f));
+		framp->add_point(1.0f, Color(1.0f, 1.0f, 1.0f, 0.0f));
+
+		// 跌水击底猛烈飞溅水滴（使用 billboard 软质水花粒，消除突兀低边球体）
+		CPUParticles3D *waterfall_spray = memnew(CPUParticles3D);
+		waterfall_spray->set_name("WaterfallSpray");
+		waterfall_spray->set_position(Vector3(92.5f, 3.2f, 92.5f));
+		waterfall_spray->set_amount(70);
+		waterfall_spray->set_lifetime(1.5f);
+		waterfall_spray->set_lifetime_randomness(0.40f);
+		waterfall_spray->set_mesh(mist_quad);
+		waterfall_spray->set_color_ramp(framp);
+		waterfall_spray->set_direction(Vector3(-0.75f, 0.85f, -0.75f));
+		waterfall_spray->set_spread(65.0f);
+		waterfall_spray->set_gravity(Vector3(0.0f, -8.0f, 0.0f));
+		waterfall_spray->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 2.2f);
+		waterfall_spray->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 5.0f);
+		waterfall_spray->set_param_min(CPUParticles3D::PARAM_SCALE, 0.6f);
+		waterfall_spray->set_param_max(CPUParticles3D::PARAM_SCALE, 1.6f);
+		waterfall_spray->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_BOX);
+		waterfall_spray->set_emission_box_extents(Vector3(2.4f, 0.3f, 2.4f));
+		add_child(waterfall_spray);
+
+		// 瀑布底潭蒸腾轻柔水雾 (Waterfall Dense Mist)
+		CPUParticles3D *waterfall_mist = memnew(CPUParticles3D);
+		waterfall_mist->set_name("WaterfallMist");
+		waterfall_mist->set_position(Vector3(92.5f, 3.5f, 92.5f));
+		waterfall_mist->set_amount(45);
+		waterfall_mist->set_lifetime(2.8f);
+		waterfall_mist->set_lifetime_randomness(0.35f);
+		waterfall_mist->set_mesh(mist_quad);
+		waterfall_mist->set_color_ramp(framp);
+		waterfall_mist->set_direction(Vector3(0.0f, 1.0f, 0.0f));
+		waterfall_mist->set_spread(75.0f);
+		waterfall_mist->set_gravity(Vector3(0.0f, 0.18f, 0.0f));
+		waterfall_mist->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.5f);
+		waterfall_mist->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 1.4f);
+		waterfall_mist->set_param_min(CPUParticles3D::PARAM_SCALE, 1.8f);
+		waterfall_mist->set_param_max(CPUParticles3D::PARAM_SCALE, 3.8f);
+		waterfall_mist->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_SPHERE);
+		waterfall_mist->set_emission_sphere_radius(2.8f);
+		add_child(waterfall_mist);
+
+		// 崖顶飞跃出水口飞沫 (Waterfall Crest Mist)
+		CPUParticles3D *crest_mist = memnew(CPUParticles3D);
+		crest_mist->set_name("WaterfallCrestMist");
+		crest_mist->set_position(Vector3(100.0f, 18.4f, 100.0f));
+		crest_mist->set_amount(25);
+		crest_mist->set_lifetime(1.4f);
+		crest_mist->set_mesh(mist_quad);
+		crest_mist->set_color_ramp(framp);
+		crest_mist->set_direction(Vector3(-0.707f, 0.4f, -0.707f));
+		crest_mist->set_spread(50.0f);
+		crest_mist->set_gravity(Vector3(0.0f, -4.5f, 0.0f));
+		crest_mist->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 1.5f);
+		crest_mist->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 3.2f);
+		crest_mist->set_param_min(CPUParticles3D::PARAM_SCALE, 0.6f);
+		crest_mist->set_param_max(CPUParticles3D::PARAM_SCALE, 1.4f);
+		add_child(crest_mist);
+	}
+
+	// 瀑布峡谷悬崖峭壁天然岩壁与深潭景石（瀑布两侧耸立险峻山岩，深潭周遭环抱自然景石）
+	{
+		Ref<ArrayMesh> gorge_rock_mesh = make_rock_mesh(12, 7, 0.5f, 0.80f, 0.28f, 1.8f, 9812);
+		gorge_rock_mesh->surface_set_material(0, rock_material());
+
+		// 峡谷两侧险峻悬崖岩壁石群与潭周景石
+		struct GorgeRockDef {
+			Vector3 pos;
+			float scale;
+			Vector3 rot;
+		};
+		const GorgeRockDef gorge_rocks[] = {
+			// 崖顶瀑口出水关隘景石（自然半嵌山石，尺度适度紧凑）
+			{ Vector3(98.2f, 17.6f, 102.2f), 1.8f, Vector3(0.2f, 0.8f, 0.1f) },
+			{ Vector3(102.2f, 17.6f, 98.2f), 1.8f, Vector3(-0.1f, -0.7f, 0.2f) },
+
+			// 瀑布深潭两侧及后方自然护岸景石（开阔呈现正前方碧蓝深潭与奔腾跌水）
+			{ Vector3(85.5f, 2.8f, 93.5f), 2.6f, Vector3(0.1f, 0.6f, 0.0f) },
+			{ Vector3(93.5f, 2.8f, 85.5f), 2.6f, Vector3(0.0f, -0.8f, 0.2f) },
+			{ Vector3(97.8f, 3.0f, 87.5f), 2.2f, Vector3(-0.2f, 1.2f, 0.0f) },
+			{ Vector3(87.5f, 3.0f, 97.8f), 2.2f, Vector3(0.1f, -1.0f, 0.1f) },
+
+			// 奔腾小河两岸天然景石（沿河槽外侧散落）
+			{ Vector3(79.0f, 2.4f, 89.0f), 1.8f, Vector3(0.0f, 0.5f, 0.0f) },
+			{ Vector3(73.5f, 2.3f, 74.5f), 1.9f, Vector3(0.2f, -0.4f, 0.1f) },
+			{ Vector3(61.0f, 1.4f, 80.5f), 1.7f, Vector3(0.1f, 0.8f, -0.2f) },
+			{ Vector3(53.8f, 1.1f, 63.8f), 1.4f, Vector3(-0.1f, 0.3f, 0.2f) },
+			{ Vector3(39.0f, 0.6f, 68.5f), 1.6f, Vector3(0.0f, -0.6f, 0.1f) }
+		};
+
+		for (const GorgeRockDef &gr : gorge_rocks) {
+			StaticBody3D *rb = memnew(StaticBody3D);
+			float gy = terrain_height(gr.pos.x, gr.pos.z);
+			// 嵌入山体和地面约 25%，使巨石稳稳长在山坡岩壁和岸滩上
+			float ry = gy - 0.22f * gr.scale;
+			rb->set_position(Vector3(gr.pos.x, ry, gr.pos.z));
+			rb->set_rotation(gr.rot);
+			MeshInstance3D *rmi = memnew(MeshInstance3D);
+			rmi->set_mesh(gorge_rock_mesh);
+			rmi->set_scale(Vector3(gr.scale, gr.scale, gr.scale));
+			rb->add_child(rmi);
+			CollisionShape3D *rcs = memnew(CollisionShape3D);
+			Ref<SphereShape3D> rsp;
+			rsp.instantiate();
+			rsp->set_radius(0.48f * gr.scale);
+			rcs->set_shape(rsp);
+			rb->add_child(rcs);
+			add_child(rb);
+		}
+	}
+
+	// 溪流流水声 3D 音效源（在小木桥与小溪中游处 (50.0, 0.82, 69.4) 播放清脆流水）
+	ResourceLoader *rl = ResourceLoader::get_singleton();
+	if (rl != nullptr) {
+		AudioStreamPlayer3D *stream_voice = memnew(AudioStreamPlayer3D);
+		stream_voice->set_name("StreamAudioBridge");
+		stream_voice->set_position(Vector3(50.0f, 0.82f, 69.4f));
+		stream_voice->set_unit_size(9.0f);
+		stream_voice->set_max_distance(50.0f);
+		stream_voice->set_volume_db(4.5f);
+		if (rl->exists("res://assets/audio/stream_loop.mp3")) {
+			Ref<Resource> r = rl->load("res://assets/audio/stream_loop.mp3");
+			if (r.is_valid()) {
+				stream_voice->set_stream(Object::cast_to<AudioStream>(r.ptr()));
+				stream_voice->set_autoplay(true);
+			}
+		}
+		add_child(stream_voice);
+		if (stream_voice->get_stream().is_valid() && !stream_voice->is_playing()) {
+			stream_voice->play();
+		}
+
+		// 瀑布跌水轰鸣声 (92.0, 5.0, 92.0)
+		AudioStreamPlayer3D *waterfall_voice = memnew(AudioStreamPlayer3D);
+		waterfall_voice->set_name("WaterfallAudio");
+		waterfall_voice->set_position(Vector3(92.0f, 5.0f, 92.0f));
+		waterfall_voice->set_unit_size(12.0f);
+		waterfall_voice->set_max_distance(65.0f);
+		waterfall_voice->set_volume_db(4.0f);
+		if (rl->exists("res://assets/audio/river_loop.mp3")) {
+			Ref<Resource> r = rl->load("res://assets/audio/river_loop.mp3");
+			if (r.is_valid()) {
+				waterfall_voice->set_stream(Object::cast_to<AudioStream>(r.ptr()));
+				waterfall_voice->set_autoplay(true);
+			}
+		}
+		add_child(waterfall_voice);
+		if (waterfall_voice->get_stream().is_valid() && !waterfall_voice->is_playing()) {
+			waterfall_voice->play();
+		}
+	}
+}
+
+// 跨越峡谷溪流的纯木拱桥 (Stream Arch Wooden Bridge)
+// 位于 (50.0, 69.4) 处，跨度 6.2m，架在奔腾小溪中游陆地段上空：
+// 采用弯曲原木主拱梁、拱形排列防滑桥板、立柱原木与弧形木护栏，两端稳稳搭在南北两岸草地上
+void TerrainBuilder::build_stream_bridge() {
+	Ref<Resource> toon_res = ResourceLoader::get_singleton()->load("res://assets/toon.gdshader");
+	Ref<Shader> toon_shader = Ref<Shader>(Object::cast_to<Shader>(toon_res.ptr()));
+
+	Node3D *bridge_root = memnew(Node3D);
+	bridge_root->set_name("StreamWoodBridge");
+	// 桥中心设置在 (50.0, 0.82, 69.4)，桥面底标高与两岸草地引道齐平，主拱顶高 1.40m，水面净空充足
+	bridge_root->set_position(Vector3(50.0f, 0.82f, 69.4f));
+	bridge_root->set_rotation(Vector3(0.0f, 2.73f, 0.0f));
+	add_child(bridge_root);
+
+	const Color wood_dark(0.32f, 0.20f, 0.11f);   // 深色质感原木（主拱梁、立柱、横梁）
+	const Color wood_plank(0.48f, 0.33f, 0.19f);  // 暖木色桥面板
+	const Color wood_light(0.56f, 0.40f, 0.25f);  // 顶部扶手
+
+	// 1. 两端厚重接地木底梁（嵌入两岸土壤的粗方木台，代替生硬石墩）
+	meshutil::add_box(bridge_root, toon_shader, Vector3(2.4f, 0.38f, 0.45f), Vector3(0.0f, -0.05f, -3.05f), wood_dark);
+	meshutil::add_box(bridge_root, toon_shader, Vector3(2.4f, 0.38f, 0.45f), Vector3(0.0f, -0.05f, 3.05f), wood_dark);
+
+	// 2. 弯曲木主拱梁（3 道拱形下承梁，贯穿桥体底部）
+	const int NUM_ARCH_SEGS = 18;
+	const float arch_half_span = 3.1f;
+	const float arch_peak = 0.58f; // 拱顶抬升 0.58m
+	for (int i = 0; i < NUM_ARCH_SEGS; ++i) {
+		float z0 = -arch_half_span + (float)i * (2.0f * arch_half_span / (float)NUM_ARCH_SEGS);
+		float z1 = -arch_half_span + (float)(i + 1) * (2.0f * arch_half_span / (float)NUM_ARCH_SEGS);
+		float z_mid = (z0 + z1) * 0.5f;
+		float seg_len = (z1 - z0);
+
+		float y_mid = std::cos(z_mid / arch_half_span * 1.5708f) * arch_peak;
+		float dy = -std::sin(z_mid / arch_half_span * 1.5708f) * (arch_peak * 1.5708f / arch_half_span);
+		float pitch_angle = std::atan2(dy, 1.0f);
+
+		// 左、中、右三道大木主拱梁
+		for (float x_offset : { -0.95f, 0.0f, 0.95f }) {
+			Node3D *beam_seg = memnew(Node3D);
+			beam_seg->set_position(Vector3(x_offset, y_mid - 0.12f, z_mid));
+			beam_seg->set_rotation(Vector3(pitch_angle, 0.0f, 0.0f));
+			bridge_root->add_child(beam_seg);
+			meshutil::add_box(beam_seg, toon_shader, Vector3(0.20f, 0.22f, seg_len * 1.05f), Vector3(0.0f, 0.0f, 0.0f), wood_dark);
+		}
+	}
+
+	// 3. 拱形纯木步道甲板（26 块致密贴合的原木甲板，呈优雅拱桥弧线）
+	const int NUM_PLANKS = 26;
+	for (int i = 0; i < NUM_PLANKS; ++i) {
+		float z = -3.0f + (float)i * (6.0f / (float)(NUM_PLANKS - 1));
+		float arch_y = std::cos(z / 3.1f * 1.5708f) * arch_peak;
+		// 边缘微小木楔固定
+		meshutil::add_box(bridge_root, toon_shader, Vector3(2.25f, 0.11f, 0.21f), Vector3(0.0f, arch_y + 0.05f, z), wood_plank);
+	}
+
+	// 4. 纯木立柱与立体弧形护栏
+	const float post_z_positions[] = { -2.9f, -1.9f, -0.95f, 0.0f, 0.95f, 1.9f, 2.9f };
+	for (int side = -1; side <= 1; side += 2) {
+		float x = (float)side * 1.06f;
+		for (float pz : post_z_positions) {
+			float py = std::cos(pz / 3.1f * 1.5708f) * arch_peak;
+			// 粗壮立柱
+			meshutil::add_box(bridge_root, toon_shader, Vector3(0.12f, 0.90f, 0.12f), Vector3(x, py + 0.45f, pz), wood_dark);
+		}
+
+		// 分段护栏横木（上下两道，顺应拱桥弧线自然弯折）
+		for (int i = 0; i < 6; ++i) {
+			float z0 = post_z_positions[i];
+			float z1 = post_z_positions[i + 1];
+			float z_mid = (z0 + z1) * 0.5f;
+			float y_mid = std::cos(z_mid / 3.1f * 1.5708f) * arch_peak;
+			float dy = (std::cos(z1 / 3.1f * 1.5708f) - std::cos(z0 / 3.1f * 1.5708f)) * arch_peak;
+			float seg_dz = z1 - z0;
+			float pitch = std::atan2(dy, seg_dz);
+			float seg_hypot = std::hypot(seg_dz, dy);
+
+			// 上扶手
+			Node3D *rail_top = memnew(Node3D);
+			rail_top->set_position(Vector3(x, y_mid + 0.86f, z_mid));
+			rail_top->set_rotation(Vector3(pitch, 0.0f, 0.0f));
+			bridge_root->add_child(rail_top);
+			meshutil::add_box(rail_top, toon_shader, Vector3(0.13f, 0.09f, seg_hypot * 1.02f), Vector3(0.0f, 0.0f, 0.0f), wood_light);
+
+			// 中横杆
+			Node3D *rail_mid = memnew(Node3D);
+			rail_mid->set_position(Vector3(x, y_mid + 0.44f, z_mid));
+			rail_mid->set_rotation(Vector3(pitch, 0.0f, 0.0f));
+			bridge_root->add_child(rail_mid);
+			meshutil::add_box(rail_mid, toon_shader, Vector3(0.09f, 0.08f, seg_hypot * 1.02f), Vector3(0.0f, 0.0f, 0.0f), wood_dark);
+		}
+	}
+
+	// 5. 拱桥真实物理碰撞体（采用连续光滑的多段精细坡面与两端引道过渡板，消除任何台阶阻挡，确保角色跑跳丝滑顺畅）
+	StaticBody3D *bridge_body = memnew(StaticBody3D);
+	bridge_body->set_name("BridgeCollision");
+	bridge_root->add_child(bridge_body);
+
+	const int NUM_COL_SEGS = 12; // 12段精细贴合拱桥弧线
+	const float z_start = -3.25f;
+	const float z_end = 3.25f;
+	for (int i = 0; i < NUM_COL_SEGS; ++i) {
+		float z0 = z_start + (float)i * ((z_end - z_start) / (float)NUM_COL_SEGS);
+		float z1 = z_start + (float)(i + 1) * ((z_end - z_start) / (float)NUM_COL_SEGS);
+		float z_mid = (z0 + z1) * 0.5f;
+		float clamp_z0 = Math::clamp(z0, -3.1f, 3.1f);
+		float clamp_z1 = Math::clamp(z1, -3.1f, 3.1f);
+		float y0 = std::cos(clamp_z0 / 3.1f * 1.5708f) * arch_peak;
+		float y1 = std::cos(clamp_z1 / 3.1f * 1.5708f) * arch_peak;
+		float y_mid = (y0 + y1) * 0.5f;
+		float dz = z1 - z0;
+		float dy = y1 - y0;
+		float pitch = std::atan2(dy, dz);
+		float len = std::hypot(dz, dy);
+
+		CollisionShape3D *col_shape = memnew(CollisionShape3D);
+		Ref<BoxShape3D> box;
+		box.instantiate();
+		// 碰撞体顶面微低于脚板 0.02m，同时厚度适中，彻底消除接缝毛刺与卡步
+		box->set_size(Vector3(2.35f, 0.20f, len * 1.04f));
+		col_shape->set_shape(box);
+		col_shape->set_position(Vector3(0.0f, y_mid - 0.04f, z_mid));
+		col_shape->set_rotation(Vector3(pitch, 0.0f, 0.0f));
+		bridge_body->add_child(col_shape);
+	}
 }
 
 // ------------------------------------------------------------- 植被
@@ -1445,12 +2387,7 @@ void TerrainBuilder::build_vegetation() {
 		}
 	}
 
-	Ref<SphereMesh> bush_mesh;
-	bush_mesh.instantiate();
-	bush_mesh->set_radius(0.5f);
-	bush_mesh->set_height(0.72f);
-	bush_mesh->set_radial_segments(8);
-	bush_mesh->set_rings(4);
+	Ref<ArrayMesh> bush_mesh = make_bush_mesh(0.5f, 0.74f, 0.32f, 1.6f, 8848, 14, 9);
 	Ref<ShaderMaterial> bush_wind = apply_wind(bush_mesh, -0.36f, 0.72f, 0.04f); // 灌木摆幅小一些
 	if (bush_wind.is_valid()) {
 		snow_bands.push_back({ bush_wind, 0.02f, 0.30f, false }); // 贴地，最先积雪
@@ -1807,11 +2744,18 @@ void TerrainBuilder::build_vegetation() {
 	Scatter canopy_lo[ARCH_N][3];
 	Scatter snowcap_bands[3];
 
-	// 石桥桥面矩形（含桥台外扩一点）：压平后的引道与桥面同高，
-	// 植被/石头若落在这里会从石板里钻出来，一律排除
+	// 桥面矩形（含石桥与湖上木桥）：压平后的引道与桥面同高，
+	// 植被/石头若落在这里会从桥面里穿出，一律排除
 	auto on_bridge_deck = [&](const Vector2 &p) -> bool {
-		return p.x > bridge_end_west - 0.6f && p.x < bridge_end_east + 0.6f
-				&& Math::abs(p.y - lake_center.y) < 2.6f;
+		// 1. 石拱桥
+		if (p.x > bridge_end_west - 0.6f && p.x < bridge_end_east + 0.6f && Math::abs(p.y - lake_center.y) < 2.6f) {
+			return true;
+		}
+		// 2. 峡谷小溪小木桥 (50.0, 69.4)
+		if (std::hypot(p.x - 50.0f, p.y - 69.4f) < 3.8f) {
+			return true;
+		}
+		return false;
 	};
 
 	auto tree_color = [&rnd]() -> Color {
@@ -1848,6 +2792,9 @@ void TerrainBuilder::build_vegetation() {
 			return false;
 		}
 		if (is_near_lake(p.x, p.y, 3.5f)) { // 避开复合大湖水域与湖滩
+			return false;
+		}
+		if (is_near_stream(p.x, p.y, 1.8f)) { // 避开高山小溪水槽与溪边小木桥
 			return false;
 		}
 		float h = terrain_height(p.x, p.y);
@@ -2109,6 +3056,39 @@ void TerrainBuilder::build_vegetation() {
 		float stripe = std::fmod(std::floor((px + pitch_half_w) / 3.0f), 2.0f);
 		Color c = stripe < 1.0f ? Color(0.10f, 0.30f, 0.07f) : Color(0.14f, 0.36f, 0.09f);
 		c = Color(c.r + prnd(-0.015f, 0.015f), c.g + prnd(-0.02f, 0.02f), c.b + prnd(-0.01f, 0.01f));
+
+		// ⚽️ 球场白线染色：将落在边线、中线、中圈、禁区白线区域的草直接染成石灰纯白色
+		// 边线：|px| 在 [pitch_half_w - 0.15, pitch_half_w] 或 |pz| 在 [pitch_half_d - 0.15, pitch_half_d]
+		bool on_white_line = false;
+		const float lw = 0.16f; // 线宽检测容差
+		if (std::abs(std::abs(px) - pitch_half_w) < lw || std::abs(std::abs(pz) - pitch_half_d) < lw) {
+			on_white_line = true;
+		}
+		// 中线：|px| < lw
+		if (std::abs(px) < lw) {
+			on_white_line = true;
+		}
+		// 中圈：sqrt(px^2 + pz^2) 接近 4.5m 或开球点 (< 0.28m)
+		float dist_center = std::hypot(px, pz);
+		if (std::abs(dist_center - 4.5f) < lw || dist_center < 0.28f) {
+			on_white_line = true;
+		}
+		// 两侧禁区线 (西禁区 px ∈ [-24, -18.5], pz ∈ [-5, +5]; 东禁区 px ∈ [18.5, 24])
+		float to_west = px - (-pitch_half_w);
+		float to_east = pitch_half_w - px;
+		if ((to_west >= 0.0f && to_west <= 5.5f + lw) || (to_east >= 0.0f && to_east <= 5.5f + lw)) {
+			if (std::abs(std::abs(pz) - 5.0f) < lw) {
+				on_white_line = true; // 禁区南北横线
+			}
+			if ((std::abs(to_west - 5.5f) < lw || std::abs(to_east - 5.5f) < lw) && std::abs(pz) <= 5.0f + lw) {
+				on_white_line = true; // 禁区竖线
+			}
+		}
+
+		if (on_white_line) {
+			c = Color(0.96f, 0.98f, 0.98f); // 鲜明石灰白线，不再被绿草掩盖！
+		}
+
 		carpet.add(Vector3(p.x, h - 0.01f, p.y), prnd(0.0f, 6.2831f), prnd(-0.12f, 0.12f),
 				prnd(0.85f, 1.10f), c);
 	}
@@ -2405,6 +3385,9 @@ void TerrainBuilder::build_vegetation() {
 		if (dist_to_path(p.x, p.y) < 1.2f || on_bridge_deck(p)) { // 小径/桥面上不绊石头
 			continue;
 		}
+		if (is_near_stream(p.x, p.y, 0.6f)) { // 溪流与瀑布河道内不散乱石，保证碧蓝溪水通畅裸露
+			continue;
+		}
 		float h = terrain_height(p.x, p.y);
 		if (h < water_level + 0.12f) {
 			continue;
@@ -2639,6 +3622,9 @@ void TerrainBuilder::build_vegetation() {
 			// 位置由 h/s 确定性导出，不加 rnd()——随机序列保持不变。
 			shroom_snow.add(Vector3(p.x, h + 0.17f * s, p.y), yaw, 0.0f, s,
 					Color(0.95f, 0.96f, 1.0f));
+
+			// 记录发光蘑菇世界坐标，供玩家与动物夜晚走过时粘取荧光
+			shroom_positions.push_back(Vector3(p.x, h + 0.15f * s, p.y));
 		}
 		// 约 40% 的簇夜里冒"孢子光尘"：几粒淡绿微光从整簇蘑菇的体积里缓缓上浮
 		if (rnd(0.0f, 1.0f) < 0.4f) {
@@ -2702,14 +3688,9 @@ void TerrainBuilder::build_vegetation() {
 			return d(rng_b);
 		};
 
-		// 直径 1.0·s → s∈[0.8, 2.2] 即 0.8~2.2 m 的巨石；轮廓略扁更像顽石
-		Ref<SphereMesh> boulder_mesh;
-		boulder_mesh.instantiate();
-		boulder_mesh->set_radius(0.5f);
-		boulder_mesh->set_height(0.85f);
-		boulder_mesh->set_radial_segments(7);
-		boulder_mesh->set_rings(4);
-		boulder_mesh->set_material(veg_material());
+		// 直径 1.0·s → s∈[0.8, 2.2] 即 0.8~2.2 m 的巨石；采用岩石棱面网格与岩石斑驳材质
+		Ref<ArrayMesh> boulder_mesh = make_rock_mesh(12, 7, 0.5f, 0.80f, 0.28f, 1.6f, 90812);
+		boulder_mesh->surface_set_material(0, rock_material());
 
 		Scatter boulders;
 		for (int attempt = 0; attempt < 8600 && boulders.count() < 72; attempt++) {
@@ -2724,6 +3705,9 @@ void TerrainBuilder::build_vegetation() {
 				continue;
 			}
 			if (dist_to_path(p.x, p.y) < 2.2f || on_bridge_deck(p)) {
+				continue;
+			}
+			if (is_near_stream(p.x, p.y, 0.8f)) { // 溪流与瀑布河道内不滚巨石
 				continue;
 			}
 			float h = terrain_height(p.x, p.y);

@@ -13,6 +13,7 @@ namespace godot {
 
 class CPUParticles3D;
 class SkyCycle;
+class StaticBody3D;
 
 // TerrainBuilder —— 程序化世界搭建器。
 //
@@ -81,9 +82,15 @@ private:
 	float terrain_height(float x, float z) const; // 最终地形高度
 	float terrain_slope(float x, float z) const;  // 坡度 |∇h|（1 ≈ 45°）
 
+	// —— 高山溪流与小木桥 ——
+	void get_stream_spline(float x, float z, float &r_dist, float &r_t, float &r_water_y) const;
+	bool is_near_stream(float x, float z, float margin = 0.0f) const;
+
 	// —— 生成步骤 ——
 	void build_terrain();
 	void build_water();
+	void build_mountain_stream();
+	void build_stream_bridge();
 	void build_vegetation();
 
 	// —— 昼夜/天气驱动的运行时材质（逐帧，代价极低） ——
@@ -94,12 +101,15 @@ private:
 	//     贴地的草/灌木/蘑菇伞顶先积雪，树冠与树枝雪毯按树顶高度分三档递进）。
 	// 找不到 SkyCycle 视为晴天白天。
 	void update_sky_driven();
-	SkyCycle *sky_cache = nullptr; // 懒查找一次后缓存（同 bird/rabbit 套路，不再每帧 get_node_or_null）
+	mutable SkyCycle *sky_cache = nullptr; // 懒查找一次后缓存（同 bird/rabbit 套路，不再每帧 get_node_or_null）
 	Ref<StandardMaterial3D> shroom_cap_mat;  // MushroomCaps 专用（夜光暖橘）
 	Ref<StandardMaterial3D> shroom_spot_mat; // MushroomSpots 专用（夜光冷白）
 	std::vector<CPUParticles3D *> spore_puffs; // 孢子光尘（夜开昼关）
 	Ref<ShaderMaterial> terrain_mat;           // 地形雪盖材质（snow_ground.gdshader，加载失败时为空 → 用标准材质兜底）
 	Ref<ShaderMaterial> water_mat;             // 水面材质（water.gdshader）——用于把湖岸礁石坐标写进着色器
+	Ref<ShaderMaterial> stream_mat;            // 溪流材质（water.gdshader）——冬天下雪同步结冰
+	StaticBody3D *lake_ice_col = nullptr;      // 结冰湖面物理碰撞体（冬天下雪激活，可踏冰滑行）
+	StaticBody3D *stream_ice_col = nullptr;    // 结冰小溪物理碰撞体（冬天下雪激活，可踏冰滑行）
 
 	// 湖岸礁石（水线带的大石头）：xyz = 世界坐标，w = 视觉半径。
 	// 生成后写进 water.gdshader 的 shore_rocks 数组 —— 让拍岸浪精确地在
@@ -154,11 +164,19 @@ public:
 	bool is_in_bush(float x, float z, float y) const;
 	bool is_near_lake(float x, float z, float margin = 0.0f) const;
 
+	// —— 发光蘑菇查询（玩家/动物走过时粘取荧光） ——
+	std::vector<Vector3> shroom_positions;
+	bool is_near_glowing_mushroom(const Vector3 &p_pos, float p_dist_thresh = 1.35f) const;
+
 	// —— 给钓鱼系统用的水面查询 ——
 	// 抛竿落点必须真的在水里。FishingSystem 拿不到高度场，这里开两个只读口子。
 	float get_water_level() const { return water_level; }
 	// 该点水深（米）：> 0 = 水面之下；<= 0 = 岸上。
 	float water_depth_at(float x, float z) const { return water_level - terrain_height(x, z); }
+	float get_terrain_height(float x, float z) const { return terrain_height(x, z); }
+
+	// —— 湖面结冰与滑冰判定 ——
+	bool is_on_frozen_lake(float x, float z, float y) const;
 };
 
 } // namespace godot

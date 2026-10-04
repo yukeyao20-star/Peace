@@ -28,6 +28,10 @@ public:
 		TYPE_HOOF,
 		TYPE_PAW,
 		TYPE_RABBIT,
+		TYPE_ROLL_TRACK,
+		TYPE_HUMAN_TRACK, // 无脚小胶囊人行走/滑步留下的浅浅单一柔和压痕
+		TYPE_SKATE_LEFT,  // 左脚单刃滑冰弧线切痕（左后外蹬、向外微倾的单条刀痕）
+		TYPE_SKATE_RIGHT, // 右脚单刃滑冰弧线切痕（右后外蹬、向外微倾的单条刀痕）
 		TYPE_MAX
 	};
 

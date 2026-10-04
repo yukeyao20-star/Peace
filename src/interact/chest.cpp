@@ -105,22 +105,22 @@ void Chest::build(Ref<Shader> p_shader) {
 	lid_col->set_shape(lid_shape);
 	lid->add_child(lid_col);
 
-	// 开关箱音效
+	// 开关箱木质铰链咯吱音效（直接复用开门声音）
 	ResourceLoader *rl = ResourceLoader::get_singleton();
 	if (rl != nullptr) {
-		if (rl->exists("res://assets/audio/zen_expand.mp3")) {
-			Ref<Resource> r = rl->load("res://assets/audio/zen_expand.mp3");
+		if (rl->exists("res://assets/audio/door_open_creak.wav")) {
+			Ref<Resource> r = rl->load("res://assets/audio/door_open_creak.wav");
+			if (r.is_valid()) {
+				snd_open = Object::cast_to<AudioStream>(r.ptr());
+			}
+		} else if (rl->exists("res://assets/audio/wood_creak_open.wav")) {
+			Ref<Resource> r = rl->load("res://assets/audio/wood_creak_open.wav");
 			if (r.is_valid()) {
 				snd_open = Object::cast_to<AudioStream>(r.ptr());
 			}
 		}
-		if (rl->exists("res://assets/audio/zen_wood_drop.mp3")) {
-			Ref<Resource> r = rl->load("res://assets/audio/zen_wood_drop.mp3");
-			if (r.is_valid()) {
-				snd_close = Object::cast_to<AudioStream>(r.ptr());
-			}
-		} else if (rl->exists("res://assets/audio/zen_collapse.mp3")) {
-			Ref<Resource> r = rl->load("res://assets/audio/zen_collapse.mp3");
+		if (rl->exists("res://assets/audio/wood_creak_close.wav")) {
+			Ref<Resource> r = rl->load("res://assets/audio/wood_creak_close.wav");
 			if (r.is_valid()) {
 				snd_close = Object::cast_to<AudioStream>(r.ptr());
 			}
@@ -141,7 +141,7 @@ void Chest::_process(double p_delta) {
 	open_t = Math::clamp(open_t + dir * (float)p_delta * 3.0f, 0.0f, 1.0f);
 	// Hermite 缓动：起步慢、中段快、收尾慢
 	float e = open_t * open_t * (3.0f - 2.0f * open_t);
-	lid_pivot->set_rotation(Vector3(-1.90f * e, 0.0f, 0.0f)); // ≈109°，向后掀开
+	lid_pivot->set_rotation(Vector3(-1.45f * e, 0.0f, 0.0f)); // ≈83°，向上方掀开不穿透后墙木板
 }
 
 String Chest::get_prompt() const {

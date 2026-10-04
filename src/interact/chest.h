@@ -42,6 +42,7 @@ public:
 
 	virtual String get_prompt() const override;
 	virtual Vector3 get_interact_pos() const override;
+	virtual float get_interact_distance() const override { return 1.8f; }
 	virtual void interact(const Vector3 &p_player_pos) override;
 
 	bool is_open() const { return open_target > 0.5f; }

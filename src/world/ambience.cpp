@@ -96,29 +96,36 @@ void Ambience::_notification(int p_what) {
 
 			const float mg = Math::clamp(master, 0.0f, 1.0f); // master 线性
 
+			// 室内判定（屋里 / 门廊）：人在屋里时，室外刮风、下雪、下雨的声音显著减弱
+			float outdoor_atten = 1.0f;
+			if (sky != nullptr && player_cache != nullptr
+					&& sky->is_sheltered(player_cache->get_global_position())) {
+				outdoor_atten = 0.12f; // 室内衰减至 12%（降低约 18.4 dB），门窗室内听室外风雨雪沉闷幽微
+			}
+
 			// —— 风声：基线 -18dB → 雨雪天（wet>0.15 起）线性升到 -12dB ——
-			//     （峰值压在 -12dB：背景垫底，不压鸟鸣 3D 声源与脚步声）
+			//     （峰值压在 -12dB：背景垫底，不压鸟鸣 3D 声源与脚步声；进屋后乘 outdoor_atten 减弱）
 			float wet_k = Math::clamp((wet_s - 0.15f) / 0.85f, 0.0f, 1.0f);
 			float wind_db = Math::lerp(-18.0f, -12.0f, wet_k);
-			float wind_lin = std::pow(10.0f, wind_db / 20.0f) * mg;
+			float wind_lin = std::pow(10.0f, wind_db / 20.0f) * mg * outdoor_atten;
 			// 雪天（snow>rain）主导时换更闷的雪风音色：两台播放器交叉淡化
 			float snow_mix = Math::clamp((snow_s - rain_s) * 1.5f + 0.5f, 0.0f, 1.0f);
 			wind_gain = Math::lerp(wind_gain, wind_lin * (1.0f - snow_mix), 0.05f);
 			snow_gain = Math::lerp(snow_gain, wind_lin * snow_mix, 0.05f);
 
-			// —— 雨声层：纯雨量 rain_s 驱动！下雪天完全静音！——
+			// —— 雨声层：纯雨量 rain_s 驱动！下雪天完全静音！进屋后显著减弱！——
 			// 有雪时被雪压制（防雨雪过渡期残留雨声，雪天只留宁静雪风）
 			float rain_effective = Math::max(0.0f, rain_s - snow_s * 0.8f);
 			float rain_k = Math::clamp((rain_effective - 0.10f) / 0.90f, 0.0f, 1.0f);
 			float rain_target_db = Math::lerp(-24.0f, -12.0f, rain_k);
-			float rain_lin = (rain_k > 0.01f) ? (std::pow(10.0f, rain_target_db / 20.0f) * mg) : 0.0f;
+			float rain_lin = (rain_k > 0.01f) ? (std::pow(10.0f, rain_target_db / 20.0f) * mg * outdoor_atten) : 0.0f;
 			rain_gain = Math::lerp(rain_gain, rain_lin, 0.05f);
 
 			// —— 晨曦鸟鸣层：白天（night_f < 0.35）且晴朗无大雨雪（wet_s < 0.30）——
 			float bird_day_k = Math::clamp(1.0f - (night_f - 0.10f) / 0.25f, 0.0f, 1.0f);
 			float bird_weather_k = Math::clamp(1.0f - (wet_s - 0.10f) / 0.20f, 0.0f, 1.0f);
 			float bird_target_k = bird_day_k * bird_weather_k;
-			float bird_lin = (bird_target_k > 0.01f) ? (std::pow(10.0f, -17.0f / 20.0f) * bird_target_k * mg) : 0.0f;
+			float bird_lin = (bird_target_k > 0.01f) ? (std::pow(10.0f, -17.0f / 20.0f) * bird_target_k * mg * (outdoor_atten * 0.6f + 0.4f)) : 0.0f;
 			birds_gain = Math::lerp(birds_gain, bird_lin, 0.04f);
 
 			// —— 湖水拍岸层：玩家靠近湖水时响起，冬天湖面结冰（snow_s 高）时减弱 ——
@@ -138,21 +145,25 @@ void Ambience::_notification(int p_what) {
 			}
 			float lake_unfrozen = Math::clamp(1.0f - snow_s * 1.5f, 0.0f, 1.0f);
 			float water_k = lake_proximity * lake_unfrozen;
-			float water_lin = (water_k > 0.01f) ? (std::pow(10.0f, -16.0f / 20.0f) * water_k * mg) : 0.0f;
+			float water_lin = (water_k > 0.01f) ? (std::pow(10.0f, -16.0f / 20.0f) * water_k * mg * outdoor_atten) : 0.0f;
 			water_gain = Math::lerp(water_gain, water_lin, 0.05f);
 
-			// —— 壁炉柴火层：靠近木屋壁炉时响起（木屋坐标 12, 8），屋内最响，离屋 18m 后淡出 ——
+			// —— 壁炉柴火层：靠近木屋壁炉时响起 ——
+			// 声源中心取**真实壁炉位置**，不是院子中心 (12,8)：
+			// 壁炉在 Cabin 局部 (-3.42, 0.38, -0.6)，木屋整体绕 Y 转了 45°、
+			// 原点在 (12, 0.35, 8) → 世界 XZ ≈ (9.16, 9.99)。
 			float hearth_k = 0.0f;
 			if (player_cache != nullptr) {
 				Vector3 pp = player_cache->get_global_position();
-				float d_cabin = Vector2(pp.x - 12.0f, pp.z - 8.0f).length();
-				if (d_cabin < 4.5f) {
-					hearth_k = 1.0f;
-				} else if (d_cabin < 18.0f) {
-					hearth_k = 1.0f - (d_cabin - 4.5f) / 13.5f;
+				float d_fire = Vector2(pp.x - 9.16f, pp.z - 9.99f).length();
+				if (d_fire < 5.0f) {
+					hearth_k = 1.0f; // 屋里（含门廊）满响
+				} else if (d_fire < 18.0f) {
+					hearth_k = 1.0f - (d_fire - 5.0f) / 13.0f;
 				}
 			}
-			float hearth_lin = (hearth_k > 0.01f) ? (std::pow(10.0f, -14.0f / 20.0f) * hearth_k * mg) : 0.0f;
+			// 响应用户反馈：壁炉燃烧的声音太小了，大幅提升壁炉音效增益（由 -6.5dB 提升至 +2.0dB），确保在室内木柴燃烧噼啪声清晰清脆温润
+			float hearth_lin = (hearth_k > 0.01f) ? (std::pow(10.0f, 2.0f / 20.0f) * hearth_k * mg) : 0.0f;
 			hearth_gain = Math::lerp(hearth_gain, hearth_lin, 0.05f);
 
 			if (wind != nullptr) {
@@ -211,6 +222,12 @@ void Ambience::build() {
 					mp3->set_loop(true);
 					return mp3;
 				}
+				// WAV 的循环必须显式设 loop_mode，否则播一遍就停
+				Ref<AudioStreamWAV> wav = Object::cast_to<AudioStreamWAV>(r.ptr());
+				if (wav.is_valid()) {
+					wav->set_loop_mode(AudioStreamWAV::LOOP_FORWARD);
+					return wav;
+				}
 				Ref<AudioStream> s = Object::cast_to<AudioStream>(r.ptr());
 				if (s.is_valid()) {
 					return s;
@@ -237,7 +254,31 @@ void Ambience::build() {
 	if (!snd_water.is_valid()) {
 		snd_water = make_water_lap();
 	}
-	snd_hearth = load_looping_mp3("res://assets/audio/cabin_fireplace.mp3");
+	// 壁炉柴火：优先用离线归一化过的无缝循环（tools/make_fireplace_loop.py 生成）。
+	// 原始 cabin_fireplace.mp3 实测 RMS 只有 -50.8 dB（峰值 -4.9 dB），
+	// 按原样播再乘 -14dB 增益后实际只剩 -65dB —— 比风声(-49.7dB)还低 20dB 以上，
+	// 玩家站在炉边也完全听不见。归一化版把 RMS 拉到 -20dB 并做了软限幅。
+	snd_hearth = load_looping_mp3("res://assets/audio/cabin_fireplace_loop.wav");
+	if (!snd_hearth.is_valid()) {
+		WARN_PRINT("Ambience: 缺少 assets/audio/cabin_fireplace_loop.wav"
+				"（用 tools/make_fireplace_loop.py 生成），退回原始 cabin_fireplace.mp3 ——"
+				"它 RMS 只有 -50.8dB，基本听不见。");
+		snd_hearth = load_looping_mp3("res://assets/audio/cabin_fireplace.mp3");
+	}
+
+	// 背景音乐（BGM）：柔和空灵治愈，循环播放，绝不喧宾夺主（-24dB）
+	if (rl != nullptr && rl->exists("res://assets/audio/bgm_kalimba_night.wav")) {
+		Ref<Resource> r = rl->load("res://assets/audio/bgm_kalimba_night.wav");
+		if (r.is_valid()) {
+			Ref<AudioStreamWAV> wav = Object::cast_to<AudioStreamWAV>(r.ptr());
+			if (wav.is_valid()) {
+				wav->set_loop_mode(AudioStreamWAV::LOOP_FORWARD);
+				snd_bgm = wav;
+			} else {
+				snd_bgm = Object::cast_to<AudioStream>(r.ptr());
+			}
+		}
+	}
 
 	auto setup_loop_player = [&](AudioStreamPlayer *&p_player, const char *p_name, Ref<AudioStream> p_stream) {
 		p_player = memnew(AudioStreamPlayer);
@@ -258,6 +299,15 @@ void Ambience::build() {
 	setup_loop_player(water, "WaterLap", snd_water);
 	setup_loop_player(hearth, "Fireplace", snd_hearth);
 
+	if (snd_bgm.is_valid()) {
+		bgm = memnew(AudioStreamPlayer);
+		bgm->set_name("BGM");
+		bgm->set_stream(snd_bgm);
+		bgm->set_volume_db(-24.0f); // 保持很小声很舒适
+		add_child(bgm);
+		bgm->play();
+	}
+
 	// 虫鸣是一次性短音：不循环、不预播放，到点才响
 	cricket = memnew(AudioStreamPlayer);
 	cricket->set_name("Cricket");
@@ -269,8 +319,8 @@ void Ambience::build() {
 // 退出收口（NOTIFICATION_EXIT_TREE 触发）：stop 全部播放器并清掉成员上的音频流引用
 void Ambience::shutdown_audio() {
 	set_process(false);
-	AudioStreamPlayer *players[7] = {wind, wind_snow, rain, cricket, birds, water, hearth};
-	for (int i = 0; i < 7; ++i) {
+	AudioStreamPlayer *players[8] = {wind, wind_snow, rain, cricket, birds, water, hearth, bgm};
+	for (int i = 0; i < 8; ++i) {
 		if (players[i] != nullptr) {
 			players[i]->stop();
 			players[i]->set_stream(Ref<AudioStream>());
@@ -283,6 +333,7 @@ void Ambience::shutdown_audio() {
 	snd_birds = Ref<AudioStream>();
 	snd_water = Ref<AudioStream>();
 	snd_hearth = Ref<AudioStream>();
+	snd_bgm = Ref<AudioStream>();
 	OS::get_singleton()->delay_usec(50000); // 给音频线程留清扫窗口
 }
 

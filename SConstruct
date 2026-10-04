@@ -40,7 +40,7 @@ if env['platform'] == "windows":
     env["SHLIBPREFIX"] = ""
 
 # 头文件按功能分子目录，全部加进搜索路径 → 源码里保持 #include "xxx.h" 裸文件名风格
-env.Append(CPPPATH=["src/", "src/systems/", "src/world/", "src/actors/", "src/interact/"])
+env.Append(CPPPATH=["src/", "src/systems/", "src/world/", "src/actors/", "src/interact/", "src/props/"])
 sources = Glob("src/*.cpp") + Glob("src/*/*.cpp")
 
 # .dev 不影响兼容性；.universal 表示兼容所有架构 —— 都无需体现在文件名里

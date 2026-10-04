@@ -7,9 +7,7 @@
 #include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/classes/static_body3d.hpp>
 #include <godot_cpp/core/math.hpp>
-#include <godot_cpp/core/memory.hpp>
-#include <godot_cpp/variant/string.hpp>
-#include <godot_cpp/variant/transform3d.hpp>
+#include <godot_cpp/classes/resource_loader.hpp>
 
 #include "mesh_util.h"
 
@@ -120,6 +118,33 @@ void CabinDoor::build(Ref<Shader> p_shader) {
 	col->set_shape(shape);
 	col->set_position(Vector3(0.0f, 0.95f, 0.0f));
 	panel->add_child(col);
+
+	// 开关门木板轴承咯吱音效（优先加载用户提供的开门真实音频）
+	ResourceLoader *rl = ResourceLoader::get_singleton();
+	if (rl != nullptr) {
+		if (rl->exists("res://assets/audio/door_open_creak.wav")) {
+			Ref<Resource> r = rl->load("res://assets/audio/door_open_creak.wav");
+			if (r.is_valid()) {
+				snd_open = Object::cast_to<AudioStream>(r.ptr());
+			}
+		} else if (rl->exists("res://assets/audio/wood_creak_open.wav")) {
+			Ref<Resource> r = rl->load("res://assets/audio/wood_creak_open.wav");
+			if (r.is_valid()) {
+				snd_open = Object::cast_to<AudioStream>(r.ptr());
+			}
+		}
+		if (rl->exists("res://assets/audio/wood_creak_close.wav")) {
+			Ref<Resource> r = rl->load("res://assets/audio/wood_creak_close.wav");
+			if (r.is_valid()) {
+				snd_close = Object::cast_to<AudioStream>(r.ptr());
+			}
+		}
+	}
+	audio_player = memnew(AudioStreamPlayer3D);
+	audio_player->set_name("DoorAudio");
+	audio_player->set_unit_size(6.0f);
+	audio_player->set_max_distance(25.0f);
+	add_child(audio_player);
 }
 
 void CabinDoor::_process(double p_delta) {
@@ -142,15 +167,22 @@ Vector3 CabinDoor::get_interact_pos() const {
 }
 
 void CabinDoor::interact(const Vector3 &p_player_pos) {
-	if (open_t != open_target) {
-		return; // 动画进行中不接受新指令
-	}
-	if (!is_open()) {
+	bool will_open = !is_open();
+	if (will_open) {
 		// 把主角位置换到门局部空间：z>0 是门外（门廊侧），z<0 是屋内
 		Vector3 lp = to_local(p_player_pos);
 		open_sign = lp.z > 0.0f ? 1.0f : -1.0f; // 永远朝远离主角的方向开
 		open_target = 1.0f;
 	} else {
 		open_target = 0.0f;
+	}
+
+	if (audio_player != nullptr) {
+		// 用户明确要求："关门的声音设置成和开门一样的"
+		Ref<AudioStream> s = snd_open.is_valid() ? snd_open : snd_close;
+		if (s.is_valid()) {
+			audio_player->set_stream(s);
+			audio_player->play();
+		}
 	}
 }

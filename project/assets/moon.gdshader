@@ -37,23 +37,44 @@ void vertex() {
 
 void fragment() {
 	vec3 n = normalize(obj_pos);
-	// 球面采 2D 噪声会有接缝：把方向投到 XY / ZY 两个平面各采一层按权重平均
-	float m1 = vnoise(n.xy * 7.0 + 3.1) * 0.6 + vnoise(n.zy * 6.0 + 11.7) * 0.4;
-	float m2 = vnoise(n.xy * 19.0 + 7.7) * 0.5 + vnoise(n.zy * 17.0 + 2.9) * 0.5;
+	// 球面采 2D 噪声模拟真实月海 (Lunar Maria) 与陨石坑 (Craters)
+	float m1 = vnoise(n.xy * 6.5 + 3.1) * 0.6 + vnoise(n.zy * 5.5 + 11.7) * 0.4;
+	float m2 = vnoise(n.xy * 18.0 + 7.7) * 0.5 + vnoise(n.zy * 16.0 + 2.9) * 0.5;
 
-	float mare = smoothstep(0.45, 0.75, m1) * 0.22;          // 月海：低频大块暗斑
-	float spot = smoothstep(0.68, 0.80, m2);                  // 陨石坑：高频斑点主体
-	float rim = max(smoothstep(0.62, 0.68, m2) - spot, 0.0);  // 坑缘微亮
-	float shade = 1.0 - mare - spot * 0.18 + rim * 0.10;
+	float mare = smoothstep(0.42, 0.72, m1) * 0.28;          // 月海：低频青灰玄武岩大块暗斑
+	float spot = smoothstep(0.66, 0.82, m2);                  // 环形山/撞击坑：高频斑点
+	float rim = max(smoothstep(0.60, 0.66, m2) - spot, 0.0);  // 撞击坑边缘反光亮环
+	float shade = 1.0 - mare - spot * 0.16 + rim * 0.12;
 
-	// 相位照明（照亮侧朝 +X）：GLSL 的 smoothstep 反向参数未定义，统一正向写
-	float k = cos(phase * 6.2831853);
-	float limb = sqrt(max(1.0 - n.y * n.y, 0.0));
-	float lit = smoothstep(-0.05, 0.05, n.x - k * limb);
+	// 月相几何明暗界线 (Terminator)：
+	// 真实月相是阳光入射角与视线方向的交叠投影。
+	// 当 phase = 0.5 时为满月（整个可见圆面全亮）；
+	// 当 phase 在 0.25/0.75 时为上弦月/下弦月（明暗半圆直平分线）；
+	// 当 phase 在 0.0 时为新月（全暗，仅透出地照）。
+	// 在朝向相机的可见半球上（n.z 越大越靠近中心）：
+	// 经度角 lambda：x = cos(phi)*sin(lambda), z = cos(phi)*cos(lambda)
+	// 晨昏线：sun_dir 与法线夹角 dot(n, light_dir) > 0。
+	// 光源在轨道面上绕 Y 轴旋转：
+	float sun_angle = (phase - 0.5) * 6.2831853; // phase=0.5 -> angle=0 (正面照亮)
+	vec3 light_dir = vec3(sin(sun_angle), 0.0, cos(sun_angle));
+	float NdotL = dot(n, light_dir);
 
-	vec3 lit_col = vec3(0.93, 0.94, 1.0) * shade;
-	vec3 dark_col = vec3(0.07, 0.09, 0.15) * (0.6 + 0.4 * shade);
-	ALBEDO = mix(dark_col, lit_col, lit);
-	EMISSION = lit_col * lit * 0.18; // 借环境 Glow 泛一点柔光晕
-	ALPHA = clamp(alpha, 0.0, 1.0);
+	// 自适应反走样过渡
+	float aa = max(fwidth(NdotL) * 1.5, 0.025);
+	float lit = smoothstep(-aa, aa, NdotL);
+
+	// 亮面基色与柔和地照 (Earthshine)：
+	// 真实月球暗部在晴朗夜空中并非死黑突兀，而是带有微弱通透的蓝灰冷光地照；
+	// 亮面是温暖皎洁的银白色月华。
+	vec3 lit_albedo = vec3(0.96, 0.97, 1.0) * shade;
+	vec3 earthshine_albedo = vec3(0.12, 0.15, 0.22) * shade * 0.35;
+	vec3 final_color = mix(earthshine_albedo, lit_albedo, lit);
+
+	// 球面圆盘边缘自然柔化（消除 3D 网格边缘像素台阶与生硬折角）
+	// n.z 在正面圆心处为 1.0，在圆盘边缘切线处为 0.0
+	float disk_edge = smoothstep(0.01, 0.10, abs(n.z));
+
+	ALBEDO = final_color;
+	EMISSION = lit_albedo * lit * 0.32; // 皎洁月光自发光
+	ALPHA = clamp(alpha * mix(0.18, 1.0, lit) * disk_edge, 0.0, 1.0);
 }

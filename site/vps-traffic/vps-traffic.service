@@ -1,0 +1,9 @@
+[Unit]
+Description=Write VPS traffic usage for the nginx subscription header
+Documentation=file:///usr/local/bin/vps-traffic
+After=vnstat.service
+Wants=vnstat.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/vps-traffic

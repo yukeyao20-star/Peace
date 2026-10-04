@@ -91,5 +91,6 @@ scons platform=macos target=template_debug     # 增量编译
 - 源码在仓库 `site/`：`index.html` / `style.css` / `assets/img/` / `download/` / `nginx/` / `deploy.sh`。
 - **部署**：`cd site && ./deploy.sh`（只同步网页），`./deploy.sh --nginx`（连 nginx 配置一起，会自动备份 + `nginx -t` 校验）。
 - **服务器侧**：站点根 `/var/www/game`；nginx 配置 `/etc/nginx/sites-available/homestead`（80 default_server）；订阅 location 在 `/etc/nginx/snippets/homestead-sub.conf` 被 include，**订阅 URL 与行为不可改**。
-- **打包规则**：官网用的截图一律裁掉游戏 HUD（顶 9.5% / 底 5%），导出宽度 520（滚动带）/ 900（画廊）/ 1500（大图），JPEG q78–84。
-- ⚠️ **改官网截图前先核对构建时间**：包比源码旧的时候，宣传画面会和下载内容对不上。
+- **打包规则**：官网用的截图一律裁掉游戏 HUD（顶部 68px）**再加底部 11%** —— 所有游戏截图在图片高度 91% 处都有一行游戏内交互提示（"按 F 抛竿钓鱼"），不裁会留在画面里。导出宽度 520（滚动带）/ 900（画廊）/ 1500（大图）。
+- **下载包流程**：`dist/` 里导出 → 复制三个包到 `site/download/` → `./deploy.sh`。包内文件名必须和页面文案核对（Win 是 `game3d-windows.exe`、Linux 启动命令是 `lakeside-cabin`、mac 解压出 `湖畔家园 Homestead.app` 且是 Universal 双架构），文件名对不上比体积写错更坑。
+- 体积会随资源增长：2026-10-02 那版因为 `project/` 新增了 93MB 音频（117 个 mp3 + 22 个 wav），`.pck` 从 15MB 涨到 105MB，三个包变成 mac 162MB / win 139MB / deb 115MB。页面上的体积数字、构建日期每次发版都要同步改。

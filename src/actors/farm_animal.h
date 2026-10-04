@@ -11,6 +11,7 @@ namespace godot {
 
 class AnimatableBody3D;
 class CollisionShape3D;
+class CPUParticles3D;
 class Node3D;
 class SkyCycle;
 
@@ -62,6 +63,12 @@ class FarmAnimal : public Node3D {
 	bool foot_side = false;     // 左右脚印交替
 	bool grounded_once = false; // 首次贴地完成前不做决策
 	float home_ground_y = -1e9f; // 出生点地面高度（拒绝贴上房顶等结构面的锚点）
+
+	// —— 踩过发光蘑菇带走微弱荧光粒子系统（持续 4 秒缓慢飘动渐隐） ——
+	CPUParticles3D *shroom_glow_trail = nullptr;
+	float shroom_glow_timer = 0.0f;
+	void build_shroom_glow_trail();
+	void update_shroom_glow_trail(float p_delta);
 
 protected:
 	static void _bind_methods();

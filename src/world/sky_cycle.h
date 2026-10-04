@@ -18,6 +18,8 @@
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/variant/node_path.hpp>
 #include <godot_cpp/variant/string.hpp>
+#include <godot_cpp/variant/vector3.hpp>
+#include <godot_cpp/variant/vector4.hpp>
 
 namespace godot {
 
@@ -68,6 +70,23 @@ private:
 	CPUParticles3D *downpour = nullptr; // 大雨层
 	CPUParticles3D *snowflakes = nullptr; // 雪花层
 	CPUParticles3D *fireflies = nullptr; // 萤火虫（夜间 + 非雨雪天）
+	Ref<ShaderMaterial> precip_mat;      // 雨丝材质（fixed_y = true，带屋檐遮蔽）
+	Ref<ShaderMaterial> precip_mat_snow; // 雪花材质（fixed_y = false；billboard 模式不同必须分开）
+	// —— 屋檐遮蔽体：全部在木屋局部空间描述（木屋绕 Y 转了 45°，
+	//    用世界 AABB 会在屋子周围削出一块菱形"无雨区"）。
+	//    既给着色器剔除粒子，也给 is_sheltered() 判断"玩家在不在屋檐下"。 ——
+	struct ShelterBox {
+		Vector3 lo;
+		Vector3 hi;
+		Vector4 slope; // (slope_x, x0, slope_z, z0)：沿局部 X / Z 的下斜率与基准点
+	};
+	static const int MAX_SHELTERS = 3;
+	ShelterBox shelters[MAX_SHELTERS];
+	int shelter_count = 0;
+	Vector3 shelter_origin;
+	float shelter_cos = 1.0f;
+	float shelter_sin = 0.0f;
+	bool precip_shelter_ready = false; // 是否已采集并写入遮蔽体
 	MultiMeshInstance3D *stars = nullptr;    // 星空穹顶（夜空晴天可见）
 	Ref<StandardMaterial3D> star_mat;        // 星星材质（每帧只调 albedo 透明度）
 	MeshInstance3D *moon = nullptr;          // 月盘（夜空可见，高度跟随 -sun_h）
@@ -82,6 +101,7 @@ private:
 	void build_snow();
 	void build_stars();
 	void build_moon();
+	void build_precip_shelter(); // 采集木屋屋顶遮蔽体，写进降水着色器
 	void pick_next_weather();
 	void apply(); // 把 time_of_day / cloud / rain 写进灯光与天空
 
@@ -106,6 +126,10 @@ public:
 	float get_rain_amount() const { return rain; } // 雨强因子 0..1（供夜光/水面等系统联动）
 	float get_snow_amount() const { return snow; } // 雪强因子 0..1
 	Vector3 get_sun_dir() const { return sun_dir; } // 指向太阳/月亮的世界方向（植被透光等用）
+
+	// 某世界坐标点是否在屋檐下（屋里 / 檐下）。与降水粒子剔除用同一套遮蔽体，
+	// 供 Ambience 判断"人在室内就该把雨雪声压掉"。
+	bool is_sheltered(const Vector3 &p_world) const;
 
 	// —— 天气状态快照（SaveSystem 存读用）——
 	int get_weather() const { return weather; }

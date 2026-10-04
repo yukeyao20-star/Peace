@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  vps-traffic —— 把本机流量用量写成 nginx 订阅头需要的字符串
+#
+#  由 vps-traffic.timer 每分钟调用一次。
+#  产物：/var/lib/vps-traffic/userinfo.txt
+#    形如：upload=123; download=456; total=4398046511104; expire=2051196519
+#
+#  nginx 的 perl_set 每次请求读这个文件，塞进 subscription-userinfo 头，
+#  Clash 就能在订阅卡片上显示"已用 / 总量"。
+#
+#  口径：vnstat 本月累计 + 基数。
+#  基数是 vnstat 开始记账之前已经用掉的量（首次运行时从网卡累计值取一次），
+#  这样显示出来的数字立刻和 DediRock 面板对得上。跨月自动归零。
+# ============================================================================
+set -euo pipefail
+
+IFACE="${IFACE:-eth0}"
+STATE_DIR="/var/lib/vps-traffic"
+OUT_FILE="${STATE_DIR}/userinfo.txt"
+OFF_FILE="${STATE_DIR}/offset"
+
+# 总配额：4096 GiB（面板写的是 4096 GB，实测按 1024 进制，对得上）
+TOTAL_BYTES=4398046511104
+# 订阅到期时间。占位值 2035-01-01；要显示真实到期日就改这里
+# （取值：date -d "2036-10-01" +%s）
+EXPIRE_EPOCH=2051196519
+
+mkdir -p "${STATE_DIR}"
+
+THIS_MONTH="$(date +%Y-%m)"
+YEAR_NOW="$(date +%Y)"
+MONTH_NOW="$(date +%-m)"
+
+# ---- 1. 取 vnstat 本月累计（字节） ----
+JSON="$(vnstat --json m -i "${IFACE}" 2>/dev/null || echo '{}')"
+VN_RX=0
+VN_TX=0
+PARSED="$(printf '%s' "${JSON}" | jq -r --argjson y "${YEAR_NOW}" --argjson m "${MONTH_NOW}" '
+  ([.interfaces[0].traffic.month[]? | select(.date.year == $y and .date.month == $m)] | first // {rx:0, tx:0})
+  | "\(.rx) \(.tx)"' 2>/dev/null || true)"
+if [[ -n "${PARSED}" ]]; then
+  read -r VN_RX VN_TX <<<"${PARSED}"
+fi
+VN_RX="${VN_RX:-0}"
+VN_TX="${VN_TX:-0}"
+
+# ---- 2. 基数（vnstat 开始记账之前已用掉的量） ----
+BASE_RX=0
+BASE_TX=0
+if [[ -f "${OFF_FILE}" ]]; then
+  OFF_MONTH=""
+  read -r OFF_MONTH BASE_RX BASE_TX < "${OFF_FILE}" || true
+  BASE_RX="${BASE_RX:-0}"
+  BASE_TX="${BASE_TX:-0}"
+  if [[ "${OFF_MONTH}" != "${THIS_MONTH}" ]]; then
+    # 跨月：基数归零，本月从 vnstat 自己的数重新算
+    BASE_RX=0
+    BASE_TX=0
+    echo "${THIS_MONTH} 0 0" > "${OFF_FILE}"
+  fi
+else
+  # 首次运行：把网卡自开机以来的累计当成基数，立刻与面板对齐
+  BASE_RX="$(cat "/sys/class/net/${IFACE}/statistics/rx_bytes" 2>/dev/null || echo 0)"
+  BASE_TX="$(cat "/sys/class/net/${IFACE}/statistics/tx_bytes" 2>/dev/null || echo 0)"
+  echo "${THIS_MONTH} ${BASE_RX} ${BASE_TX}" > "${OFF_FILE}"
+fi
+
+UP=$(( BASE_RX + VN_RX ))
+DOWN=$(( BASE_TX + VN_TX ))
+
+# ---- 3. 原子写产物（nginx 随时可能读，别让它读到半个文件） ----
+printf 'upload=%s; download=%s; total=%s; expire=%s' \
+  "${UP}" "${DOWN}" "${TOTAL_BYTES}" "${EXPIRE_EPOCH}" > "${OUT_FILE}.tmp"
+mv "${OUT_FILE}.tmp" "${OUT_FILE}"

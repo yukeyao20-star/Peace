@@ -1,5 +1,6 @@
 #include "well.h"
 
+#include <godot_cpp/classes/box_shape3d.hpp>
 #include <godot_cpp/classes/collision_shape3d.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/cylinder_shape3d.hpp>
@@ -97,16 +98,56 @@ void Well::build(Ref<Shader> p_shader) {
 	ring_col->set_position(Vector3(0.0f, 0.3f, 0.0f));
 	ring->add_child(ring_col);
 
-	// —— 辘轳架：两根木柱 + 横轴 + 人字顶棚 ——
-	meshutil::add_box(this, p_shader, Vector3(0.14f, 1.9f, 0.14f), Vector3(-0.95f, 0.95f, 0.0f), wood);
-	meshutil::add_box(this, p_shader, Vector3(0.14f, 1.9f, 0.14f), Vector3(0.95f, 0.95f, 0.0f), wood);
-	add_cylinder(this, 0.055f, 2.10f, wood_dark, p_shader, Vector3(0.0f, 1.88f, 0.0f),
+	// —— 辘轳架：两根木柱 + 横轴 + 人字顶棚（具备真实物理碰撞体，不再穿模） ——
+	StaticBody3D *frame = memnew(StaticBody3D);
+	frame->set_name("Frame");
+	add_child(frame);
+
+	meshutil::add_box(frame, p_shader, Vector3(0.14f, 1.9f, 0.14f), Vector3(-0.95f, 0.95f, 0.0f), wood);
+	meshutil::add_box(frame, p_shader, Vector3(0.14f, 1.9f, 0.14f), Vector3(0.95f, 0.95f, 0.0f), wood);
+	add_cylinder(frame, 0.055f, 2.10f, wood_dark, p_shader, Vector3(0.0f, 1.88f, 0.0f),
 			Vector3(0.0f, 0.0f, 1.5707964f)); // π/2，圆柱转向沿 X
-	meshutil::add_box(this, p_shader, Vector3(2.30f, 0.05f, 0.75f), Vector3(0.0f, 2.35f, 0.28f),
+	meshutil::add_box(frame, p_shader, Vector3(2.30f, 0.05f, 0.75f), Vector3(0.0f, 2.35f, 0.28f),
 			roof_c, Vector3(0.6f, 0.0f, 0.0f));
-	meshutil::add_box(this, p_shader, Vector3(2.30f, 0.05f, 0.75f), Vector3(0.0f, 2.35f, -0.28f),
+	meshutil::add_box(frame, p_shader, Vector3(2.30f, 0.05f, 0.75f), Vector3(0.0f, 2.35f, -0.28f),
 			roof_c, Vector3(-0.6f, 0.0f, 0.0f));
-	meshutil::add_box(this, p_shader, Vector3(2.34f, 0.06f, 0.10f), Vector3(0.0f, 2.58f, 0.0f), wood_dark);
+	meshutil::add_box(frame, p_shader, Vector3(2.34f, 0.06f, 0.10f), Vector3(0.0f, 2.58f, 0.0f), wood_dark);
+
+	// 立柱物理碰撞体
+	Ref<BoxShape3D> post_shape;
+	post_shape.instantiate();
+	post_shape->set_size(Vector3(0.18f, 1.9f, 0.18f));
+
+	CollisionShape3D *post_col_l = memnew(CollisionShape3D);
+	post_col_l->set_name("ColPostL");
+	post_col_l->set_shape(post_shape);
+	post_col_l->set_position(Vector3(-0.95f, 0.95f, 0.0f));
+	frame->add_child(post_col_l);
+
+	CollisionShape3D *post_col_r = memnew(CollisionShape3D);
+	post_col_r->set_name("ColPostR");
+	post_col_r->set_shape(post_shape);
+	post_col_r->set_position(Vector3(0.95f, 0.95f, 0.0f));
+	frame->add_child(post_col_r);
+
+	// 人字顶棚物理碰撞体
+	Ref<BoxShape3D> roof_shape;
+	roof_shape.instantiate();
+	roof_shape->set_size(Vector3(2.30f, 0.10f, 0.80f));
+
+	CollisionShape3D *roof_col_f = memnew(CollisionShape3D);
+	roof_col_f->set_name("ColRoofFront");
+	roof_col_f->set_shape(roof_shape);
+	roof_col_f->set_position(Vector3(0.0f, 2.35f, 0.28f));
+	roof_col_f->set_rotation(Vector3(0.6f, 0.0f, 0.0f));
+	frame->add_child(roof_col_f);
+
+	CollisionShape3D *roof_col_b = memnew(CollisionShape3D);
+	roof_col_b->set_name("ColRoofBack");
+	roof_col_b->set_shape(roof_shape);
+	roof_col_b->set_position(Vector3(0.0f, 2.35f, -0.28f));
+	roof_col_b->set_rotation(Vector3(-0.6f, 0.0f, 0.0f));
+	frame->add_child(roof_col_b);
 
 	// —— 摇把：横轴右端，打水时旋转 ——
 	crank = memnew(Node3D);

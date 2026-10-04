@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # ============================================================================
-#  湖畔家园 Homestead —— 三平台一键出包
+#  Peace —— 三平台一键出包
 #
 #  用法：
 #    ./tools/package.sh                 # 全流程：编库 → 导出 → 压包 → deb
 #    ./tools/package.sh --publish       # 全流程 + 把三个产物同步到 site/download/
+#    ./tools/package.sh --deploy        # 全流程 + 同步到 site/download/ + 直接部署到线上 VPS
 #    ./tools/package.sh --no-build      # 跳过编译（库已经是本轮的）
 #    ./tools/package.sh --only=windows  # 只出某一个平台
 #    ./tools/package.sh --no-deb        # 不组 deb（只出裸二进制 zip）
@@ -15,10 +16,10 @@
 #    VERSION=0.1.0-1  deb 版本号
 #
 #  产物（dist/）：
-#    game3d-macos.zip           macOS .app（universal，未签名）
-#    game3d-windows-x64.zip     exe + dll
-#    game3d-linux-x64.zip       裸二进制 + so
-#    game3d-linux-amd64.deb     deb 安装包
+#    peace-macos.zip           macOS .app（universal，未签名）
+#    peace-windows-x64.zip     exe + dll
+#    peace-linux-x64.zip       裸二进制 + so
+#    peace-linux-amd64.deb     deb 安装包
 # ============================================================================
 set -euo pipefail
 
@@ -26,8 +27,8 @@ set -euo pipefail
 # 常量
 # ---------------------------------------------------------------------------
 GODOT="${GODOT:-/Applications/Godot.app/Contents/MacOS/Godot}"
-PKG_NAME="lakeside-cabin"                 # deb 包名（改这里要同时改下面几处路径）
-PKG_DISPLAY="湖畔家园 Homestead"
+PKG_NAME="peace"                 # deb 包名（改这里要同时改下面几处路径）
+PKG_DISPLAY="Peace"
 PKG_VERSION="${VERSION:-0.1.0-1}"
 PKG_INSTALL_DIR="/opt/${PKG_NAME}"        # 游戏本体安装位置
 ICON_SRC="docs/Homestead.icns"
@@ -37,15 +38,15 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO"
 
 DIST="$REPO/dist"
-EXE_WIN="game3d-windows.exe"
+EXE_WIN="peace-windows.exe"
 DLL_WIN="game3d.windows.template_release.x86_64.dll"
-BIN_LIN="game3d-linux.x86_64"
+BIN_LIN="peace-linux.x86_64"
 SO_LIN="libgame3d.linux.template_release.x86_64.so"
 
 # ---------------------------------------------------------------------------
 # 参数
 # ---------------------------------------------------------------------------
-DO_BUILD=1; DO_EXPORT=1; DO_DEB=1; DO_PUBLISH=0
+DO_BUILD=1; DO_EXPORT=1; DO_DEB=1; DO_PUBLISH=0; DO_DEPLOY=0
 PLATFORMS="macos windows linux"
 
 for arg in "$@"; do
@@ -54,8 +55,9 @@ for arg in "$@"; do
 		--no-export) DO_EXPORT=0 ;;
 		--no-deb)    DO_DEB=0 ;;
 		--publish)   DO_PUBLISH=1 ;;
+		--deploy)    DO_DEPLOY=1; DO_PUBLISH=1 ;;
 		--only=*)    PLATFORMS="${arg#--only=}"; PLATFORMS="${PLATFORMS//,/ }" ;;
-		-h|--help)   sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+		-h|--help)   sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 		*) echo "未知参数：${arg}（--help 看用法）" >&2; exit 2 ;;
 	esac
 done
@@ -164,8 +166,8 @@ if [[ $DO_EXPORT -eq 1 ]]; then
 	# preset 名取自 export_presets.cfg 的 name 字段（不是 platform 字段！）
 	if want macos; then
 		run_logged "$DIST/.export-macos.log" \
-			"$GODOT" --headless --path project --export-release "macOS" "../dist/game3d-macos.zip"
-		ok "macOS → dist/game3d-macos.zip"
+			"$GODOT" --headless --path project --export-release "macOS" "../dist/peace-macos.zip"
+		ok "macOS → dist/peace-macos.zip"
 	fi
 	if want windows; then
 		run_logged "$DIST/.export-windows.log" \
@@ -189,18 +191,18 @@ step "3/5  压包"
 if want windows; then
 	[[ -f "$DIST/$EXE_WIN" ]] || die "缺 ${EXE_WIN}，无法压 Windows 包"
 	[[ -f "$DIST/$DLL_WIN" ]] || die "缺 ${DLL_WIN} —— 导出没带上 GDExtension 库，检查 project/bin/windows/"
-	rm -f "$DIST/game3d-windows-x64.zip"
-	( cd "$DIST" && zip -q -j game3d-windows-x64.zip "$EXE_WIN" "$DLL_WIN" )
-	ok "dist/game3d-windows-x64.zip  $(du -h "$DIST/game3d-windows-x64.zip" | cut -f1)"
+	rm -f "$DIST/peace-windows-x64.zip"
+	( cd "$DIST" && zip -q -j peace-windows-x64.zip "$EXE_WIN" "$DLL_WIN" )
+	ok "dist/peace-windows-x64.zip  $(du -h "$DIST/peace-windows-x64.zip" | cut -f1)"
 fi
 
 if want linux; then
 	[[ -f "$DIST/$BIN_LIN" ]] || die "缺 ${BIN_LIN}，无法压 Linux 包"
 	[[ -f "$DIST/$SO_LIN"  ]] || die "缺 ${SO_LIN} —— 导出没带上 GDExtension 库，检查 project/bin/linux/"
 	chmod 755 "$DIST/$BIN_LIN"   # zip 会保留执行位，先确保它是可执行的
-	rm -f "$DIST/game3d-linux-x64.zip"
-	( cd "$DIST" && zip -q -j game3d-linux-x64.zip "$BIN_LIN" "$SO_LIN" )
-	ok "dist/game3d-linux-x64.zip  $(du -h "$DIST/game3d-linux-x64.zip" | cut -f1)"
+	rm -f "$DIST/peace-linux-x64.zip"
+	( cd "$DIST" && zip -q -j peace-linux-x64.zip "$BIN_LIN" "$SO_LIN" )
+	ok "dist/peace-linux-x64.zip  $(du -h "$DIST/peace-linux-x64.zip" | cut -f1)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -219,11 +221,11 @@ if want linux && [[ $DO_DEB -eq 1 ]]; then
 	         "$PKG/DEBIAN"
 
 	# 可执行文件与 .so 必须同目录，否则运行时找不到库（且只在启动时才报错）
-	cp "$DIST/$BIN_LIN" "$PKG${PKG_INSTALL_DIR}/game3d.x86_64"
+	cp "$DIST/$BIN_LIN" "$PKG${PKG_INSTALL_DIR}/peace.x86_64"
 	cp "project/bin/linux/$SO_LIN" "$PKG${PKG_INSTALL_DIR}/"
-	chmod 755 "$PKG${PKG_INSTALL_DIR}/game3d.x86_64"
+	chmod 755 "$PKG${PKG_INSTALL_DIR}/peace.x86_64"
 
-	printf '#!/bin/sh\nexec %s/game3d.x86_64 "$@"\n' "$PKG_INSTALL_DIR" \
+	printf '#!/bin/sh\nexec %s/peace.x86_64 "$@"\n' "$PKG_INSTALL_DIR" \
 		> "$PKG/usr/local/bin/${PKG_NAME}"
 	chmod 755 "$PKG/usr/local/bin/${PKG_NAME}"
 
@@ -232,7 +234,7 @@ if want linux && [[ $DO_DEB -eq 1 ]]; then
 Type=Application
 Name=${PKG_DISPLAY}
 Comment=3D lakeside homestead sandbox
-Exec=${PKG_INSTALL_DIR}/game3d.x86_64
+Exec=${PKG_INSTALL_DIR}/peace.x86_64
 Icon=${PKG_NAME}
 Terminal=false
 Categories=Game;
@@ -264,10 +266,10 @@ Description: ${PKG_DISPLAY} - 3D lakeside sandbox game
  Launch from the app menu or run: ${PKG_NAME}
 EOF
 
-	rm -f "$DIST/game3d-linux-amd64.deb"
-	dpkg-deb --build --root-owner-group "$PKG" "$DIST/game3d-linux-amd64.deb" >/dev/null
+	rm -f "$DIST/peace-linux-amd64.deb"
+	dpkg-deb --build --root-owner-group "$PKG" "$DIST/peace-linux-amd64.deb" >/dev/null
 	rm -rf "$PKG"
-	ok "dist/game3d-linux-amd64.deb  $(du -h "$DIST/game3d-linux-amd64.deb" | cut -f1)"
+	ok "dist/peace-linux-amd64.deb  $(du -h "$DIST/peace-linux-amd64.deb" | cut -f1)"
 else
 	step "4/5  组 .deb —— 已跳过"
 fi
@@ -277,24 +279,24 @@ fi
 # ---------------------------------------------------------------------------
 step "5/5  校验"
 
-if [[ -f "$DIST/game3d-windows-x64.zip" ]]; then
-	unzip -tq "$DIST/game3d-windows-x64.zip" >/dev/null && ok "windows zip 完整性 OK"
+if [[ -f "$DIST/peace-windows-x64.zip" ]]; then
+	unzip -tq "$DIST/peace-windows-x64.zip" >/dev/null && ok "windows zip 完整性 OK"
 fi
-if [[ -f "$DIST/game3d-linux-x64.zip" ]]; then
-	unzip -tq "$DIST/game3d-linux-x64.zip" >/dev/null && ok "linux zip 完整性 OK"
+if [[ -f "$DIST/peace-linux-x64.zip" ]]; then
+	unzip -tq "$DIST/peace-linux-x64.zip" >/dev/null && ok "linux zip 完整性 OK"
 fi
-if [[ -f "$DIST/game3d-macos.zip" ]]; then
-	unzip -tq "$DIST/game3d-macos.zip" >/dev/null && ok "macos zip 完整性 OK"
+if [[ -f "$DIST/peace-macos.zip" ]]; then
+	unzip -tq "$DIST/peace-macos.zip" >/dev/null && ok "macos zip 完整性 OK"
 fi
-if [[ -f "$DIST/game3d-linux-amd64.deb" ]]; then
-	dpkg-deb --info "$DIST/game3d-linux-amd64.deb" >/dev/null && ok "deb 结构 OK"
-	dpkg-deb --contents "$DIST/game3d-linux-amd64.deb" | awk '{print "      ", $1, $6}'
+if [[ -f "$DIST/peace-linux-amd64.deb" ]]; then
+	dpkg-deb --info "$DIST/peace-linux-amd64.deb" >/dev/null && ok "deb 结构 OK"
+	dpkg-deb --contents "$DIST/peace-linux-amd64.deb" | awk '{print "      ", $1, $6}'
 fi
 
 # 时间戳核对：产物必须是这一轮生成的，混进上一轮的旧包是最容易犯的错
 echo
 echo "  产物时间戳（本次运行开始于 $(date -r "$START_TS" '+%H:%M:%S')）："
-for f in game3d-macos.zip game3d-windows-x64.zip game3d-linux-x64.zip game3d-linux-amd64.deb; do
+for f in peace-macos.zip peace-windows-x64.zip peace-linux-x64.zip peace-linux-amd64.deb; do
 	[[ -f "$DIST/$f" ]] || continue
 	mtime=$(stat -f %m "$DIST/$f")
 	if (( mtime >= START_TS )); then
@@ -308,7 +310,7 @@ done
 if [[ $DO_PUBLISH -eq 1 ]]; then
 	step "同步到官网 site/download/"
 	mkdir -p site/download
-	for f in game3d-macos.zip game3d-windows-x64.zip game3d-linux-amd64.deb; do
+	for f in peace-macos.zip peace-windows-x64.zip peace-linux-amd64.deb; do
 		if [[ -f "$DIST/$f" ]]; then
 			cp "$DIST/$f" site/download/
 			ok "site/download/${f}"
@@ -316,7 +318,24 @@ if [[ $DO_PUBLISH -eq 1 ]]; then
 			warn "dist/${f} 不存在，跳过"
 		fi
 	done
-	echo "    （上线：cd site && ./deploy.sh）"
+	if [[ $DO_DEPLOY -eq 1 ]]; then
+		echo "    （稍后自动部署到线上）"
+	else
+		echo "    （上线：cd site && ./deploy.sh，或加 --deploy 一步到位）"
+	fi
+
+	# 页面上的体积数字跟着实际包大小走，免得发版后对不上
+	if command -v python3 >/dev/null 2>&1; then
+		step "核对网页上的体积数字"
+		python3 tools/sync_site_sizes.py
+	else
+		warn "本机没有 python3，跳过体积数字同步（记得手工核对 site/index.html）"
+	fi
+fi
+
+if [[ $DO_DEPLOY -eq 1 ]]; then
+	step "部署到线上 VPS"
+	( cd site && ./deploy.sh )
 fi
 
 printf '\n%s全部完成，耗时 %d 分 %d 秒%s\n' \

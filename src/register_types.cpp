@@ -24,6 +24,12 @@
 #include "farm_animal.h"
 #include "fishing_system.h"
 #include "footprint_manager.h"
+#include "bed.h"
+#include "wardrobe.h"
+#include "soccer_ball.h"
+#include "soccer_field.h"
+#include "parkour_poles.h"
+#include "update_manager.h"
 
 using namespace godot;
 
@@ -52,6 +58,12 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(FarmAnimal);
 	GDREGISTER_CLASS(FishingSystem);
 	GDREGISTER_CLASS(FootprintManager);
+	GDREGISTER_CLASS(Bed);
+	GDREGISTER_CLASS(Wardrobe);
+	GDREGISTER_CLASS(SoccerBall);
+	GDREGISTER_CLASS(SoccerField);
+	GDREGISTER_CLASS(ParkourPoles);
+	GDREGISTER_CLASS(UpdateManager);
 }
 
 void uninitialize_game3d_module(ModuleInitializationLevel p_level) {

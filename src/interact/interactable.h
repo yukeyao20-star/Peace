@@ -20,11 +20,18 @@ class Interactable : public Node3D {
 	GDCLASS(Interactable, Node3D)
 
 protected:
-	static void _bind_methods() {} // 纯接口，无需绑定方法
+	static void _bind_methods() {
+		ClassDB::bind_method(D_METHOD("get_prompt"), &Interactable::get_prompt);
+		ClassDB::bind_method(D_METHOD("get_interact_pos"), &Interactable::get_interact_pos);
+		ClassDB::bind_method(D_METHOD("get_interact_distance"), &Interactable::get_interact_distance);
+		ClassDB::bind_method(D_METHOD("interact", "player_pos"), &Interactable::interact);
+	}
 
 public:
 	virtual String get_prompt() const { return String(); }
 	virtual Vector3 get_interact_pos() const { return get_global_position(); }
+	virtual float get_interact_distance() const { return 2.2f; }
+	virtual bool requires_line_of_sight() const { return true; }
 	virtual void interact(const Vector3 &p_player_pos) {}
 };
 
