@@ -44,7 +44,7 @@
 - **Homestead** @ (12,0.35,8) 旋 -45°：主屋+仓库+门廊+烟囱+篱笆+半开院门+石径+柴火垛+室内家具；木屋朝向/y 必须与 terrain_builder.h 的宅基地参数一致。
 
 ## 发布链路（第 38 轮 + 22:34 跨平台打通）
-- 工程名「湖畔家园 Homestead」v0.1.0；export_presets.cfg 三预设（macOS/"Windows"/Linux，预设名以文件现态为准）。
+- 工程名「Peace」v0.1.0；export_presets.cfg 三预设（macOS/"Windows"/Linux，预设名以文件现态为准）。
 - 导出模板已装 `~/Library/Application Support/Godot/export_templates/4.7.2.stable/`；导出命令 `Godot --headless --path project --export-release "<预设名>" <绝对路径>`；**导出目录必须先 mkdir**（Linux 预设不会自建）。
 - **本机交叉编译已打通（无需 CI）**：Windows=`brew mingw-w64` + `use_mingw=yes`；Linux=交叉工具链 `~/opt/x86_64-unknown-linux-gnu/` + **PATH 垫片 `~/opt/cross-shim/`**（SCons 命令行 CXX= 覆盖对 godot-cpp linux 无效，必须名字垫片）。平台库编好后落 project/bin/{windows,linux}/，然后本地 export-release 即可。
 - **SConstruct 已根治两坑**：linux 目标 SHLIBSUFFIX=.so、windows 目标 SHLIBPREFIX=""（mingw 的 lib 前缀会让导出报 Failed to copy shared object）。
@@ -66,7 +66,7 @@ scons platform=macos target=template_debug     # 增量编译
 ## 发布链路（2026-10-01 打通）
 - 导出模板 4.7.2.stable 已装（~/Library/Application Support/Godot/export_templates/）。
 - 导出命令：`godot --headless --path project --export-release "macOS" <输出路径>`（预设名 macOS/Windows/Linux，export_path 指向 ../release/）；导出前必须先有对应平台 template_release dylib；**导出不自动建目标目录**；**导出后必须 unzip -t 校验**（EXIT=0 仍可能半残，疑并行写入竞态）。
-- 产品名"湖畔家园 Homestead" v0.1.0；exclude_filter=qa_*, tests/* 及孤儿 .uid；应用图标 docs/Homestead.icns 已接入（project/assets/Homestead.icns）。
+- 产品名"Peace" v0.1.0；exclude_filter=qa_*, tests/* 及孤儿 .uid；应用图标 docs/Homestead.icns 已接入（project/assets/Homestead.icns）。
 - Win/Linux 完整出包必须走 .github/workflows/build.yml CI（本机无法编跨平台 GDExtension 原生库）。
 - unzip -l 中文条目显示乱码是假警报，解包 ls 验证为准。
 - **scons 并发坑**：多会话同时跑 scons 互踩 .sconsign.dblite → 记录损坏+误报 up-to-date+产物过期；修复=移走 .sconsign 重跑。发布验证要看 dylib 内容（nm/class 注册）不只看 mtime。
@@ -80,7 +80,7 @@ scons platform=macos target=template_debug     # 增量编译
 - **沙箱 safe-delete 钩子坑**：回合删除配额（50 文件）耗尽后 rm/unlink/rmtree 全部**静默拦截** → binding_generator 的 rmtree(gen/) 与 SCons unlink 既有 target 被拦 → **scons 假成功**（EXIT=0 无编译行、gen 树残缺）。解法：python 直接调 generate_bindings() 重建 + `scons generate_bindings=no` 绕开；每回合删文件要省着用。
 
 ## 发布与分发（第 8 轮起长效）
-- **macOS 包已通**：`dist/game3d-macos.zip`（185MB，universal，产品名"湖畔家园 Homestead"，bundle io.homestead3d.lake v0.1.0）。冒烟实测：解包无头跑 EXIT=0 零 error。
+- **macOS 包已通**：`dist/game3d-macos.zip`（185MB，universal，产品名"Peace"，bundle io.homestead3d.lake v0.1.0）。冒烟实测：解包无头跑 EXIT=0 零 error。
 - 发布链路：① `scons target=template_release`（先编 release 扩展库，否则导出缺 dylib）② 导出模板须装在 `~/Library/Application Support/Godot/export_templates/4.7.2.stable/`（**目录名=编辑器版本**）③ `godot --headless --path project --export-release "macOS"`（预设 export_path=../dist/…）。
 - **导出两大坑**：universal/arm64 必须开 ETC2 ASTC（project.godot `[rendering] textures/vram_compression/import_etc2_astc=true`）；**导出命令输出严禁接 `grep|head` 管道**——SIGPIPE 杀死导出进程 → 半残 zip（Info.plist 0 字节、pck/dylib 缺失），日志一律落文件。
 - Win/Linux：本机无交叉工具链，预设已备好；走 .github/workflows/build.yml CI（需用户授权 push）或 `brew install mingw-w64` 后本机出包。
@@ -92,5 +92,5 @@ scons platform=macos target=template_debug     # 增量编译
 - **部署**：`cd site && ./deploy.sh`（只同步网页），`./deploy.sh --nginx`（连 nginx 配置一起，会自动备份 + `nginx -t` 校验）。
 - **服务器侧**：站点根 `/var/www/game`；nginx 配置 `/etc/nginx/sites-available/homestead`（80 default_server）；订阅 location 在 `/etc/nginx/snippets/homestead-sub.conf` 被 include，**订阅 URL 与行为不可改**。
 - **打包规则**：官网用的截图一律裁掉游戏 HUD（顶部 68px）**再加底部 11%** —— 所有游戏截图在图片高度 91% 处都有一行游戏内交互提示（"按 F 抛竿钓鱼"），不裁会留在画面里。导出宽度 520（滚动带）/ 900（画廊）/ 1500（大图）。
-- **下载包流程**：`dist/` 里导出 → 复制三个包到 `site/download/` → `./deploy.sh`。包内文件名必须和页面文案核对（Win 是 `game3d-windows.exe`、Linux 启动命令是 `lakeside-cabin`、mac 解压出 `湖畔家园 Homestead.app` 且是 Universal 双架构），文件名对不上比体积写错更坑。
+- **下载包流程**：`dist/` 里导出 → 复制三个包到 `site/download/` → `./deploy.sh`。包内文件名必须和页面文案核对（Win 是 `game3d-windows.exe`、Linux 启动命令是 `lakeside-cabin`、mac 解压出 `Peace.app` 且是 Universal 双架构），文件名对不上比体积写错更坑。
 - 体积会随资源增长：2026-10-02 那版因为 `project/` 新增了 93MB 音频（117 个 mp3 + 22 个 wav），`.pck` 从 15MB 涨到 105MB，三个包变成 mac 162MB / win 139MB / deb 115MB。页面上的体积数字、构建日期每次发版都要同步改。
