@@ -421,7 +421,7 @@ void UpdateManager::build_ui() {
 
 	// 标题：典雅沉稳深原木色
 	title_label = memnew(Label);
-	title_label->set_text(String::utf8("湖畔家园版本更新"));
+	title_label->set_text(String::utf8("Peace 版本更新"));
 	title_label->add_theme_font_size_override("font_size", 21);
 	title_label->add_theme_color_override("font_color", Color(0.24f, 0.20f, 0.16f)); // 浓郁深木色
 	if (font.is_valid()) title_label->add_theme_font_override("font", font);

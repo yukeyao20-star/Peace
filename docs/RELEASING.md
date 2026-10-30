@@ -1,12 +1,12 @@
 # 发布流程（RELEASING）
 
-「湖畔家园 Homestead」v0.2.0 发布指南。工程为纯 C++ GDExtension（Godot 4.7.2 标准版，非 .NET），导出配置见 `project/export_presets.cfg`（macOS / Windows / Linux 三个 preset）。
+「Peace」v0.2.0 发布指南。工程为纯 C++ GDExtension（Godot 4.7.2 标准版，非 .NET），导出配置见 `project/export_presets.cfg`（macOS / Windows / Linux 三个 preset）。
 
 > **时效注记（2026-10-24，v0.2.0）**：本文第二、三节的手工命令写于 v0.1.0（2026-10-01），
 > 保留作原理参考；**当前发布以 `tools/package.sh` 为唯一权威流程**，与旧文的差异：
 > ① 产物名已统一为 `dist/peace-macos-0.2.0.zip`（带版本号，自动取 project.godot 的
 > config/version）、`peace-windows-x64.zip`、`peace-linux-x64.zip`、`peace-linux-amd64.deb`；
-> ② macOS 包内是 `Peace.app`（config/name 用户手改 "Peace"，产品名仍为"湖畔家园 Homestead"）；
+> ② macOS 包内是 `Peace.app`（config/name 用户手改 "Peace"，产品名仍为"Peace"）；
 > ③ deb 包名/启动器为 `peace`、安装目录 `/opt/peace`（旧文 lakeside-cabin 已弃用）；
 > ④ preset 的 `export_path`（`../release/peace.dmg` 等）已被 package.sh 的显式输出路径覆盖，
 > 不再生效。下文命令中的旧产物名（game3d-*）以本注记为准。
@@ -54,7 +54,7 @@
   ```
   （zip 格式用 `--export-release` 即可；`--export-package` 用于只打包 .app 包体、跳过 pck 导出的场景，常规分发不需要。）
 - 编辑器：项目 → 导出（Export…）→ 选「macOS」→ 导出项目（Export Project）。
-- 产物：`dist/game3d-macos.zip`，内含 `湖畔家园 Homestead.app`。
+- 产物：`dist/game3d-macos.zip`，内含 `Peace.app`。
 
 ### Windows Desktop（x86_64，不签名）
 
@@ -107,7 +107,7 @@ chmod 755 "$PKG/usr/local/bin/lakeside-cabin"
 cat > "$PKG/usr/share/applications/lakeside-cabin.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=湖畔家园 Homestead
+Name=Peace
 Comment=3D lakeside homestead sandbox
 Exec=/opt/lakeside-cabin/game3d.x86_64
 Icon=lakeside-cabin
@@ -129,7 +129,7 @@ Architecture: amd64
 Installed-Size: 90400
 Maintainer: lei <lei@localhost>
 Depends: libc6 (>= 2.31), libx11-6, libxcursor1, libxinerama1, libxrandr2, libxi6, libvulkan1, libasound2 | libasound2t64
-Description: 湖畔家园 Homestead - 3D lakeside sandbox game
+Description: Peace - 3D lakeside sandbox game
  A cozy 3D lakeside homestead world built with Godot 4.7.2 + custom
  C++ GDExtension: 448m procedural terrain, day/night cycle, weather,
  fishing, farm animals and a save system.
@@ -148,7 +148,7 @@ dpkg-deb --build --root-owner-group "$PKG" dist/game3d-linux-amd64.deb
 
 当前 preset 的 codesign、entitlements、notarization **全部关闭**（`codesign/codesign=0`、`notarization/notarization=0`），导出的是未签名 zip：
 
-- 用户下载后首次打开会被 Gatekeeper 拦截，需右键 → 打开，或在「系统设置 → 隐私与安全性」中放行；或终端执行 `xattr -cr "湖畔家园 Homestead.app"` 后再打开。
+- 用户下载后首次打开会被 Gatekeeper 拦截，需右键 → 打开，或在「系统设置 → 隐私与安全性」中放行；或终端执行 `xattr -cr "Peace.app"` 后再打开。
 - 个人开发者没有 Apple Developer 账号时，分发未签名 zip 是最简单的可行方式，可直接发布。
 - 若有开发者账号，在 preset 中填 `codesign/identity`（Developer ID Application 证书）与 `notarization`（App Store Connect API 密钥）后重新导出，即可免受 Gatekeeper 限制。公证要求先开启 hardened runtime 签名。
 - Windows 侧同理，`codesign/enable=false`，未签名 exe 会触发 SmartScreen 提示，个人分发可接受。
@@ -188,7 +188,7 @@ dpkg-deb --build --root-owner-group "$PKG" dist/game3d-linux-amd64.deb
 | Windows Desktop | **失败** | `ERROR: Failed to open '.../bin/./windows/game3d.windows.template_release.x86_64.dll'`，`GDExtension: Failed to copy shared object` → 缺 Windows release 库，导出中止（`dist/` 残留半成品 `game3d-windows.tmp`，不可用）。 |
 | Linux | **失败** | `ERROR: Failed to open '.../bin/./linux/libgame3d.linux.template_release.x86_64.so'`，同上 → 缺 Linux release 库，导出中止（`dist/` 残留 `game3d-linux.x86_64` 但包内缺 `.so`，不可运行）。 |
 
-macOS 后续验证：本地执行 `scons platform=macos target=template_release`（universal 双架构全量编译，本机耗时约 1 小时 45 分）生成 `libgame3d.macos.template_release.dylib`（1.1 MB）后重新导出，**成功且包完整**：`dist/game3d-macos.zip` 约 74 MB，解压后 `.app` 含正常 `Info.plist`（1.8 KB）、`PkgInfo`、`Resources/icon.icns`、`Resources/湖畔家园 Homestead.pck`（15 MB）和 `Frameworks/libgame3d.macos.template_release.dylib`——与首次导出（缺库时 Info.plist 为 0 字节、无 dylib）形成对照。
+macOS 后续验证：本地执行 `scons platform=macos target=template_release`（universal 双架构全量编译，本机耗时约 1 小时 45 分）生成 `libgame3d.macos.template_release.dylib`（1.1 MB）后重新导出，**成功且包完整**：`dist/game3d-macos.zip` 约 74 MB，解压后 `.app` 含正常 `Info.plist`（1.8 KB）、`PkgInfo`、`Resources/icon.icns`、`Resources/Peace.pck`（15 MB）和 `Frameworks/libgame3d.macos.template_release.dylib`——与首次导出（缺库时 Info.plist 为 0 字节、无 dylib）形成对照。
 
 导出日志另见两条无害告警 `Cannot get class 'Spinner'` / `Cannot get class 'SaveSystem'`（GDScript 全局类缓存残留，未阻塞导出）。
 

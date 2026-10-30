@@ -1,4 +1,4 @@
-# 《湖畔家园 Homestead》v0.2 路线图
+# 《Peace》v0.2 路线图
 
 > 目标：从"可玩沙盒 v0.1"推进到"可发布 v0.2"——新玩家打开游戏有目标、有引导、有存档意义、有退出节奏。
 > 依据：`.workbuddy/memory/2026-10-01.md`（36+ 轮迭代日志）、`MEMORY.md`（硬坑）、`src/*.h` 系统边界、`project/world.tscn` 结构。
@@ -38,7 +38,7 @@
 - **无任何实测数据**：没有帧率统计、draw call/三角数预算、低配门控。草 4200 + 全场景 SSAO/SSR/Glow 在低配机器上的表现未知。
 
 ### 7. 发布工程
-- macOS 包已打通：`dist/game3d-macos.zip`（185MB，universal，冒烟通过）；export_presets.cfg 三平台齐（产品名"湖畔家园 Homestead" v0.1.0，exclude_filter 已排除 QA 脚本）；CI build.yml 三平台构建。
+- macOS 包已打通：`dist/game3d-macos.zip`（185MB，universal，冒烟通过）；export_presets.cfg 三平台齐（产品名"Peace" v0.1.0，exclude_filter 已排除 QA 脚本）；CI build.yml 三平台构建。
 - **未收口**：包内 dylib 曾是 template_debug（release 库需在编辑器关闭窗口期编）；`project.godot` 的 `config/name` 仍是 "3D Game (Godot + C++)"；应用图标未替换（docs/ 已备 Homestead.icns/icon_art.png）；Win/Linux 从未出过包；无版本号统一管理（README/presets/代码各说各话）。
 
 ---
@@ -124,9 +124,9 @@
 - **风险与坑**：Ambience 靠祖先链找 SkyCycle（不在根下的查找套路，第 34 轮 BerryBush 坑）；headless 下音频走 Dummy 驱动只能验零报错，真实听感要非 headless 实测。
 
 #### 7. macOS 正式包收口（template_release + 图标 + 项目名）✅ 已完成（2026-10-24，会话D）
-> 实现备注：`scons platform=macos target=template_release` 增量编库（godot-cpp 三平台 release 库已在位，仅重编 10-05 后改动源文件，20s）→ package.sh --only=macos 导出 → `dist/peace-macos-0.2.0.zip`（176MB）。实测：universal 双架构 ✓、Info.plist 版本 0.2.0 ✓、Resources/icon.icns 与 docs/Homestead.icns md5 一致 ✓、Frameworks 内为 template_release dylib ✓、解包 headless 冒烟 120 帧 EXIT=0 且 0 SCRIPT ERROR（退出期 RID/Dummy 泄漏为 headless 渲染器噪声；--verbose 泄漏 9 实例与既有基线完全一致，water.gdshader/环境音静态缓存，无害）。版本号统一 0.2.0：export_presets.cfg 三平台、project.godot config/version、README、package.sh deb 默认值。exclude_filter 追加排除未引用的 `壁炉燃烧.mp3`（14MB 原始素材，代码/场景零引用，文件保留在磁盘）。**偏离验收一处**：config/name 维持用户手改的 "Peace"（memory 铁律勿动），不回改"湖畔家园"。
+> 实现备注：`scons platform=macos target=template_release` 增量编库（godot-cpp 三平台 release 库已在位，仅重编 10-05 后改动源文件，20s）→ package.sh --only=macos 导出 → `dist/peace-macos-0.2.0.zip`（176MB）。实测：universal 双架构 ✓、Info.plist 版本 0.2.0 ✓、Resources/icon.icns 与 docs/Homestead.icns md5 一致 ✓、Frameworks 内为 template_release dylib ✓、解包 headless 冒烟 120 帧 EXIT=0 且 0 SCRIPT ERROR（退出期 RID/Dummy 泄漏为 headless 渲染器噪声；--verbose 泄漏 9 实例与既有基线完全一致，water.gdshader/环境音静态缓存，无害）。版本号统一 0.2.0：export_presets.cfg 三平台、project.godot config/version、README、package.sh deb 默认值。exclude_filter 追加排除未引用的 `壁炉燃烧.mp3`（14MB 原始素材，代码/场景零引用，文件保留在磁盘）。**偏离验收一处**：config/name 维持用户手改的 "Peace"（memory 铁律勿动），不回改"Peace"。
 - **动机**：现包内是 template_debug dylib；project.godot 名字还是工程模板名；图标素材已备好没用上。
-- **验收**：`scons target=template_release` 产物在位；project.godot `config/name="湖畔家园 Homestead"`、版本号 0.2.0；Homestead.icns 生效（dock/访达可见）；重新导出 macOS zip，解包 headless 冒烟 120 帧 0 error；产物改名带版本号。
+- **验收**：`scons target=template_release` 产物在位；project.godot `config/name="Peace"`、版本号 0.2.0；Homestead.icns 生效（dock/访达可见）；重新导出 macOS zip，解包 headless 冒烟 120 帧 0 error；产物改名带版本号。
 - **涉及**：`project/project.godot`、`project/export_presets.cfg`、SConstruct、docs/ 图标资产。
 - **规模**：S
 - **风险与坑**：**导出命令严禁接 grep|head 管道**（SIGPIPE 杀进程出半残 zip，日志实锤）；导出模板目录名必须 = 编辑器版本 4.7.2.stable；scons 重建与用户开着 Godot 编辑器互斥（先 pgrep Godot）。
