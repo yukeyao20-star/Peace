@@ -5,8 +5,10 @@
 #include <cmath>
 #include <random>
 
+#include <godot_cpp/classes/array_mesh.hpp>
 #include <godot_cpp/classes/capsule_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/surface_tool.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/core/memory.hpp>
@@ -15,9 +17,90 @@
 #include <godot_cpp/variant/variant.hpp>
 #include <godot_cpp/variant/vector2.hpp>
 
+#include <vector>
+
 #include "mesh_util.h"
 
 using namespace godot;
+
+// —— 圆润翼形网格（2026-10-31 用户反馈"翅膀太方方正正"）——
+// 把 2D 轮廓（局部 x/z）挤出成一枚薄翼片：顶面 + 底面 + 侧壁，法线全部显式给，
+// 走卡通材质（cull_back 也能两面都实心）。轮廓由椭圆 + 叶根收窄生成，天然圆润。
+static Ref<ArrayMesh> make_wing_mesh(const std::vector<Vector2> &p_outline, float p_thickness,
+		const Ref<Shader> &p_toon, const Color &p_color) {
+	Ref<ArrayMesh> mesh;
+	mesh.instantiate();
+	const int n = (int)p_outline.size();
+	if (n < 3) {
+		return mesh;
+	}
+	const float h = p_thickness * 0.5f;
+	Vector2 c(0, 0);
+	for (const Vector2 &p : p_outline) {
+		c += p;
+	}
+	c /= (float)n;
+
+	Ref<SurfaceTool> st;
+	st.instantiate();
+	st->begin(Mesh::PRIMITIVE_TRIANGLES);
+	st->set_material(meshutil::toon_material(p_toon, p_color));
+
+	const Vector3 up_n(0.0f, 1.0f, 0.0f);
+	const Vector3 down_n(0.0f, -1.0f, 0.0f);
+	for (int i = 0; i < n; i++) {
+		const Vector2 &a = p_outline[i];
+		const Vector2 &b = p_outline[(i + 1) % n];
+		// 顶面（法线 +Y）：绕序 c,b,a 才朝上
+		st->set_normal(up_n);
+		st->add_vertex(Vector3(c.x, h, c.y));
+		st->set_normal(up_n);
+		st->add_vertex(Vector3(b.x, h, b.y));
+		st->set_normal(up_n);
+		st->add_vertex(Vector3(a.x, h, a.y));
+		// 底面（法线 -Y）：绕序 c,a,b
+		st->set_normal(down_n);
+		st->add_vertex(Vector3(c.x, -h, c.y));
+		st->set_normal(down_n);
+		st->add_vertex(Vector3(a.x, -h, a.y));
+		st->set_normal(down_n);
+		st->add_vertex(Vector3(b.x, -h, b.y));
+		// 侧壁：外法线 = (dz, 0, -dx)
+		Vector3 side_n = Vector3(b.y - a.y, 0.0f, -(b.x - a.x)).normalized();
+		st->set_normal(side_n);
+		st->add_vertex(Vector3(a.x, h, a.y));
+		st->set_normal(side_n);
+		st->add_vertex(Vector3(b.x, h, b.y));
+		st->set_normal(side_n);
+		st->add_vertex(Vector3(b.x, -h, b.y));
+		st->set_normal(side_n);
+		st->add_vertex(Vector3(a.x, h, a.y));
+		st->set_normal(side_n);
+		st->add_vertex(Vector3(b.x, -h, b.y));
+		st->set_normal(side_n);
+		st->add_vertex(Vector3(a.x, -h, a.y));
+	}
+	st->commit(mesh);
+	return mesh;
+}
+
+// 叶形轮廓：椭圆采样 + 内缘收窄（根部尖、外缘饱满）；mirror 用于左翅
+static std::vector<Vector2> wing_outline(float p_cx, float p_cz, float p_rx, float p_rz,
+		bool p_mirror, int p_n = 18) {
+	std::vector<Vector2> pts;
+	pts.reserve(p_n);
+	for (int i = 0; i < p_n; i++) {
+		float a = (float)Math::TAU * (float)i / (float)p_n;
+		float taper = 0.45f + 0.55f * (0.5f + 0.5f * std::cos(a));
+		float x = p_cx + std::cos(a) * p_rx;
+		float z = p_cz + std::sin(a) * p_rz * taper;
+		if (p_mirror) {
+			x = -x;
+		}
+		pts.push_back(Vector2(x, z));
+	}
+	return pts;
+}
 
 void ButterflySwarm::_notification(int p_what) {
 	switch (p_what) {
@@ -181,41 +264,45 @@ void ButterflySwarm::spawn_flyer(const Vector3 &p_anchor, int p_variant, unsigne
 	meshutil::add_box(f.root, toon, Vector3(0.008f, 0.002f, 0.008f),
 			Vector3(-0.012f, 0.008f, -0.045f), body_c, Vector3(0.0f, 0.0f, -0.5f));
 
-	// 双翼：枢轴在肩部，翼板外伸；翼上再叠一块小深色翼尖（MC 斑纹感）
+	// —— 四翅：圆润叶形翼片（2026-10-31 用户反馈"翅膀太方方正正"）——
+	// 前翅 + 后翅各一对；翼片用"椭圆 + 叶根收窄"的轮廓挤出薄片，走卡通材质，
+	// 深色斑纹用小一号的椭圆薄片叠在翼面之上（y 抬高 0.7mm 防 z-fighting）。
+	auto add_wing = [&](Node3D *p_parent, const std::vector<Vector2> &p_outline,
+			const Color &p_color, float p_y) {
+		MeshInstance3D *mi = memnew(MeshInstance3D);
+		mi->set_mesh(make_wing_mesh(p_outline, 0.0024f, toon, p_color));
+		mi->set_position(Vector3(0.0f, p_y, 0.0f));
+		p_parent->add_child(mi);
+	};
+
 	f.wing_r = memnew(Node3D);
 	f.wing_r->set_name("WingR");
 	f.wing_r->set_position(Vector3(0.012f, 0.004f, 0.0f));
 	f.root->add_child(f.wing_r);
-	meshutil::add_box(f.wing_r, toon, Vector3(0.085f, 0.003f, 0.058f),
-			Vector3(0.044f, 0.0f, 0.0f), wing_hi);
-	meshutil::add_box(f.wing_r, toon, Vector3(0.030f, 0.0035f, 0.058f),
-			Vector3(0.082f, 0.0f, 0.0f), wing_lo);
+	add_wing(f.wing_r, wing_outline(0.046f, -0.006f, 0.044f, 0.034f, false), wing_hi, 0.0f);
+	add_wing(f.wing_r, wing_outline(0.058f, -0.002f, 0.015f, 0.012f, false), wing_lo, 0.0019f);
+
 	f.wing_l = memnew(Node3D);
 	f.wing_l->set_name("WingL");
 	f.wing_l->set_position(Vector3(-0.012f, 0.004f, 0.0f));
 	f.root->add_child(f.wing_l);
-	meshutil::add_box(f.wing_l, toon, Vector3(0.085f, 0.003f, 0.058f),
-			Vector3(-0.044f, 0.0f, 0.0f), wing_hi);
-	meshutil::add_box(f.wing_l, toon, Vector3(0.030f, 0.0035f, 0.058f),
-			Vector3(-0.082f, 0.0f, 0.0f), wing_lo);
+	add_wing(f.wing_l, wing_outline(0.046f, -0.006f, 0.044f, 0.034f, true), wing_hi, 0.0f);
+	add_wing(f.wing_l, wing_outline(0.058f, -0.002f, 0.015f, 0.012f, true), wing_lo, 0.0019f);
 
-	// 后翅一对（2026-10-31：四翅蝴蝶——前翅 + 后翅各一对，后翅更小、偏尾侧）
+	// 后翅一对（更小、偏尾侧，圆润小叶形）
 	f.hind_r = memnew(Node3D);
 	f.hind_r->set_name("HindWingR");
 	f.hind_r->set_position(Vector3(0.011f, 0.0035f, 0.030f));
 	f.root->add_child(f.hind_r);
-	meshutil::add_box(f.hind_r, toon, Vector3(0.060f, 0.003f, 0.040f),
-			Vector3(0.032f, 0.0f, 0.0f), wing_hi);
-	meshutil::add_box(f.hind_r, toon, Vector3(0.024f, 0.0035f, 0.034f),
-			Vector3(0.062f, 0.0f, 0.0f), wing_lo);
+	add_wing(f.hind_r, wing_outline(0.028f, 0.000f, 0.030f, 0.022f, false), wing_hi, 0.0f);
+	add_wing(f.hind_r, wing_outline(0.040f, 0.004f, 0.010f, 0.009f, false), wing_lo, 0.0019f);
+
 	f.hind_l = memnew(Node3D);
 	f.hind_l->set_name("HindWingL");
 	f.hind_l->set_position(Vector3(-0.011f, 0.0035f, 0.030f));
 	f.root->add_child(f.hind_l);
-	meshutil::add_box(f.hind_l, toon, Vector3(0.060f, 0.003f, 0.040f),
-			Vector3(-0.032f, 0.0f, 0.0f), wing_hi);
-	meshutil::add_box(f.hind_l, toon, Vector3(0.024f, 0.0035f, 0.034f),
-			Vector3(-0.062f, 0.0f, 0.0f), wing_lo);
+	add_wing(f.hind_l, wing_outline(0.028f, 0.000f, 0.030f, 0.022f, true), wing_hi, 0.0f);
+	add_wing(f.hind_l, wing_outline(0.040f, 0.004f, 0.010f, 0.009f, true), wing_lo, 0.0019f);
 
 	flyers.push_back(f);
 	last_pos.push_back(p_anchor);
