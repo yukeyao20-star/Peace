@@ -1,6 +1,7 @@
 #include "hud_clock.h"
 
 #include "sky_cycle.h"
+#include "ui_style.h"
 
 #include <cmath>
 
@@ -11,6 +12,7 @@
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/label.hpp>
+#include <godot_cpp/classes/panel_container.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/texture_rect.hpp>
 #include <godot_cpp/core/object.hpp>
@@ -33,13 +35,20 @@ void HUDClock::_notification(int p_what) {
 			if (Engine::get_singleton()->is_editor_hint()) {
 				break; // 编辑器里不出 HUD
 			}
+			// 玻璃药丸底板：内容自适应宽度、顶部居中（统一「湖畔玻璃」规范）
+			PanelContainer *pill = memnew(PanelContainer);
+			pill->set_name("ClockPill");
+			pill->set_anchors_preset(Control::PRESET_CENTER_TOP);
+			pill->set_offset(Side::SIDE_TOP, 10.0f);
+			pill->add_theme_stylebox_override("panel", uistyle::make_glass(20.0f, 0.45f));
+			add_child(pill);
+
 			// 一行水平容器：[月相图标][时钟文字]，整组水平居中——
 			// 比 CENTER_TOP 稳（不用算自身宽度），图标紧跟文字左侧
 			box = memnew(HBoxContainer);
-			box->set_anchors_and_offsets_preset(Control::PRESET_TOP_WIDE);
-			box->set_offset(SIDE_TOP, 12.0f);
 			box->set_alignment(BoxContainer::ALIGNMENT_CENTER);
-			add_child(box);
+			box->add_theme_constant_override("separation", 10);
+			pill->add_child(box);
 
 			// 月相图标：64px 程序化贴图缩到 34px 显示（见 update_moon_icon）
 			moon_icon = memnew(TextureRect);

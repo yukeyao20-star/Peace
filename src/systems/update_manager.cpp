@@ -97,6 +97,10 @@ void UpdateManager::load_local_version_info() {
 			f->close();
 		}
 	}
+	// 本体版本是地板：记录的是"已装补丁版本"，本体升级后必须抬到本体版本，
+	// 否则旧补丁记录会把 v0.2.0 本体认成 v0.1.2，远程比对与补丁加载全错。
+	current_version = GAME_VERSION;
+	current_version_code = Math::max(current_version_code, GAME_VERSION_CODE);
 }
 
 void UpdateManager::save_local_version_info() {
@@ -115,6 +119,37 @@ void UpdateManager::save_local_version_info() {
 bool UpdateManager::check_and_load_existing_patch() {
 	String patch_path = "user://patch.pck";
 	if (FileAccess::file_exists(patch_path)) {
+		// 【版本门控】补丁版本低于游戏本体 → 绝不加载。旧补丁会覆盖新版资源
+		// （v0.1.2 的 water.gdshader 盖掉 v0.2.0 → 小溪被旧剔除逻辑吃成干河床）。
+		// 版本取自 installed_version.json（与补丁包同步写入）；读不到时保守放弃加载。
+		bool stale = true;
+		String ver_path = "user://installed_version.json";
+		if (FileAccess::file_exists(ver_path)) {
+			Ref<FileAccess> vf = FileAccess::open(ver_path, FileAccess::READ);
+			if (vf.is_valid()) {
+				Variant v = JSON::parse_string(vf->get_as_text());
+				vf->close();
+				if (v.get_type() == Variant::DICTIONARY) {
+					Dictionary d = v;
+					int patch_code = (int)d.get("version_code", 0);
+					stale = (patch_code < GAME_VERSION_CODE);
+				}
+			}
+		}
+		if (stale) {
+			UtilityFunctions::print(String::utf8("[UpdateManager] 检测到低于本体版本的陈旧补丁包，已跳过加载并隔离: ")
+					+ patch_path);
+			// 隔离而非删除（改名 .stale，可回溯）；后续新补丁下载会整体替换 patch.pck
+			Ref<DirAccess> da = DirAccess::open("user://");
+			if (da.is_valid() && da->file_exists("patch.pck")) {
+				static int stale_seq = 0;
+				String dst = String("patch.pck.stale") + String::num_int64(++stale_seq);
+				if (da->rename("patch.pck", dst) != Error::OK) {
+					// 改名失败也无妨：下次启动版本门控仍会拒载
+				}
+			}
+			return false;
+		}
 		bool ok = ProjectSettings::get_singleton()->load_resource_pack(patch_path, true);
 		if (ok) {
 			UtilityFunctions::print(String::utf8("[UpdateManager] 成功加载本地热更新资源包: ") + patch_path);

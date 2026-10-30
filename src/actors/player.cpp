@@ -1,5 +1,7 @@
 #include "player.h"
 
+#include "../systems/ui_style.h"
+
 #include <cmath>
 
 // mingw / 严格 C++17 下 <cmath> 不保证提供 M_PI（POSIX 扩展），补一个兜底定义
@@ -31,6 +33,8 @@
 #include <godot_cpp/classes/input_event.hpp>
 #include <godot_cpp/classes/input_event_mouse_button.hpp>
 #include <godot_cpp/classes/input_event_mouse_motion.hpp>
+#include <godot_cpp/classes/input_event_key.hpp>
+#include <godot_cpp/classes/input_map.hpp>
 #include <godot_cpp/classes/label.hpp>
 #include <godot_cpp/classes/label3d.hpp>
 #include <godot_cpp/classes/texture_rect.hpp>
@@ -42,6 +46,7 @@
 #include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/classes/style_box_flat.hpp>
+#include <godot_cpp/classes/panel.hpp>
 #include <godot_cpp/classes/panel_container.hpp>
 #include <godot_cpp/classes/v_box_container.hpp>
 #include <godot_cpp/classes/torus_mesh.hpp>
@@ -60,6 +65,21 @@
 #include "../interact/bed.h"
 
 using namespace godot;
+
+namespace {
+
+// 键位收口（ROADMAP #5）：一律读 project.godot [input] 的动作；动作缺失时
+// （极简测试场景没带 [input]）退回硬编码键，行为与收口前一致。
+bool act_pressed(const char *p_action, Key p_fallback) {
+	Input *in = Input::get_singleton();
+	InputMap *im = InputMap::get_singleton();
+	if (im != nullptr && im->has_action(StringName(p_action))) {
+		return in->is_action_pressed(StringName(p_action));
+	}
+	return in->is_key_pressed(p_fallback);
+}
+
+} // namespace
 
 void Player::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_move_speed", "value"), &Player::set_move_speed);
@@ -90,8 +110,10 @@ void Player::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_is_sleeping"), &Player::get_is_sleeping);
 	ClassDB::bind_method(D_METHOD("teleport_to", "position"), &Player::teleport_to);
 	ClassDB::bind_method(D_METHOD("toggle_map"), &Player::toggle_map);
+	ClassDB::bind_method(D_METHOD("get_is_map_open"), &Player::get_is_map_open);
 	ClassDB::bind_method(D_METHOD("launch_firework"), &Player::launch_firework);
 	ClassDB::bind_method(D_METHOD("_on_map_gui_input", "event"), &Player::_on_map_gui_input);
+	ClassDB::bind_method(D_METHOD("_on_map_bg_gui_input", "event"), &Player::_on_map_bg_gui_input);
 	ClassDB::bind_method(D_METHOD("_on_map_mouse_exited"), &Player::_on_map_mouse_exited);
 	ClassDB::bind_method(D_METHOD("_on_firework_burst", "burst", "sparks", "willow", "bang_voice", "flash_light", "max_energy"), &Player::_on_firework_burst);
 	ClassDB::bind_method(D_METHOD("_on_firework_cleanup", "burst_root", "rocket", "launch_voice"), &Player::_on_firework_cleanup);
@@ -194,7 +216,7 @@ void Player::_notification(int p_what) {
 				"[G] 烟花 · 升空绚烂燃放",
 				"[R] 翻滚 · 趣味滚地冲刺",
 				"[M] 舆图 · 苍湖全景漫游",
-				"[空格] 跳跃 · 冰上旋转起跳"
+				"[空格] 跳跃 · 支持凌空二段跳"
 			};
 
 			for (int hi = 0; hi < 6; ++hi) {
@@ -220,6 +242,8 @@ void Player::_notification(int p_what) {
 			steps_voice = memnew(AudioStreamPlayer);
 			steps_voice->set_name("Steps");
 			steps_voice->set_volume_db(-9.0f);
+			// 一次性触发音效走 SFX 总线；风/雨/虫鸣等循环环境层留 Master（见 default_bus_layout.tres）
+			steps_voice->set_bus(StringName("SFX"));
 			add_child(steps_voice);
 			ResourceLoader *rl = ResourceLoader::get_singleton();
 
@@ -367,11 +391,13 @@ void Player::_notification(int p_what) {
 				snd_land_snow = snd_snow_variants[1].is_valid() ? snd_snow_variants[1] : snd_snow;
 			}
 			snd_land_pitch = make_land_pitch();
+			snd_double_jump = make_double_jump_snd();
 			snd_rustle = make_rustle(false);
 			snd_rustle_deep = make_rustle(true);
 			rustle_voice = memnew(AudioStreamPlayer);
 			rustle_voice->set_name("Rustle");
 			rustle_voice->set_volume_db(-16.0f);
+			rustle_voice->set_bus(StringName("SFX"));
 			add_child(rustle_voice);
 
 			// 界面与交互音效（优先采用选中的禅意音效 zen_press / zen_collapse）
@@ -408,6 +434,7 @@ void Player::_notification(int p_what) {
 			ui_voice = memnew(AudioStreamPlayer);
 			ui_voice->set_name("UIVoice");
 			ui_voice->set_volume_db(-10.0f);
+			ui_voice->set_bus(StringName("SFX"));
 			add_child(ui_voice);
 
 			const Vector3 gp = get_global_position();
@@ -455,6 +482,7 @@ void Player::_notification(int p_what) {
 			snd_grass = Ref<AudioStream>();
 			snd_dirt = Ref<AudioStream>();
 			snd_pitch = Ref<AudioStreamWAV>();
+			snd_double_jump = Ref<AudioStreamWAV>();
 			snd_snow = Ref<AudioStream>();
 			for (int i = 0; i < 4; ++i) {
 				snd_snow_variants[i] = Ref<AudioStream>();
@@ -471,8 +499,8 @@ void Player::_notification(int p_what) {
 
 		case NOTIFICATION_PROCESS: {
 			float p_delta = get_process_delta_time();
-			if (!is_sleeping) {
-				_update_look(p_delta); // 睡觉时鼠标不该再转视角
+			if (!is_sleeping && !is_map_open) {
+				_update_look(p_delta); // 睡觉或展开大地图时鼠标不转动视角
 			}
 			_update_camera(p_delta);
 
@@ -505,6 +533,17 @@ void Player::_notification(int p_what) {
 			// 夜晚踩过发光蘑菇：带走荧光微粒飘动
 			update_shroom_glow_trail(p_delta);
 
+			// 瞬态屏幕提示倒计时自动隐去（3 秒消失）
+			if (hud_prompt_timer > 0.0f) {
+				hud_prompt_timer -= p_delta;
+				if (hud_prompt_timer <= 0.0f) {
+					hud_prompt_timer = 0.0f;
+					if (hud_prompt != nullptr && near_target == nullptr) {
+						hud_prompt->hide();
+					}
+				}
+			}
+
 			// 夜晚提示：天黑时在右上角显示按 G 放烟花提示，白天自动隐藏
 			if (firework_hint != nullptr && get_parent() != nullptr) {
 				SkyCycle *sc = Object::cast_to<SkyCycle>(get_parent()->get_node_or_null(NodePath("SkyCycle")));
@@ -526,13 +565,7 @@ void Player::_physics_step() {
 	Input *input = Input::get_singleton();
 	const double delta = get_physics_process_delta_time();
 
-	// 1. 全局大地图与快速传送（M 键切换）
-	bool m_down = input->is_key_pressed(KEY_M);
-	if (m_down && !m_prev) {
-		toggle_map();
-	}
-	m_prev = m_down;
-
+	// 1. 全局大地图状态阻断（M 在 _input 事件驱动，Esc 关地图归 PauseMenu 统一处理）
 	if (is_map_open) {
 		set_velocity(Vector3(0, 0, 0));
 		move_and_slide();
@@ -554,7 +587,7 @@ void Player::_physics_step() {
 
 		// 按键防抖处理：必须等待玩家先松开之前按下的 E/空格键，且过场已展示 0.6s 之后，
 		// 再次主动按下按键才允许提前中断过场！严防上床交互当帧残留按下立刻跳出！
-		bool any_cancel_down = input->is_key_pressed(KEY_E) || input->is_key_pressed(KEY_SPACE);
+		bool any_cancel_down = act_pressed("interact", KEY_E) || act_pressed("jump", KEY_SPACE);
 		if (!any_cancel_down) {
 			sleep_key_released = true;
 		}
@@ -565,7 +598,7 @@ void Player::_physics_step() {
 	}
 
 	// 3. 躺下滚着移动模式（R 键切换）
-	bool r_down = input->is_key_pressed(KEY_R);
+	bool r_down = act_pressed("roll", KEY_R);
 	if (r_down && !r_prev) {
 		is_rolling = !is_rolling;
 		roll_spin = 0.0;
@@ -574,15 +607,15 @@ void Player::_physics_step() {
 	r_prev = r_down;
 
 	// 4. 夜晚放烟花功能（G 键触发，与 F 键钓鱼彻底分开，绝不冲突）
-	bool g_down = input->is_key_pressed(KEY_G);
+	bool g_down = act_pressed("firework", KEY_G);
 	if (g_down && !g_prev) {
 		launch_firework();
 	}
 	g_prev = g_down;
 
-	// 读键盘（世界坐标：W 朝 -Z，S 朝 +Z，A 朝 -X，D 朝 +X）
-	const double ix = (input->is_key_pressed(KEY_D) ? 1.0 : 0.0) - (input->is_key_pressed(KEY_A) ? 1.0 : 0.0);
-	const double iz = (input->is_key_pressed(KEY_S) ? 1.0 : 0.0) - (input->is_key_pressed(KEY_W) ? 1.0 : 0.0);
+	// 读移动输入（世界坐标：W 朝 -Z，S 朝 +Z，A 朝 -X，D 朝 +X；动作表在 project.godot [input]）
+	const double ix = (act_pressed("move_right", KEY_D) ? 1.0 : 0.0) - (act_pressed("move_left", KEY_A) ? 1.0 : 0.0);
+	const double iz = (act_pressed("move_back", KEY_S) ? 1.0 : 0.0) - (act_pressed("move_forward", KEY_W) ? 1.0 : 0.0);
 
 	Vector3 dir(ix, 0.0, iz);
 	if (dir.length_squared() > 0.0001) {
@@ -631,27 +664,62 @@ void Player::_physics_step() {
 		velocity.z = dir.z * current_speed;
 	}
 
-	// 垂直：重力 + 落地归零
-	if (!is_on_floor()) {
+	// 垂直：重力 + 落地归零与跳跃计数重置
+	if (is_on_floor()) {
+		if (velocity.y < 0.0) {
+			velocity.y = 0.0;
+		}
+		jump_count = 0;
+		is_double_jumping = false;
+		double_jump_spin = 0.0;
+	} else {
 		velocity.y -= gravity * delta;
-	} else if (velocity.y < 0.0) {
-		velocity.y = 0.0;
+		// 如果从边缘走落或掉下悬崖未主动起跳，默认已消耗一段跳，允许进行空中二段跳
+		if (jump_count == 0) {
+			jump_count = 1;
+		}
 	}
 
-	// 跳跃
-	if (is_on_floor() && input->is_key_pressed(KEY_SPACE)) {
-		velocity.y = jump_velocity;
-		// 冰面起跳空中旋转一圈 (360度优雅自转跳跃)
-		if (is_ice_skating) {
-			is_ice_jumping = true;
-			ice_jump_spin = 0.0;
-		}
-		// 下雨天起跳时播放专属踩水飞溅起跳声（响应用户反馈：下雨移动和跳跃落地起跳都用踩水声）
-		int cur_kind = _step_kind();
-		if (cur_kind == 2) {
-			play_step(2, 1.15f);
+	// 跳跃与二段跳系统（空格键边沿触发）
+	bool space_down = act_pressed("jump", KEY_SPACE);
+	if (space_down && !space_prev) {
+		if (is_on_floor()) {
+			// 一段跳：地面起跳
+			velocity.y = jump_velocity;
+			jump_count = 1;
+			// 冰面起跳空中旋转一圈 (360度优雅自转跳跃)
+			if (is_ice_skating) {
+				is_ice_jumping = true;
+				ice_jump_spin = 0.0;
+			}
+			// 下雨天起跳时播放专属踩水飞溅起跳声
+			int cur_kind = _step_kind();
+			if (cur_kind == 2) {
+				play_step(2, 1.15f);
+			}
+		} else if (jump_count == 1) {
+			// 二段跳：空中凌空借力二次起跳！
+			velocity.y = jump_velocity * 0.95; // 二段跳垂直初速饱满充足
+			jump_count = 2;
+			is_double_jumping = true;
+			double_jump_spin = 0.0;
+
+			// 空中若输入了方向，二段跳立即顺滑修正并赋予空中机动冲力
+			if (dir.length_squared() > 0.001) {
+				velocity.x = dir.x * current_speed * 1.15;
+				velocity.z = dir.z * current_speed * 1.15;
+			}
+
+			// 播放二段跳专属清脆空气动力爆鸣声
+			if (steps_voice != nullptr && snd_double_jump.is_valid()) {
+				steps_voice->set_stream(snd_double_jump);
+				steps_voice->set_pitch_scale(1.0f + ((float)(rand() % 10) - 5.0f) * 0.015f);
+				steps_voice->set_volume_db(-6.0f);
+				steps_voice->play();
+			}
 		}
 	}
+	space_prev = space_down;
 
 	set_velocity(velocity);
 	move_and_slide();
@@ -709,7 +777,8 @@ void Player::_physics_step() {
 			const Vector3 hv = get_velocity();
 			double hspd = Vector2(hv.x, hv.z).length();
 			if (hspd > 0.15) {
-				roll_spin += delta * hspd * 6.5;
+				// 顺应前进方向向前自转翻滚（取负角匹配右手系 X 轴正向旋转法则，确保顶端向前翻转、着地处抓地）
+				roll_spin -= delta * hspd * 6.5;
 			}
 			// 横向平躺翻滚：躯干横置（垂直于前进方向左右横放，像热狗一样向前翻滚）
 			// 局部 Y 轴横转 90 度贴合 X 轴，绕横向轴做顺滑向前自转滚动
@@ -741,7 +810,20 @@ void Player::_physics_step() {
 				}
 			}
 
-			Basis b = Basis(Vector3(0.0, 1.0, 0.0), yaw + (float)ice_jump_spin) * Basis(Vector3(1.0, 0.0, 0.0), lean);
+			// 二段跳空中水平灵动旋转 360 度（绕自身垂直 Y 轴水平陀螺自转一圈，不再竖着翻滚）
+			if (is_double_jumping) {
+				if (!is_on_floor()) {
+					if (double_jump_spin < Math::TAU) {
+						double_jump_spin = Math::min(double_jump_spin + delta * 13.5, (double)Math::TAU);
+					}
+				} else {
+					is_double_jumping = false;
+					double_jump_spin = 0.0;
+				}
+			}
+
+			Basis b = Basis(Vector3(0.0, 1.0, 0.0), yaw + (float)ice_jump_spin + (float)double_jump_spin) *
+					Basis(Vector3(1.0, 0.0, 0.0), lean);
 			model->set_basis(b);
 
 			// 走路颠簸感：步频同步的小幅起伏（每 1.05m 半周期，与 2.1m 步距/脚步声合拍）
@@ -873,8 +955,7 @@ void Player::_update_interaction() {
 	}
 
 	// E 键按下瞬间触发（按住不放只触发一次）
-	Input *input = Input::get_singleton();
-	bool e_down = input->is_key_pressed(KEY_E);
+	bool e_down = act_pressed("interact", KEY_E);
 	if (e_down && !e_prev && near_target != nullptr) {
 		near_target->interact(get_global_position());
 		lean_time = 0.5; // 播放推门/推窗的前倾动作
@@ -914,25 +995,49 @@ void Player::play_ui(int type) {
 // 注意这里是"轮询 + _input 只做累加"的分工：真正的视角计算仍在
 // NOTIFICATION_PROCESS 里（与工程既有的 _notification 主循环约定一致）。
 void Player::_input(const Ref<InputEvent> &p_event) {
+	Ref<InputEventKey> k = p_event;
+	if (k.is_valid() && k->is_pressed() && !k->is_echo()) {
+		// M 开关大地图（动作优先、键码兜底）。Esc 关地图已移交 PauseMenu 统一处理：
+		// Esc 全局只归它管，避免"关地图 + 开暂停菜单"同帧双响应。
+		InputMap *im = InputMap::get_singleton();
+		bool m_hit = (im != nullptr && im->has_action(StringName("map_toggle")))
+			? k->is_action_pressed(StringName("map_toggle"))
+			: (k->get_keycode() == KEY_M || k->get_physical_keycode() == KEY_M);
+		if (m_hit) {
+			toggle_map();
+			return;
+		}
+	}
+
 	Ref<InputEventMouseMotion> mm = p_event;
 	if (mm.is_valid() && mouse_captured) {
 		mouse_rel += mm->get_relative();
 		input_seen = true;
 	}
 }
-// 鼠标视角：点击画面捕获鼠标，ESC 释放；捕获期间鼠标速度驱动偏航/俯仰，
-// 滚轮缩放距离。轮询路线（Input 单例）而非 _unhandled_input——与工程
+// 鼠标视角：点击画面捕获鼠标，滚轮缩放距离；Esc 的释放与还原由 PauseMenu
+// 统一接管（呼出时存模式并显示光标，恢复时还原）。左右方向键恒速环绕兜底。
+// 轮询路线（Input 单例）而非 _unhandled_input——与工程
 // "_notification 优先于 GDVIRTUAL override"的既有约定一致。
 void Player::_update_look(double delta) {
+	if (is_map_open) {
+		return; // 大地图开启期间绝对禁止捕获鼠标与转动视角！
+	}
+
 	Input *input = Input::get_singleton();
 
-	bool esc = input->is_key_pressed(KEY_ESCAPE);
-	if (esc && !esc_prev && mouse_captured) {
-		mouse_captured = false;
-		input->set_mouse_mode(Input::MOUSE_MODE_VISIBLE);
-		play_ui(1);
+	// 键盘转向：与鼠标同向约定——向右转 = cam_yaw 减小。不要求鼠标已捕获，
+	// 两者可叠加；调用点已挡掉睡觉与大地图状态。
+	float kb_turn = 0.0f;
+	if (act_pressed("camera_left", KEY_LEFT)) {
+		kb_turn += 1.0f;
 	}
-	esc_prev = esc;
+	if (act_pressed("camera_right", KEY_RIGHT)) {
+		kb_turn -= 1.0f;
+	}
+	if (kb_turn != 0.0f) {
+		cam_yaw += (double)kb_turn * 2.4 * delta; // ≈137°/秒，与鼠标微调手感不冲突
+	}
 
 	bool lmb = input->is_mouse_button_pressed(MOUSE_BUTTON_LEFT);
 	if (lmb && !lmb_prev && !mouse_captured) {
@@ -1389,6 +1494,54 @@ Ref<AudioStreamWAV> Player::make_land_grass() {
 		float thud = 0.38f * std::sin(6.2831853f * 65.0f * t) * std::exp(-t * 36.0f);
 		float env = Math::clamp(t * 500.0f, 0.0f, 1.0f) * std::exp(-t * 32.0f);
 		float s = (lp * 1.0f + thud) * env * 0.42f;
+
+		int v = (int)std::lround(s * 32767.0f);
+		v = Math::clamp(v, -32768, 32767);
+		w[i * 2] = (uint8_t)(v & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((v >> 8) & 0xFF);
+	}
+
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_data(bytes);
+	return wav;
+}
+
+// 二段跳专属空气动力清脆爆鸣声（轻盈向上的滑音冲气感，带 280Hz -> 680Hz 上扬与清脆气浪微爆）：
+Ref<AudioStreamWAV> Player::make_double_jump_snd() {
+	const int sr = 22050;
+	const float dur = 0.16f;
+	const int n = (int)(dur * (float)sr);
+
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+
+	std::uniform_real_distribution<float> noise_dist(-1.0f, 1.0f);
+	float lp = 0.0f;
+	float phase = 0.0f;
+	for (int i = 0; i < n; ++i) {
+		float t = (float)i / (float)sr;
+		float raw = noise_dist(rng);
+		lp += 0.22f * (raw - lp);
+
+		// 上升音调：280Hz -> 720Hz 充满动能与灵动的凌空借力感
+		float freq = 280.0f + 440.0f * (t / dur);
+		phase += 6.2831853f * freq / (float)sr;
+		float chirp = 0.42f * std::sin(phase);
+
+		// 气浪扩散带通噪声：轻盈气爆
+		float whoosh = (raw - lp) * 0.35f;
+
+		// 快速起音 (8ms) + 柔和指数衰减
+		float attack = Math::clamp(t / 0.008f, 0.0f, 1.0f);
+		float decay = std::exp(-t * 22.0f);
+		float env = attack * decay;
+
+		float s = (chirp * 0.75f + whoosh * 0.45f) * env * 0.55f;
 
 		int v = (int)std::lround(s * 32767.0f);
 		v = Math::clamp(v, -32768, 32767);
@@ -2517,6 +2670,8 @@ void Player::toggle_map() {
 	}
 	is_map_open = !is_map_open;
 	if (is_map_open) {
+		map_hover_x = -9999.0f;
+		map_hover_z = -9999.0f;
 		Vector3 p = get_global_position();
 		float u = Math::clamp(p.x / 220.0f + 0.5f, 0.02f, 0.98f);
 		float v = Math::clamp(p.z / 220.0f + 0.5f, 0.02f, 0.98f);
@@ -2528,16 +2683,22 @@ void Player::toggle_map() {
 			map_player_marker->set_visible(true);
 		}
 		if (map_coords_label != nullptr) {
-			map_coords_label->set_text(String::utf8("🧭 当前位置: X=") + String::num(p.x, 1) + ", Z=" + String::num(p.z, 1) + String::utf8("  ·  轻触舆图瞬息漫游"));
+			map_coords_label->set_text(String::utf8("🧭 当前位置: X=") + String::num(p.x, 1) + ", Z=" + String::num(p.z, 1) + String::utf8("  ·  移动瞄准星轻触瞬息漫游"));
+		}
+		if (map_crosshair != nullptr) {
+			map_crosshair->set_visible(false);
 		}
 		map_layer->show();
-		Input::get_singleton()->set_mouse_mode(Input::MOUSE_MODE_VISIBLE);
+		// 打开地图不要把系统鼠标显示出来，使用游戏专属瞄准 UI
+		Input::get_singleton()->set_mouse_mode(Input::MOUSE_MODE_HIDDEN);
 		mouse_captured = false;
 		play_ui(2);
 	} else {
 		map_layer->hide();
 		Input::get_singleton()->set_mouse_mode(Input::MOUSE_MODE_CAPTURED);
 		mouse_captured = true;
+		mouse_rel = Vector2();
+		lmb_prev = true;
 		play_ui(1);
 	}
 }
@@ -2549,8 +2710,9 @@ void Player::teleport_to(const Vector3 &p_pos) {
 		toggle_map();
 	}
 	if (hud_prompt != nullptr) {
-		hud_prompt->set_text(String::utf8("✨ 已瞬息漫游至目标位置！"));
+		hud_prompt->set_text(String::utf8("✨ 已传送至目标位置"));
 		hud_prompt->show();
+		hud_prompt_timer = 3.0f; // 3 秒后自动消失
 	}
 	play_ui(2);
 }
@@ -2562,10 +2724,13 @@ void Player::build_map_ui() {
 	map_layer->set_layer(10);
 	add_child(map_layer);
 
-	// 1. 全屏柔和暗场环境遮罩 (自然林间深影)
+	// 1. 全屏柔和暗场环境遮罩 (自然林间深影，轻触暗场亦可卷起舆图)
 	ColorRect *bg = memnew(ColorRect);
 	bg->set_color(Color(0.06f, 0.07f, 0.06f, 0.70f));
 	bg->set_anchors_preset(Control::PRESET_FULL_RECT);
+	bg->set_mouse_filter(Control::MOUSE_FILTER_STOP);
+	bg->set_default_cursor_shape(Control::CURSOR_ARROW);
+	bg->connect("gui_input", Callable(this, "_on_map_bg_gui_input"));
 	map_layer->add_child(bg);
 
 	// 2. 主卡片面板 (540px 宽, 620px 高, 居中呈现可爱圆润的手绘地图手账)
@@ -2575,23 +2740,70 @@ void Player::build_map_ui() {
 	map_panel->set_offset(SIDE_RIGHT, 270.0f);
 	map_panel->set_offset(SIDE_TOP, -310.0f);
 	map_panel->set_offset(SIDE_BOTTOM, 310.0f);
+	map_panel->set_mouse_filter(Control::MOUSE_FILTER_STOP);
 	map_layer->add_child(map_panel);
 
 	// 可爱圆润羊皮纸卡片底板：温暖象牙白底色、胡桃木精细边框、26px 大圆角与柔和阴影
 	Ref<StyleBoxFlat> panel_style;
 	panel_style.instantiate();
-	panel_style->set_bg_color(Color(0.96f, 0.94f, 0.89f, 0.98f));
-	panel_style->set_border_color(Color(0.48f, 0.35f, 0.22f, 0.92f));
-	panel_style->set_border_width_all(3);
-	panel_style->set_corner_radius_all(26);
-	panel_style->set_shadow_color(Color(0.10f, 0.08f, 0.06f, 0.36f));
-	panel_style->set_shadow_size(26);
-	panel_style->set_shadow_offset(Vector2(0, 10));
+	panel_style->set_bg_color(Color(0.955f, 0.925f, 0.86f, 0.99f)); // 陈年地图纸
+	panel_style->set_border_color(Color(uistyle::wood_mid().r, uistyle::wood_mid().g, uistyle::wood_mid().b, 0.99f));
+	panel_style->set_border_width_all(7); // 厚木画框
+	panel_style->set_corner_radius_all(20);
+	panel_style->set_shadow_color(Color(0.10f, 0.08f, 0.06f, 0.45f));
+	panel_style->set_shadow_size(30);
+	panel_style->set_shadow_offset(Vector2(0, 12));
+	// 内衬细线(双线装订):expand 5px 画一圈 1px 淡棕细线,与外框成手账双线
+	Ref<StyleBoxFlat> panel_inner;
+	panel_inner.instantiate();
+	panel_inner->set_bg_color(Color(0, 0, 0, 0));
+	panel_inner->set_border_color(Color(uistyle::wood_dark().r, uistyle::wood_dark().g, uistyle::wood_dark().b, 0.55f));
+	panel_inner->set_border_width_all(2);
+	panel_inner->set_corner_radius_all(12);
 
 	PanelContainer *panel_bg = memnew(PanelContainer);
 	panel_bg->set_anchors_preset(Control::PRESET_FULL_RECT);
 	panel_bg->add_theme_stylebox_override("panel", panel_style);
 	map_panel->add_child(panel_bg);
+
+	// 手账双线内衬（纯装饰,不吃输入）
+	Panel *inner_line = memnew(Panel);
+	inner_line->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	inner_line->set_anchors_preset(Control::PRESET_FULL_RECT);
+	inner_line->set_offset(SIDE_LEFT, 11.0f);
+	inner_line->set_offset(SIDE_RIGHT, -11.0f);
+	inner_line->set_offset(SIDE_TOP, 11.0f);
+	inner_line->set_offset(SIDE_BOTTOM, -11.0f);
+	inner_line->add_theme_stylebox_override("panel", panel_inner);
+	map_panel->add_child(inner_line);
+
+	// 顶部右侧可爱圆润关闭按钮 (✕)
+	Button *top_close_btn = memnew(Button);
+	top_close_btn->set_position(Vector2(494.0f, 14.0f));
+	top_close_btn->set_size(Vector2(32.0f, 32.0f));
+	top_close_btn->set_text("✕");
+	top_close_btn->add_theme_font_size_override("font_size", 16);
+	if (cjk.is_valid()) top_close_btn->add_theme_font_override("font", cjk);
+	top_close_btn->set_focus_mode(Control::FOCUS_NONE);
+	top_close_btn->set_default_cursor_shape(Control::CURSOR_POINTING_HAND);
+	top_close_btn->set_mouse_filter(Control::MOUSE_FILTER_STOP);
+
+	Ref<StyleBoxFlat> top_close_sb;
+	top_close_sb.instantiate();
+	top_close_sb->set_bg_color(Color(0.85f, 0.40f, 0.30f, 0.15f));
+	top_close_sb->set_corner_radius_all(16);
+	top_close_btn->add_theme_stylebox_override("normal", top_close_sb);
+
+	Ref<StyleBoxFlat> top_close_hover;
+	top_close_hover.instantiate();
+	top_close_hover->set_bg_color(Color(0.85f, 0.40f, 0.30f, 0.90f));
+	top_close_hover->set_corner_radius_all(16);
+	top_close_btn->add_theme_stylebox_override("hover", top_close_hover);
+	top_close_btn->add_theme_stylebox_override("pressed", top_close_hover);
+	top_close_btn->add_theme_color_override("font_color", Color(0.55f, 0.38f, 0.28f));
+	top_close_btn->add_theme_color_override("font_hover_color", Color(1.0f, 1.0f, 1.0f));
+	top_close_btn->connect("pressed", Callable(this, "toggle_map"));
+	map_panel->add_child(top_close_btn);
 
 	// 顶部自然徽标胶囊 (Pill Badge)
 	Label *badge = memnew(Label);
@@ -2600,12 +2812,12 @@ void Player::build_map_ui() {
 	badge->set_size(Vector2(150.0f, 22.0f));
 	badge->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
 	badge->add_theme_font_size_override("font_size", 12);
-	badge->add_theme_color_override("font_color", Color(0.20f, 0.44f, 0.26f));
+	badge->add_theme_color_override("font_color", Color(0.24f, 0.17f, 0.10f));
 	Ref<StyleBoxFlat> badge_sb;
 	badge_sb.instantiate();
-	badge_sb->set_bg_color(Color(0.86f, 0.92f, 0.84f, 0.95f));
-	badge_sb->set_border_color(Color(0.68f, 0.78f, 0.65f, 0.90f));
-	badge_sb->set_border_width_all(1);
+	badge_sb->set_bg_color(Color(uistyle::wood_light().r, uistyle::wood_light().g, uistyle::wood_light().b, 0.96f));
+	badge_sb->set_border_color(Color(uistyle::wood_dark().r, uistyle::wood_dark().g, uistyle::wood_dark().b, 0.9f));
+	badge_sb->set_border_width_all(2);
 	badge_sb->set_corner_radius_all(999);
 	badge->add_theme_stylebox_override("theme_override_styles/normal", badge_sb);
 	if (cjk.is_valid()) badge->add_theme_font_override("font", cjk);
@@ -2624,7 +2836,7 @@ void Player::build_map_ui() {
 
 	// 副标题（温和柔褐灰色）
 	Label *sub = memnew(Label);
-	sub->set_text(String::utf8("轻触舆图任意位置即可瞬息漫游传送"));
+	sub->set_text(String::utf8("移动瞄准星，轻触舆图任意位置即可瞬息漫游传送"));
 	sub->set_position(Vector2(0.0f, 68.0f));
 	sub->set_size(Vector2(540.0f, 20.0f));
 	sub->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
@@ -2730,6 +2942,17 @@ void Player::build_map_ui() {
 				col = Color(0.92f, 0.46f, 0.64f); // 柔美梅花粉红标识
 			}
 
+			// 6b. 家园菜园 (4 块菜畦, 宅东侧 x∈[12.8,15.2] z∈[9.4,11.4]) —— 嫩绿格纹田垄
+			if (wx >= 12.8f && wx <= 15.2f && wz >= 9.4f && wz <= 11.4f) {
+				int furrow = ((int)std::floor(wx * 2.0f) + (int)std::floor(wz * 2.0f)) & 1;
+				col = furrow ? Color(0.42f, 0.72f, 0.32f) : Color(0.60f, 0.80f, 0.42f);
+			}
+
+			// 6c. 东侧牧场 (动物家点群 x∈[7,31] z∈[-12,13]) —— 柔和草黄牧区
+			if (std::hypot((wx - 22.0f) / 14.0f, (wz - 1.0f) / 14.0f) < 1.0f) {
+				col = col.lerp(Color(0.78f, 0.74f, 0.42f), 0.45f);
+			}
+
 			// 7. 边缘环山水墨晕染
 			float edge_dist = std::hypot(wx, wz);
 			if (edge_dist > 95.0f) {
@@ -2767,9 +2990,41 @@ void Player::build_map_ui() {
 	map_texture_rect->set_size(Vector2(440.0f, 440.0f));
 	map_texture_rect->set_stretch_mode(TextureRect::STRETCH_SCALE);
 	map_texture_rect->set_mouse_filter(Control::MOUSE_FILTER_STOP);
+	map_texture_rect->set_default_cursor_shape(Control::CURSOR_POINTING_HAND);
 	map_texture_rect->connect("gui_input", Callable(this, "_on_map_gui_input"));
 	map_texture_rect->connect("mouse_exited", Callable(this, "_on_map_mouse_exited"));
 	map_container->add_child(map_texture_rect);
+
+	// —— 地点文字标注（世界坐标 → 440px 贴图；wx/220+0.5 再乘 440）——
+	{
+		Ref<Font> poi_font = ResourceLoader::get_singleton()->load(
+				"res://assets/fonts/NotoSansSC-Regular.ttf");
+		auto add_poi = [&](float p_wx, float p_wz, const char *p_text, const Color &p_col) {
+			Label *poi = memnew(Label);
+			poi->set_text(String::utf8(p_text));
+			poi->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+			float px = (p_wx / 220.0f + 0.5f) * 440.0f;
+			float py = (p_wz / 220.0f + 0.5f) * 440.0f;
+			poi->set_position(Vector2(px - 48.0f, py - 9.0f));
+			poi->set_size(Vector2(96.0f, 18.0f));
+			poi->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+			poi->add_theme_font_size_override("font_size", 13);
+			poi->add_theme_color_override("font_color", p_col);
+			poi->add_theme_color_override("font_outline_color", Color(0.12f, 0.10f, 0.08f, 0.92f));
+			poi->add_theme_constant_override("outline_size", 5);
+			if (poi_font.is_valid()) {
+				poi->add_theme_font_override("font", poi_font);
+			}
+			map_container->add_child(poi);
+		};
+		add_poi(12.0f, 20.5f, "🏡 家园", Color(1.0f, 0.95f, 0.86f));
+		add_poi(14.0f, 12.2f, "🌱 菜园", Color(0.78f, 0.95f, 0.66f));
+		add_poi(22.0f, -14.5f, "🐄 牧场", Color(1.0f, 0.92f, 0.70f));
+		add_poi(60.0f, -49.5f, "⚽ 球场", Color(1.0f, 1.0f, 1.0f));
+		add_poi(-6.0f, 32.5f, "🌉 石桥", Color(1.0f, 1.0f, 1.0f));
+		add_poi(97.0f, 87.0f, "💦 瀑布", Color(0.80f, 0.93f, 1.0f));
+		add_poi(-2.0f, 44.5f, "🎣 湖畔", Color(0.80f, 0.93f, 1.0f));
+	}
 
 	// ─────────────────────────────────────────────────────────────────────────
 	// 旅人实时位置徽标 (Player Position Dynamic Marker)
@@ -2803,80 +3058,104 @@ void Player::build_map_ui() {
 	map_player_marker->add_child(p_tag);
 
 	// ─────────────────────────────────────────────────────────────────────────
-	// 灵动金色罗盘准星 (Celestial Compass Reticle)
+	// 灵动游戏风格瞄准星 UI (Game-Style Dynamic Reticle Cursor)
+	// 包含四向灵动弧形边框、中心准核、发光光环与坐标跟随
 	// ─────────────────────────────────────────────────────────────────────────
 	map_crosshair = memnew(Control);
-	map_crosshair->set_size(Vector2(32.0f, 32.0f));
 	map_crosshair->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
 	map_crosshair->set_visible(false);
 	map_container->add_child(map_crosshair);
 
-	const Color gold_aim(0.88f, 0.68f, 0.22f, 0.95f);
-	ColorRect *hl1 = memnew(ColorRect);
-	hl1->set_color(gold_aim);
-	hl1->set_position(Vector2(-12.0f, -1.0f));
-	hl1->set_size(Vector2(8.0f, 2.0f));
-	hl1->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
-	map_crosshair->add_child(hl1);
+	// 1. 发光外环 (圆润环形准星)
+	PanelContainer *aim_ring = memnew(PanelContainer);
+	aim_ring->set_position(Vector2(-16.0f, -16.0f));
+	aim_ring->set_size(Vector2(32.0f, 32.0f));
+	aim_ring->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	Ref<StyleBoxFlat> ring_sb;
+	ring_sb.instantiate();
+	ring_sb->set_bg_color(Color(0.98f, 0.85f, 0.35f, 0.16f)); // 灵动琥珀柔光
+	ring_sb->set_border_color(Color(1.0f, 0.88f, 0.38f, 0.95f)); // 亮金准星光环
+	ring_sb->set_border_width_all(2);
+	ring_sb->set_corner_radius_all(16);
+	ring_sb->set_shadow_color(Color(0.95f, 0.65f, 0.18f, 0.55f));
+	ring_sb->set_shadow_size(8);
+	aim_ring->add_theme_stylebox_override("panel", ring_sb);
+	map_crosshair->add_child(aim_ring);
 
-	ColorRect *hl2 = memnew(ColorRect);
-	hl2->set_color(gold_aim);
-	hl2->set_position(Vector2(4.0f, -1.0f));
-	hl2->set_size(Vector2(8.0f, 2.0f));
-	hl2->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
-	map_crosshair->add_child(hl2);
+	// 2. 中心灵动光点 (Center Aim Dot)
+	ColorRect *aim_dot = memnew(ColorRect);
+	aim_dot->set_position(Vector2(-2.5f, -2.5f));
+	aim_dot->set_size(Vector2(5.0f, 5.0f));
+	aim_dot->set_color(Color(1.0f, 0.32f, 0.22f, 1.0f)); // 绯红聚焦点
+	aim_dot->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	map_crosshair->add_child(aim_dot);
 
-	ColorRect *vl1 = memnew(ColorRect);
-	vl1->set_color(gold_aim);
-	vl1->set_position(Vector2(-1.0f, -12.0f));
-	vl1->set_size(Vector2(2.0f, 8.0f));
-	vl1->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
-	map_crosshair->add_child(vl1);
-
-	ColorRect *vl2 = memnew(ColorRect);
-	vl2->set_color(gold_aim);
-	vl2->set_position(Vector2(-1.0f, 4.0f));
-	vl2->set_size(Vector2(2.0f, 8.0f));
-	vl2->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
-	map_crosshair->add_child(vl2);
-
-	ColorRect *c_dot = memnew(ColorRect);
-	c_dot->set_color(Color(0.92f, 0.26f, 0.20f));
-	c_dot->set_position(Vector2(-2.0f, -2.0f));
-	c_dot->set_size(Vector2(4.0f, 4.0f));
-	c_dot->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
-	map_crosshair->add_child(c_dot);
+	// 3. 四向刻度准线 (Crosshair Ticks)
+	const float tick_len = 5.0f;
+	const float tick_thick = 2.0f;
+	const float tick_dist = 18.0f;
+	// 上
+	ColorRect *t_top = memnew(ColorRect);
+	t_top->set_position(Vector2(-tick_thick * 0.5f, -tick_dist - tick_len));
+	t_top->set_size(Vector2(tick_thick, tick_len));
+	t_top->set_color(Color(1.0f, 0.88f, 0.38f, 0.90f));
+	t_top->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	map_crosshair->add_child(t_top);
+	// 下
+	ColorRect *t_bot = memnew(ColorRect);
+	t_bot->set_position(Vector2(-tick_thick * 0.5f, tick_dist));
+	t_bot->set_size(Vector2(tick_thick, tick_len));
+	t_bot->set_color(Color(1.0f, 0.88f, 0.38f, 0.90f));
+	t_bot->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	map_crosshair->add_child(t_bot);
+	// 左
+	ColorRect *t_left = memnew(ColorRect);
+	t_left->set_position(Vector2(-tick_dist - tick_len, -tick_thick * 0.5f));
+	t_left->set_size(Vector2(tick_len, tick_thick));
+	t_left->set_color(Color(1.0f, 0.88f, 0.38f, 0.90f));
+	t_left->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	map_crosshair->add_child(t_left);
+	// 右
+	ColorRect *t_right = memnew(ColorRect);
+	t_right->set_position(Vector2(tick_dist, -tick_thick * 0.5f));
+	t_right->set_size(Vector2(tick_len, tick_thick));
+	t_right->set_color(Color(1.0f, 0.88f, 0.38f, 0.90f));
+	t_right->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	map_crosshair->add_child(t_right);
 
 	// 地图下方居中坐标状态条
 	map_coords_label = memnew(Label);
-	map_coords_label->set_position(Vector2(0.0f, 542.0f));
-	map_coords_label->set_size(Vector2(540.0f, 20.0f));
+	map_coords_label->set_position(Vector2(0.0f, 538.0f));
+	map_coords_label->set_size(Vector2(540.0f, 22.0f));
 	map_coords_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
-	map_coords_label->set_text(String::utf8("🧭 当前位置: X=0.0, Z=0.0  ·  轻触舆图瞬息漫游"));
+	map_coords_label->set_text(String::utf8("🧭 当前位置: X=0.0, Z=0.0  ·  移动瞄准星轻触瞬息漫游"));
 	map_coords_label->add_theme_font_size_override("font_size", 12);
-	map_coords_label->add_theme_color_override("font_color", Color(0.52f, 0.44f, 0.36f));
+	map_coords_label->add_theme_color_override("font_color", Color(0.48f, 0.38f, 0.28f));
 	if (cjk.is_valid()) map_coords_label->add_theme_font_override("font", cjk);
 	map_panel->add_child(map_coords_label);
 
 	// 底部可爱圆润胶囊关闭按钮
 	Button *close_btn = memnew(Button);
-	close_btn->set_position(Vector2(170.0f, 568.0f));
-	close_btn->set_size(Vector2(200.0f, 36.0f));
-	close_btn->set_text(String::utf8("✦ 卷起舆图 (M) ✦"));
+	close_btn->set_position(Vector2(160.0f, 568.0f));
+	close_btn->set_size(Vector2(220.0f, 36.0f));
+	close_btn->set_text(String::utf8("✦ 卷起舆图 (M / ESC) ✦"));
 	close_btn->add_theme_font_size_override("font_size", 13);
 	if (cjk.is_valid()) close_btn->add_theme_font_override("font", cjk);
+	close_btn->set_focus_mode(Control::FOCUS_NONE);
+	close_btn->set_default_cursor_shape(Control::CURSOR_POINTING_HAND);
+	close_btn->set_mouse_filter(Control::MOUSE_FILTER_STOP);
 
 	Ref<StyleBoxFlat> close_normal;
 	close_normal.instantiate();
-	close_normal->set_bg_color(Color(0.78f, 0.35f, 0.26f, 0.98f));
-	close_normal->set_border_color(Color(0.62f, 0.26f, 0.18f, 1.0f));
-	close_normal->set_border_width_all(1);
+	close_normal->set_bg_color(Color(uistyle::wood_light().r, uistyle::wood_light().g, uistyle::wood_light().b, 0.99f));
+	close_normal->set_border_color(Color(uistyle::wood_dark().r, uistyle::wood_dark().g, uistyle::wood_dark().b, 1.0f));
+	close_normal->set_border_width_all(2);
 	close_normal->set_corner_radius_all(18);
 
 	Ref<StyleBoxFlat> close_hover;
 	close_hover.instantiate();
-	close_hover->set_bg_color(Color(0.86f, 0.40f, 0.30f, 1.0f));
-	close_hover->set_border_color(Color(0.92f, 0.65f, 0.35f, 1.0f));
+	close_hover->set_bg_color(Color(0.72f, 0.58f, 0.38f, 1.0f));
+	close_hover->set_border_color(Color(1.0f, 0.92f, 0.62f, 1.0f)); // 悬停暖纸金边
 	close_hover->set_border_width_all(1);
 	close_hover->set_corner_radius_all(18);
 
@@ -2898,7 +3177,9 @@ void Player::_on_map_gui_input(const Ref<InputEvent> &p_event) {
 		Vector2 mpos = mm->get_position();
 		if (map_crosshair != nullptr) {
 			map_crosshair->set_position(mpos);
-			map_crosshair->set_visible(true);
+			if (!map_crosshair->is_visible()) {
+				map_crosshair->set_visible(true);
+			}
 		}
 		if (map_texture_rect != nullptr && map_coords_label != nullptr) {
 			Vector2 sz = map_texture_rect->get_size();
@@ -2907,7 +3188,12 @@ void Player::_on_map_gui_input(const Ref<InputEvent> &p_event) {
 				float v = mpos.y / sz.y;
 				float tx = (u - 0.5f) * 220.0f;
 				float tz = (v - 0.5f) * 220.0f;
-				map_coords_label->set_text(String::utf8("🎯 准星指向: X=") + String::num(tx, 1) + ", Z=" + String::num(tz, 1));
+				// 节流坐标刷新：位移超 0.5 米才更新文字
+				if (Math::abs(tx - map_hover_x) >= 0.5f || Math::abs(tz - map_hover_z) >= 0.5f) {
+					map_hover_x = tx;
+					map_hover_z = tz;
+					map_coords_label->set_text(String::utf8("🎯 准星指向: X=") + String::num(tx, 1) + ", Z=" + String::num(tz, 1) + String::utf8("  ·  轻触瞬息漫游"));
+				}
 			}
 		}
 		return;
@@ -2937,13 +3223,22 @@ void Player::_on_map_gui_input(const Ref<InputEvent> &p_event) {
 	}
 }
 
+void Player::_on_map_bg_gui_input(const Ref<InputEvent> &p_event) {
+	Ref<InputEventMouseButton> mb = p_event;
+	if (mb.is_valid() && mb->is_pressed() && mb->get_button_index() == MOUSE_BUTTON_LEFT) {
+		toggle_map();
+	}
+}
+
 void Player::_on_map_mouse_exited() {
 	if (map_crosshair != nullptr) {
 		map_crosshair->set_visible(false);
 	}
+	map_hover_x = -9999.0f;
+	map_hover_z = -9999.0f;
 	Vector3 p = get_global_position();
 	if (map_coords_label != nullptr) {
-		map_coords_label->set_text(String::utf8("🧭 当前位置: X=") + String::num(p.x, 1) + ", Z=" + String::num(p.z, 1) + String::utf8("  ·  点击舆图任意处瞬息漫游"));
+		map_coords_label->set_text(String::utf8("🧭 当前位置: X=") + String::num(p.x, 1) + ", Z=" + String::num(p.z, 1) + String::utf8("  ·  轻触舆图任意处瞬息漫游"));
 	}
 }
 

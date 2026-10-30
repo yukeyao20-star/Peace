@@ -10,12 +10,14 @@
 // 低粗糙度 + 高镜面反射让阳光在波纹上形成 CS2 标志性的碎金高光。
 
 shader_type spatial;
-render_mode blend_mix, depth_draw_always, cull_back;
+// cull_disabled：湖底仰视时水面不能消失（2026-10-31 用户反馈"从湖底向上看是空的"）。
+// 背面在 fragment 里走独立的"水下水面穹顶"分支（见文件末尾），不吃正面那套折射/浪花。
+render_mode blend_mix, depth_draw_always, cull_disabled;
 
-uniform vec4 shallow_color : source_color = vec4(0.20, 0.68, 0.94, 1.0);
+uniform vec4 shallow_color : source_color = vec4(0.27, 0.62, 0.80, 1.0);
 uniform bool is_stream = false;                         // 是否为高山小溪（绕开大湖 shore_map 的 discard 裁切与拍岸浪）
 uniform bool is_waterfall = false;                      // 是否为悬崖飞瀑专属垂直水帘
-uniform vec4 deep_color : source_color = vec4(0.08, 0.35, 0.68, 1.0);
+uniform vec4 deep_color : source_color = vec4(0.06, 0.31, 0.54, 1.0);
 uniform vec4 foam_color : source_color = vec4(0.93, 0.97, 1.0, 1.0);
 uniform float wave_height : hint_range(0.0, 0.5) = 0.075;
 uniform float wave_speed : hint_range(0.0, 4.0) = 1.1;
@@ -128,10 +130,13 @@ float ice_cracks(vec2 p) {
 	return clamp(c1 + c2 * 0.6, 0.0, 1.0);
 }
 
-// 完整水面高度场 = 双层滚动噪声 + 沿流向拉长的顺流层 + 雨点涟漪。
+// 完整水面高度场 = 双层滚动噪声 + 沿流向拉长的顺流层 + 高频微细节层 + 雨点涟漪。
 // 所有层共用这一个函数，有限差分求梯度时才能取到每一层真实的斜率。
-float water_height(vec2 a, vec2 b, vec2 c, vec2 pw, float amt) {
-	float base = vnoise(a) * 0.62 + vnoise(b) * 0.38 + (vnoise(c) - 0.5) * 0.25;
+// 微细节层(d)：频率是主层的 ~3.4 倍 —— 法线碎纹的来源，SSR 反射随它细碎闪烁
+// （实机对比：没有这层时倒影"太整"，像贴图不像真水）。
+float water_height(vec2 a, vec2 b, vec2 c, vec2 d, vec2 pw, float amt) {
+	float base = vnoise(a) * 0.60 + vnoise(b) * 0.34 + (vnoise(c) - 0.5) * 0.22
+			+ (vnoise(d) - 0.5) * 0.15;
 	// 雨点涟漪：格子加密（涟漪更小更密）、幅度压低 —— 之前的"大圆圈"像气泡膜，
 	// 真实的雨打湖面是细密的小坑。
 	float rings = (rain_ring(pw * 3.4, TIME) + rain_ring(pw * 7.1 + 31.7, TIME * 1.23) * 0.55)
@@ -193,12 +198,14 @@ void fragment() {
 	vec2 across = vec2(flow_dir.y, -flow_dir.x); // 垂直于流向
 	// 沿流向坐标压缩（0.55）→ 纹理沿流向被拉长；顺流缓慢平移
 	vec2 uv3 = vec2(dot(p, across) * 1.9, dot(p, flow_dir) * 0.55) - vec2(0.0, t * 0.11);
-	float e = 0.022; // 差分步长收窄 → 微法线细节更密（碎金高光的闪点来源）
-	float h0 = water_height(uv1, uv2, uv3, p, rain_amount);
+	// 高频微细节层：反向斜滚，把法线打碎（反射闪烁的"闪点"密度由它决定）
+	vec2 uv4 = p * 3.60 + vec2(-t * 0.150, -t * 0.115);
+	float e = 0.016; // 差分步长收窄 → 微法线细节更密（碎金高光的闪点来源）
+	float h0 = water_height(uv1, uv2, uv3, uv4, p, rain_amount);
 	float hx = water_height(uv1 + vec2(e, 0.0), uv2 + vec2(e, 0.0), uv3 + vec2(e, 0.0),
-			p + vec2(e, 0.0), rain_amount) - h0;
+			uv4 + vec2(e, 0.0), p + vec2(e, 0.0), rain_amount) - h0;
 	float hz = water_height(uv1 + vec2(0.0, e), uv2 + vec2(0.0, e), uv3 + vec2(0.0, e),
-			p + vec2(0.0, e), rain_amount) - h0;
+			uv4 + vec2(0.0, e), p + vec2(0.0, e), rain_amount) - h0;
 	vec3 n = normalize(vec3(-hx * 7.0 * normal_strength, 1.0, -hz * 7.0 * normal_strength));
 	// 结冰衰减涟漪：冰面法线只剩极轻微的凹凸噪声（保留 8% 一点点质感）
 	n = normalize(mix(n, vec3(0.0, 1.0, 0.0), freeze_amount * 0.92));
@@ -261,7 +268,7 @@ void fragment() {
 	// 反射分两层：引擎的环境反射 + 屏幕空间反射（SSR，需要不透明材质，见文件末尾注释）
 	// 负责"真实映出天空和岸"，这里的 sky_col 只作一层薄薄的兜底 —— 保证任何角度
 	// 水面都不发死，同时不把引擎那层真实反射盖掉。
-	vec3 col = mix(base, sky_col, fres * 0.40);
+	vec3 col = mix(base, sky_col, fres * 0.32);
 
 	// CS2 碎金高光：紧镜面瓣随波面法线抖动成闪烁光路 + 宽光泽瓣铺底；
 	// 强度由 SkyCycle 按白昼×晴天度驱动（夜里剩月光残量），结冰大幅衰减
@@ -410,6 +417,16 @@ void fragment() {
 	splash_col = mix(splash_col, vec3(1.0, 1.0, 1.0), clamp(rock_burst + rock_mist, 0.0, 1.0) * 0.72);
 	col = mix(col, splash_col, foam);
 
+	// ── K. 岸线接触带（Meniscus / Wet Contact）────────────────────────────
+	// 水陆交界：白沫之下先压一道暗色"湿痕"（水真的贴在岸上），再在最外缘描
+	// 一条极细的亮水线（湿沙反光）。没有这两笔，水面像"浮"在岸上（实机对比结论）。
+	if (!is_waterfall) {
+		float contact_dark = (1.0 - smoothstep(0.04, 0.24, water_depth)) * water_mask;
+		col = mix(col, col * vec3(0.56, 0.60, 0.64), contact_dark * 0.40 * (1.0 - foam * 0.8));
+		float rim_line = smoothstep(0.10, 0.05, water_depth) * smoothstep(0.012, 0.04, water_depth);
+		col += vec3(0.09, 0.10, 0.10) * rim_line * water_mask * (1.0 - foam) * (1.0 - freeze_amount);
+	}
+
 	// —— 冰面观感：底冰蓝×明暗噪声 + 脊线裂缝亮纹 + 保留菲涅尔天光 ——
 	if (cover > 0.001) {
 		float shade = 0.90 + 0.10 * vnoise(p * 2.6 + 5.0);
@@ -422,12 +439,33 @@ void fragment() {
 	// 雨天氛围：整体压暗偏冷 + 更高的雾感（与 SkyCycle 的 gloom 呼应）
 	col = mix(col, col * vec3(0.80, 0.84, 0.90), rain_amount * 0.55);
 
-	ALBEDO = col;
-	// 粗糙度压到很低 → 反射接近镜面（CS2 那种"液面镜子"的观感）；
-	// 泡沫处抬高粗糙度，浪花是哑光的白。
-	ROUGHNESS = mix(mix(0.015, 0.30, foam) + rain_amount * 0.08, 0.05, cover);
-	SPECULAR = 0.9;                    // 反射强度（阳光碎金高光 + 环境反射）
-	METALLIC = 0.0;
+	// —— 水下仰视：背面走"水面穹顶"分支（2026-10-31）——
+	// 相机在水下时，水面从下面看是一整片发亮的蓝白穹顶（斯涅尔窗）：
+	// 越接近正上方越亮（能透见水面外的天光），视线越斜越深蓝。
+	if (!FRONT_FACING) {
+		vec3 vd = normalize(CAMERA_POSITION_WORLD - world_pos);
+		float up_dot = clamp(-vd.y, 0.0, 1.0);
+		vec3 under_col = mix(deep_color.rgb * 0.50,
+				shallow_color.rgb * 1.25 + vec3(0.06, 0.10, 0.12), pow(up_dot, 1.5));
+		// 从水下看，水面上的波光变成缓慢流动的亮纹（复用焦散图案）
+		under_col += vec3(0.55, 0.75, 0.80) * ca * 0.22 * up_dot;
+		// 结冰时从水下看是一层灰白冰盖
+		under_col = mix(under_col, ice_color * 0.85, cover * 0.85);
+		// 用自发光保证"水顶"不受光照方向影响（背面法线与阳光相反，
+		// 走正常光照会被压暗成黑盖子）
+		ALBEDO = under_col * 0.25;
+		EMISSION = under_col * 0.75;
+		ROUGHNESS = 0.55;
+		SPECULAR = 0.05;
+		METALLIC = 0.0;
+	} else {
+		ALBEDO = col;
+		// 粗糙度压到很低 → 反射接近镜面（CS2 那种"液面镜子"的观感）；
+		// 泡沫处抬高粗糙度，浪花是哑光的白。
+		ROUGHNESS = mix(mix(0.015, 0.30, foam) + rain_amount * 0.08, 0.05, cover);
+		SPECULAR = 0.9;                    // 反射强度（阳光碎金高光 + 环境反射）
+		METALLIC = 0.0;
+	}
 	// 注意：这里绝不能写 ALPHA。一旦写 ALPHA，Godot 会把水面扔进透明通道，
 	// 而屏幕空间反射（SSR）只作用于不透明物体 —— 水面就再也映不出桥和岸了。
 	// 折射是手动合成到 ALBEDO 里的，本来也不需要 alpha 混合。

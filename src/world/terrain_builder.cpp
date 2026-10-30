@@ -10,10 +10,13 @@
 
 #include "player.h"
 #include "sky_cycle.h"
+#include "ice_surface.h" // is_on_frozen_lake 大湖分支直接问湖面冰唯一碰撞源
+#include "../interact/berry_bush.h"
 #include "../systems/mesh_util.h"
 
 #include <cmath>
 #include <cstdio>
+#include <map>
 #include <random>
 #include <vector>
 
@@ -152,6 +155,48 @@ void commit_scatter(Node3D *p_parent, const char *p_name, Ref<Mesh> p_mesh, cons
 	mi->set_name(p_name);
 	mi->set_multimesh(mm);
 	p_parent->add_child(mi);
+}
+
+// 大面积散布分块提交：一张十万实例的 MultiMesh 的 AABB 覆盖全图，相机朝任何
+// 方向都会整张提交绘制。按 XZ 网格切成若干单元 MultiMesh 后，视锥剔除按块
+// 生效——实例位置与数量逐个不变（纯分组，不碰随机序列），典型机位只画眼前
+// 几块。草毯这种"量大而小"的散布收益最大。
+void commit_scatter_chunked(Node3D *p_parent, const char *p_name, const Ref<Mesh> &p_mesh,
+		const Scatter &p_s, float p_cell = 80.0f, bool p_shadow_off = true) {
+	if (p_s.count() == 0) {
+		return;
+	}
+	// 桶：cell 坐标 → 实例下标。key 编码 (cx+2048)*4096+(cz+2048)，±2048 格内唯一
+	std::map<int, std::vector<int>> buckets;
+	for (int i = 0; i < p_s.count(); i++) {
+		const Vector3 &o = p_s.xforms[i].origin;
+		int cx = (int)std::floor(o.x / p_cell);
+		int cz = (int)std::floor(o.z / p_cell);
+		buckets[(cx + 2048) * 4096 + (cz + 2048)].push_back(i);
+	}
+	for (const auto &kv : buckets) {
+		Ref<MultiMesh> mm;
+		mm.instantiate();
+		mm->set_transform_format(MultiMesh::TRANSFORM_3D);
+		mm->set_use_colors(true);
+		mm->set_mesh(p_mesh);
+		const std::vector<int> &idx = kv.second;
+		mm->set_instance_count((int)idx.size());
+		for (int j = 0; j < (int)idx.size(); j++) {
+			mm->set_instance_transform(j, p_s.xforms[idx[j]]);
+			mm->set_instance_color(j, p_s.colors[idx[j]]);
+		}
+		MultiMeshInstance3D *cmi = memnew(MultiMeshInstance3D);
+		char chunk_name[96];
+		snprintf(chunk_name, sizeof(chunk_name), "%s_c%d_%d", p_name,
+				kv.first / 4096 - 2048, kv.first % 4096 - 2048);
+		cmi->set_name(chunk_name);
+		cmi->set_multimesh(mm);
+		if (p_shadow_off) {
+			cmi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+		}
+		p_parent->add_child(cmi);
+	}
 }
 
 // 拍岸浪参数：必须与 water.gdshader 的 shore_wave_speed / shore_wave_freq / swell_freq
@@ -672,6 +717,47 @@ static void add_tube(SurfaceTool *st, const Vector3 &a, const Vector3 &b,
 	}
 }
 
+// 连续剖面管：一条半径随高度变化的树干**一次成型**（多段摞 add_tube 会在半径
+// 突变的接缝处出现环形台阶，平滑法线在台阶处着色异常——近看树根"一圈圈凹进去
+// 还透光"，实机截图实锤）。这里相邻剖面段共享同一圈顶点位置，SurfaceTool 平滑
+// 组按位置焊接后法线全程连续，轮廓光滑无豁口。剖面自下而上、恒竖直轴。
+static void add_profile_tube(SurfaceTool *st, const float *p_y, const float *p_r,
+		int p_n, int seg, const Color &col) {
+	if (p_n < 2) {
+		return;
+	}
+	// 与 add_tube 同一套正交基保证绕序朝外：axis=(0,1,0) → u=(0,0,-1), v=(-1,0,0)
+	const Vector3 u(0.0f, 0.0f, -1.0f);
+	const Vector3 v(-1.0f, 0.0f, 0.0f);
+	for (int i = 0; i < p_n - 1; i++) {
+		const Vector3 a(0.0f, p_y[i], 0.0f);
+		const Vector3 b(0.0f, p_y[i + 1], 0.0f);
+		const float ra = p_r[i];
+		const float rb = p_r[i + 1];
+		for (int s = 0; s < seg; s++) {
+			float t0 = (float)s / (float)seg * Math::TAU;
+			float t1 = (float)(s + 1) / (float)seg * Math::TAU;
+			Vector3 d0 = u * Math::cos(t0) + v * Math::sin(t0);
+			Vector3 d1 = u * Math::cos(t1) + v * Math::sin(t1);
+			Vector3 a0 = a + d0 * ra, a1 = a + d1 * ra;
+			Vector3 b0 = b + d0 * rb, b1 = b + d1 * rb;
+			// 绕序与 add_tube 一致：(a0,b1,b0)/(a0,a1,b1) 法线朝径向外侧
+			st->set_color(col);
+			st->add_vertex(a0);
+			st->set_color(col);
+			st->add_vertex(b1);
+			st->set_color(col);
+			st->add_vertex(b0);
+			st->set_color(col);
+			st->add_vertex(a0);
+			st->set_color(col);
+			st->add_vertex(a1);
+			st->set_color(col);
+			st->add_vertex(b1);
+		}
+	}
+}
+
 // —— 树原型（archetype）——
 // 起因：如果所有树共用一份骨架网格 + 一套固定叶团坐标，整片林子就是同一棵树复制几百遍，
 // 远看是一排排一模一样的绿蘑菇（用户一眼就指出来了）。
@@ -801,8 +887,29 @@ Ref<ArrayMesh> make_tree_skeleton_mesh(const TreeArchetype &p_a) {
 	st->set_smooth_group(0);
 	const Color bark(1.0f, 1.0f, 1.0f); // 顶点色留白，颜色全走 MultiMesh 实例色（树皮棕）
 
-	// 主干：底端埋进土 0.10，往上细成"主梢"钻进树冠（顶端藏在叶团里，不用封口）
-	add_tube(st.ptr(), Vector3(0.0f, -0.10f, 0.0f), Vector3(0.0f, 2.30f, 0.0f), 0.30f, 0.085f, 8, bark);
+	// 主干：深入地下 0.8m 的锚固段（山坡不悬空）+ 出土地表轻微外扩的根颈，
+	// 一根连续剖面管一次成型（见 add_profile_tube 注释：摞管接缝的台阶感已修）。
+	// 剖面半径自下而上：0.36(地下) → 0.36 → 0.315(出土地表微扩肩) → 0.26(根颈)
+	// → 0.165 → 0.085(主梢钻进树冠)，平滑收束无台阶。
+	const float trunk_y[] = { -0.80f, -0.15f, 0.10f, 0.55f, 1.40f, 2.30f };
+	const float trunk_r[] = { 0.36f, 0.36f, 0.315f, 0.26f, 0.165f, 0.085f };
+	add_profile_tube(st.ptr(), trunk_y, trunk_r, 6, 8, bark);
+
+	// 地底底部封闭面（8 边形底盖，防透视视线下穿帮露底）
+	const Vector3 bottom_center(0.0f, -0.80f, 0.0f);
+	for (int i = 0; i < 8; i++) {
+		float t0 = (float)i / 8.0f * Math::TAU;
+		float t1 = (float)(i + 1) / 8.0f * Math::TAU;
+		Vector3 p0 = bottom_center + Vector3(0.36f * Math::cos(t0), 0.0f, 0.36f * Math::sin(t0));
+		Vector3 p1 = bottom_center + Vector3(0.36f * Math::cos(t1), 0.0f, 0.36f * Math::sin(t1));
+		st->set_color(bark);
+		st->add_vertex(bottom_center);
+		st->set_color(bark);
+		st->add_vertex(p0);
+		st->set_color(bark);
+		st->add_vertex(p1);
+	}
+
 	for (const TreeLimb &l : p_a.limbs) {
 		Vector3 a(0.055f * Math::cos(l.ang), l.y0, 0.055f * Math::sin(l.ang));
 		Vector3 b(l.rad * Math::cos(l.ang), l.y1, l.rad * Math::sin(l.ang));
@@ -1054,18 +1161,17 @@ void TerrainBuilder::update_sky_driven() {
 			stream_mat->set_shader_parameter("sun_dir", sky_cache->get_sun_dir());
 		}
 	}
+	// 溪流/深潭雪量 0.20 起结冰可踏（浅水先冻，与 freeze_amount 视觉同步）；
+	// 湖面不在此切换——归 IceSurface 的 0.85/0.70 滞回（见上方湖面注释）。
 	bool is_frozen = (snow >= 0.20f);
-	if (lake_ice_col != nullptr) {
-		lake_ice_col->set_collision_layer_value(1, is_frozen);
-		lake_ice_col->set_collision_mask_value(1, is_frozen);
-	}
 	if (stream_ice_col != nullptr) {
 		stream_ice_col->set_collision_layer_value(1, is_frozen);
 		stream_ice_col->set_collision_mask_value(1, is_frozen);
 	}
 }
 
-// 湖面与小溪结冰判定：雪量 >= 0.20f 时水面凝结成冰，玩家踏上冰面进入滑冰状态
+// 湖面与小溪结冰判定：大湖看 IceSurface 是否激活（雪量 0.85/0.70 滞回），小溪/深潭看雪量 >= 0.20f；
+// 玩家踏上冰面进入滑冰状态
 bool TerrainBuilder::is_on_frozen_lake(float x, float z, float y) const {
 	if (sky_cache == nullptr) {
 		Node *p = get_parent();
@@ -1077,13 +1183,26 @@ bool TerrainBuilder::is_on_frozen_lake(float x, float z, float y) const {
 		return false;
 	}
 
-	// 1. 大湖结冰判定：落在湖泊水体范围内（水深大于 0.12m）且脚底高度在冰面附近
-	float depth = water_depth_at(x, z);
-	if (depth > 0.12f && y >= water_level - 0.40f && y <= water_level + 0.65f) {
-		return true;
+	// 1. 大湖结冰判定：湖面冰唯一碰撞源 IceSurface 已激活，且落在湖泊水体范围内
+	// （水深大于 0.12m）且脚底高度在冰面附近。直接问 IceSurface 而非猜雪量——
+	// 雪量 0.20~0.85 区间湖面没有碰撞，蹚浅水（湖底高 -0.7 级别）不得误判成滑冰。
+	if (lake_ice_surface == nullptr) {
+		lake_ice_surface = sky_cache->get_node_or_null(NodePath("IceSurface"));
+	}
+	IceSurface *ice = Object::cast_to<IceSurface>(lake_ice_surface);
+	if (ice != nullptr && ice->is_ice_active()) {
+		float depth = water_depth_at(x, z);
+		if (depth > 0.12f && y >= water_level - 0.40f && y <= water_level + 0.65f) {
+			return true;
+		}
 	}
 
-	// 2. 高山小溪结冰判定：落在小溪水槽范围 (dist < 1.8m) 且脚底在小溪流面附近
+	// 2. 高山小溪与瀑布深潭结冰判定：落在小溪水槽范围或瀑布深潭冰面上
+	float plunge_dist = std::hypot(x - 92.0f, z - 92.0f);
+	if (plunge_dist < 7.5f && y >= 2.60f && y <= 3.85f) {
+		return true; // 瀑布深潭结冰冰面
+	}
+
 	float s_dist, s_t, s_wy;
 	get_stream_spline(x, z, s_dist, s_t, s_wy);
 	if (s_dist < 1.75f && s_t >= 0.0f && s_t <= 1.0f) {
@@ -1578,23 +1697,11 @@ void TerrainBuilder::build_water() {
 	mi->set_position(Vector3(-6.0f, water_level, 48.0f));
 	add_child(mi);
 
-	// 湖面结冰实体物理碰撞层（冬天下雪结冰时激活，使玩家能够稳稳踏在冰面上自由滑冰；晴雨天关闭恢复游泳/走水）
-	lake_ice_col = memnew(StaticBody3D);
-	lake_ice_col->set_name("LakeIceCollision");
-	lake_ice_col->set_position(Vector3(-6.0f, water_level, 48.0f));
-	{
-		CollisionShape3D *col_shape = memnew(CollisionShape3D);
-		col_shape->set_name("IcePlaneShape");
-		Ref<BoxShape3D> box;
-		box.instantiate();
-		box->set_size(Vector3(150.0f, 0.40f, 165.0f));
-		col_shape->set_shape(box);
-		col_shape->set_position(Vector3(0.0f, -0.20f, 0.0f)); // 冰层顶面严丝合缝对齐 water_level (-0.55m)
-		lake_ice_col->add_child(col_shape);
-	}
-	lake_ice_col->set_collision_layer_value(1, false); // 默认未结冰，关闭碰撞
-	lake_ice_col->set_collision_mask_value(1, false);
-	add_child(lake_ice_col);
+	// 湖面结冰碰撞归 IceSurface 独有（SkyCycle spawn 的无限平面，0.85/0.70 滞回，
+	// 与 water.gdshader freeze_amount 的视觉封冻节奏对齐）。此处不再建湖面 box：
+	// 旧 box 雪量 0.20 即激活，玩家能走上视觉未封冻的湖面（双冰系统重叠，
+	// 2026-10-24 移除）。溪流/深潭冰仍在本类——高处溪段在 IceSurface 平面之上，
+	// 无限平面盖不住，必须留自己的碰撞网。
 
 	// ---- 水深图（shore_map）----
 	// 为什么需要它：拍岸浪的相位是"离岸多远"的函数，但顶点着色器拿不到深度缓冲
@@ -1664,8 +1771,8 @@ void TerrainBuilder::build_mountain_stream() {
 	stream_mat->set_shader_parameter("wave_speed", 1.8f); // 溪水自然清澈流淌
 	stream_mat->set_shader_parameter("flow_dir", Vector2(-0.85f, -0.53f)); // 顺着山势奔流向西南大湖
 	stream_mat->set_shader_parameter("refraction_distort", 0.045f);
-	stream_mat->set_shader_parameter("shallow_color", Color(0.20f, 0.68f, 0.94f, 1.0f)); // 与大湖水色完全同源统一晶莹天蓝
-	stream_mat->set_shader_parameter("deep_color", Color(0.08f, 0.35f, 0.68f, 1.0f));   // 与大湖水色完全同源统一明丽湖蓝
+	stream_mat->set_shader_parameter("shallow_color", Color(0.27f, 0.62f, 0.80f, 1.0f)); // 与大湖水色完全同源统一自然青蓝
+	stream_mat->set_shader_parameter("deep_color", Color(0.06f, 0.31f, 0.54f, 1.0f));   // 与大湖水色完全同源统一明丽湖蓝
 	stream_mat->set_shader_parameter("foam_color", Color(0.93f, 0.97f, 1.0f, 1.0f));
 	stream_mat->set_shader_parameter("foam_depth", 0.32f);
 
@@ -1771,22 +1878,9 @@ void TerrainBuilder::build_mountain_stream() {
 	stream_mi->set_mesh(stream_mesh);
 	stream_mi->set_material_override(stream_mat);
 	stream_mi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
-	add_child(stream_mi);
-
-	// 小溪结冰实体物理碰撞层（冬天下雪结冰时激活，使玩家能够稳稳踏在小溪冰面上滑冰）
-	stream_ice_col = memnew(StaticBody3D);
-	stream_ice_col->set_name("StreamIceCollision");
-	{
-		CollisionShape3D *stream_shape = memnew(CollisionShape3D);
-		stream_shape->set_name("StreamTrimeshShape");
-		stream_shape->set_shape(stream_mesh->create_trimesh_shape());
-		stream_ice_col->add_child(stream_shape);
-	}
-	stream_ice_col->set_collision_layer_value(1, false); // 默认未结冰，关闭碰撞
-	stream_ice_col->set_collision_mask_value(1, false);
-	add_child(stream_ice_col);
-
+	add_child(stream_mi); // ⚠️ 曾在 WIP 重排中丢失——漏挂 = 整条溪流水面凭空消失（用户实锤），勿再删！
 	// 瀑布深潭水面网格 (Plunge Pool Lake Water) 在 (92.0, 3.0, 92.0)，扩建为半径约 7.2m 的壮阔蓄水深潭
+	Ref<ArrayMesh> pool_mesh;
 	{
 		Ref<SurfaceTool> pool_st;
 		pool_st.instantiate();
@@ -1807,13 +1901,35 @@ void TerrainBuilder::build_mountain_stream() {
 			pool_st->add_vertex(p1);
 		}
 		pool_st->generate_normals();
+		pool_mesh = pool_st->commit();
 		MeshInstance3D *pool_mi = memnew(MeshInstance3D);
 		pool_mi->set_name("WaterfallPlungePool");
-		pool_mi->set_mesh(pool_st->commit());
+		pool_mi->set_mesh(pool_mesh);
 		pool_mi->set_material_override(stream_mat);
 		pool_mi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 		add_child(pool_mi);
 	}
+
+	// 小溪与瀑布深潭结冰实体物理碰撞层（冬天下雪结冰时激活，使玩家能够稳稳踏在小溪与深潭冰面上自由滑行，绝不掉坑卡住）
+	stream_ice_col = memnew(StaticBody3D);
+	stream_ice_col->set_name("StreamIceCollision");
+	{
+		CollisionShape3D *stream_shape = memnew(CollisionShape3D);
+		stream_shape->set_name("StreamTrimeshShape");
+		stream_shape->set_shape(stream_mesh->create_trimesh_shape());
+		stream_ice_col->add_child(stream_shape);
+
+		// 将瀑布深潭水面冰层物理网格一并加入，冬天形成无缝连贯的冰原平面，彻底消除跌入潭底被冰墙断层卡住的隐患！
+		if (pool_mesh.is_valid()) {
+			CollisionShape3D *pool_shape = memnew(CollisionShape3D);
+			pool_shape->set_name("PoolTrimeshShape");
+			pool_shape->set_shape(pool_mesh->create_trimesh_shape());
+			stream_ice_col->add_child(pool_shape);
+		}
+	}
+	stream_ice_col->set_collision_layer_value(1, false); // 默认未结冰，关闭碰撞
+	stream_ice_col->set_collision_mask_value(1, false);
+	add_child(stream_ice_col);
 
 	// ===== 壮观飞瀑水帘专属实体网格 (Waterfall Curtains & Cascade System) =====
 	// 从悬崖顶部跌水口 (100.0, 18.2, 100.0) 飞流直下到深潭 (92.5, 3.0, 92.5)，高落差 15.2 米
@@ -2196,7 +2312,11 @@ void TerrainBuilder::build_stream_bridge() {
 		meshutil::add_box(bridge_root, toon_shader, Vector3(2.25f, 0.11f, 0.21f), Vector3(0.0f, arch_y + 0.05f, z), wood_plank);
 	}
 
-	// 4. 纯木立柱与立体弧形护栏
+	// 4. 纯木立柱与立体弧形护栏（含坚固物理碰撞，严防玩家与动物穿出坠河）
+	StaticBody3D *bridge_body = memnew(StaticBody3D);
+	bridge_body->set_name("BridgeCollision");
+	bridge_root->add_child(bridge_body);
+
 	const float post_z_positions[] = { -2.9f, -1.9f, -0.95f, 0.0f, 0.95f, 1.9f, 2.9f };
 	for (int side = -1; side <= 1; side += 2) {
 		float x = (float)side * 1.06f;
@@ -2206,7 +2326,7 @@ void TerrainBuilder::build_stream_bridge() {
 			meshutil::add_box(bridge_root, toon_shader, Vector3(0.12f, 0.90f, 0.12f), Vector3(x, py + 0.45f, pz), wood_dark);
 		}
 
-		// 分段护栏横木（上下两道，顺应拱桥弧线自然弯折）
+		// 分段护栏横木（上下两道，顺应拱桥弧线自然弯折）与实体挡板碰撞体
 		for (int i = 0; i < 6; ++i) {
 			float z0 = post_z_positions[i];
 			float z1 = post_z_positions[i + 1];
@@ -2214,7 +2334,7 @@ void TerrainBuilder::build_stream_bridge() {
 			float y_mid = std::cos(z_mid / 3.1f * 1.5708f) * arch_peak;
 			float dy = (std::cos(z1 / 3.1f * 1.5708f) - std::cos(z0 / 3.1f * 1.5708f)) * arch_peak;
 			float seg_dz = z1 - z0;
-			float pitch = std::atan2(dy, seg_dz);
+			float pitch = -std::atan2(dy, seg_dz);
 			float seg_hypot = std::hypot(seg_dz, dy);
 
 			// 上扶手
@@ -2230,17 +2350,23 @@ void TerrainBuilder::build_stream_bridge() {
 			rail_mid->set_rotation(Vector3(pitch, 0.0f, 0.0f));
 			bridge_root->add_child(rail_mid);
 			meshutil::add_box(rail_mid, toon_shader, Vector3(0.09f, 0.08f, seg_hypot * 1.02f), Vector3(0.0f, 0.0f, 0.0f), wood_dark);
+
+			// 两侧立面护栏物理碰撞（高度 0.95m，厚度 0.18m，彻底解决两侧栏杆直接穿过去的问题）
+			CollisionShape3D *rail_col = memnew(CollisionShape3D);
+			Ref<BoxShape3D> rbox;
+			rbox.instantiate();
+			rbox->set_size(Vector3(0.18f, 0.95f, seg_hypot * 1.02f));
+			rail_col->set_shape(rbox);
+			rail_col->set_position(Vector3(x, y_mid + 0.55f, z_mid));
+			rail_col->set_rotation(Vector3(pitch, 0.0f, 0.0f));
+			bridge_body->add_child(rail_col);
 		}
 	}
 
-	// 5. 拱桥真实物理碰撞体（采用连续光滑的多段精细坡面与两端引道过渡板，消除任何台阶阻挡，确保角色跑跳丝滑顺畅）
-	StaticBody3D *bridge_body = memnew(StaticBody3D);
-	bridge_body->set_name("BridgeCollision");
-	bridge_root->add_child(bridge_body);
-
-	const int NUM_COL_SEGS = 12; // 12段精细贴合拱桥弧线
-	const float z_start = -3.25f;
-	const float z_end = 3.25f;
+	// 5. 拱桥桥面精细物理碰撞体（连续平滑 16 段精确切合弧线，角度精准修正，两端延伸无缝搭接土壤）
+	const int NUM_COL_SEGS = 16;
+	const float z_start = -3.45f;
+	const float z_end = 3.45f;
 	for (int i = 0; i < NUM_COL_SEGS; ++i) {
 		float z0 = z_start + (float)i * ((z_end - z_start) / (float)NUM_COL_SEGS);
 		float z1 = z_start + (float)(i + 1) * ((z_end - z_start) / (float)NUM_COL_SEGS);
@@ -2252,16 +2378,17 @@ void TerrainBuilder::build_stream_bridge() {
 		float y_mid = (y0 + y1) * 0.5f;
 		float dz = z1 - z0;
 		float dy = y1 - y0;
-		float pitch = std::atan2(dy, dz);
+		// 右手系绕 X 轴旋转：dy > 0 时逆时针倾斜，须取 -atan2(dy, dz) 匹配斜坡！
+		float pitch = -std::atan2(dy, dz);
 		float len = std::hypot(dz, dy);
 
 		CollisionShape3D *col_shape = memnew(CollisionShape3D);
 		Ref<BoxShape3D> box;
 		box.instantiate();
-		// 碰撞体顶面微低于脚板 0.02m，同时厚度适中，彻底消除接缝毛刺与卡步
-		box->set_size(Vector3(2.35f, 0.20f, len * 1.04f));
+		// 桥面走道碰撞体宽度 2.1m，厚度 0.20m，完美承托步履
+		box->set_size(Vector3(2.10f, 0.20f, len * 1.02f));
 		col_shape->set_shape(box);
-		col_shape->set_position(Vector3(0.0f, y_mid - 0.04f, z_mid));
+		col_shape->set_position(Vector3(0.0f, y_mid, z_mid));
 		col_shape->set_rotation(Vector3(pitch, 0.0f, 0.0f));
 		bridge_body->add_child(col_shape);
 	}
@@ -2417,10 +2544,11 @@ void TerrainBuilder::build_vegetation() {
 			};
 			Vector3 b0 = rot(-b.w, 0.0f, 0.0f), b1 = rot(b.w, 0.0f, 0.0f);
 			Vector3 t0 = rot(-b.w * 0.30f, b.h, b.tilt * b.h), t1 = rot(b.w * 0.30f, b.h, b.tilt * b.h);
-			// 正面 + 反面（双面，配合着色器 cull_disabled）；UV：根 v=1 → 梢 v=0
+			// 单面四边形 + 着色器 cull_disabled：背面由光栅化双面渲染处理，
+			// 且 normal_up=true 强制法线朝上——背面面片曾只是把三角形数翻倍，
+			// 对最终像素无任何贡献（2026-10-30 性能专项去重）。
 			const PackedVector2Array uv_b = { Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0) };
 			gst->add_triangle_fan({ b0, b1, t1, t0 }, uv_b);
-			gst->add_triangle_fan({ b0, t0, t1, b1 }, uv_b);
 		}
 		gst->generate_normals();
 		grass_mesh.instantiate();
@@ -2435,6 +2563,7 @@ void TerrainBuilder::build_vegetation() {
 		grass_wind->set_shader_parameter("blade_tex", blade_tex);
 		grass_wind->set_shader_parameter("use_blade_tex", true);
 		grass_wind->set_shader_parameter("normal_up", true);
+		grass_wind->set_shader_parameter("bottom_shade", 0.92f); // 草根别再压黑（2026-10-31 用户反馈"小草太黑"）
 	}
 
 	// 草毯网格：单叶双面四边形（贴"一丛 6 根细草"纹理：宽 6cm 挺立少躺倒，高 0.34m）
@@ -2447,8 +2576,8 @@ void TerrainBuilder::build_vegetation() {
 		Vector3 b0(-cw, 0.0f, 0.0f), b1(cw, 0.0f, 0.0f);
 		Vector3 t0(-cw * 0.45f, ch, 0.04f), t1(cw * 0.45f, ch, 0.04f); // 挺立微倾（原 0.09 太躺）
 		const PackedVector2Array uv_f = { Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0) };
+		// 单面（同草簇：cull_disabled + normal_up，背面面片无像素贡献）
 		cst->add_triangle_fan({ b0, b1, t1, t0 }, uv_f);
-		cst->add_triangle_fan({ b0, t0, t1, b1 }, uv_f);
 		cst->generate_normals();
 		carpet_mesh.instantiate();
 		cst->commit(carpet_mesh);
@@ -2984,7 +3113,12 @@ void TerrainBuilder::build_vegetation() {
 
 	// —— 浆果丛：林缘成簇（MC 甜浆果丛风味）——
 	// 深绿矮丛，浆果点缀在丛体表面偏上的位置，颜色鲜红带微自发光。
+	// 每 3 簇里 1 簇换成真 BerryBush（可采、45s 重长、计入每日待办）：
+	// 选中簇不再加入装饰实例，但 rnd() 的调用次数与取值序列和未改前完全一致
+	// （rnd 全部先行求值，add 包进条件）——固定种子随机流绝不错位，
+	// 其余全部植被/散布布局分毫不动（硬坑：改撒点必致整图重排）。
 	int berry_clusters = 0;
+	std::vector<Vector3> wild_berry_spots;
 	for (int attempt = 0; attempt < 2000 && berry_clusters < 58; attempt++) {
 		if (tree_pos.empty()) {
 			break;
@@ -3001,9 +3135,9 @@ void TerrainBuilder::build_vegetation() {
 			if ((p - homestead_center).length() < 10.0f) {
 				return false;
 			}
-		if (dist_to_path(p.x, p.y) < 1.4f || on_bridge_deck(p)) {
-			return false;
-		}
+			if (dist_to_path(p.x, p.y) < 1.4f || on_bridge_deck(p)) {
+				return false;
+			}
 			float h = terrain_height(p.x, p.y);
 			if (h < water_level + 0.3f || terrain_slope(p.x, p.y) > 0.7f) {
 				return false;
@@ -3012,6 +3146,14 @@ void TerrainBuilder::build_vegetation() {
 		};
 		if (!berry_spot_ok(base)) {
 			continue;
+		}
+
+		// 0/3/6/... 号簇换真丛：簇心落一棵可采 BerryBush，占位碰撞与装饰丛同规格
+		bool real_here = (berry_clusters % 3 == 0);
+		if (real_here) {
+			float bh = terrain_height(base.x, base.y);
+			wild_berry_spots.push_back(Vector3(base.x, bh, base.y));
+			bush_obstacles.push_back({ Vector3(base.x, bh, base.y), 0.52f, 0.72f });
 		}
 
 		int n_bush = 3 + (int)rnd(0.0f, 2.9f);
@@ -3023,21 +3165,36 @@ void TerrainBuilder::build_vegetation() {
 			float h = terrain_height(p.x, p.y);
 			float s = rnd(0.75f, 1.15f);
 			Color bc(0.16f + rnd(0.0f, 0.06f), 0.30f + rnd(0.0f, 0.08f), 0.14f + rnd(0.0f, 0.04f));
-			berry_bushes.add(Vector3(p.x, h + 0.30f * s, p.y), rnd(0.0f, 6.2831f), rnd(-0.06f, 0.06f), s, bc);
-			bush_obstacles.push_back({ Vector3(p.x, h, p.y), 0.52f * s, 0.72f * s });
+			float rot = rnd(0.0f, 6.2831f);
+			float tilt = rnd(-0.06f, 0.06f);
+			if (!real_here) {
+				berry_bushes.add(Vector3(p.x, h + 0.30f * s, p.y), rot, tilt, s, bc);
+				bush_obstacles.push_back({ Vector3(p.x, h, p.y), 0.52f * s, 0.72f * s });
+			}
 
-			// 每丛 5~9 颗浆果，贴着丛体上半表面
+			// 每丛 5~9 颗浆果，贴着丛体上半表面（rnd 依旧全量求值，保持随机流）
 			int n_berry = 5 + (int)rnd(0.0f, 4.9f);
 			for (int b = 0; b < n_berry; b++) {
 				float a = rnd(0.0f, 6.2831f);
 				float rr = rnd(0.28f, 0.46f) * s;
 				float yy = h + rnd(0.15f, 0.52f) * s;
 				Color rc(0.85f + rnd(-0.07f, 0.0f), 0.13f + rnd(0.0f, 0.06f), 0.10f + rnd(0.0f, 0.03f));
-				berries.add(Vector3(p.x + std::cos(a) * rr, yy, p.y + std::sin(a) * rr),
-						0.0f, 0.0f, rnd(0.5f, 0.75f), rc);
+				float bs = rnd(0.5f, 0.75f);
+				if (!real_here) {
+					berries.add(Vector3(p.x + std::cos(a) * rr, yy, p.y + std::sin(a) * rr),
+							0.0f, 0.0f, bs, rc);
+				}
 			}
 		}
 		berry_clusters++;
+	}
+
+	// —— 林缘可采浆果丛实体化：真 BerryBush 节点（E 采摘、45s 重长、发 berry_picked） ——
+	// 沿用园里 3 丛同款类；簇心 y 已贴地形，READY 时自动进 interactables/berry_bushes 组。
+	for (const Vector3 &spot : wild_berry_spots) {
+		BerryBush *wb = memnew(BerryBush);
+		wb->set_position(spot);
+		add_child(wb);
 	}
 
 	// —— 足球场草坪：全图草毯已删，草只长在球场里（深色羊毛级 + 剪草条纹） ——
@@ -3123,9 +3280,10 @@ void TerrainBuilder::build_vegetation() {
 		// MC 风格：草色按噪声"一坡一色"分片，同片区颜色接近，片间渐变
 		float gm = value_noise(p.x * 0.33f + 7.7f, p.y * 0.33f + 3.1f);
 		gm = clampf(gm + rnd(-0.09f, 0.09f), 0.0f, 1.0f); // 片内轻微抖动
-		Color c(lerpf(0.16f, 0.26f, gm), lerpf(0.40f, 0.50f, gm), lerpf(0.10f, 0.14f, gm));
-		if (rnd(0.0f, 1.0f) < 0.08f) { // 8% 枯草黄点缀（草甸野趣）
-			c = Color(0.44f + rnd(0.0f, 0.05f), 0.39f, 0.17f);
+		Color c(lerpf(0.08f, 0.14f, gm), lerpf(0.42f, 0.52f, gm), lerpf(0.06f, 0.10f, gm)); // 统一深绿（2026-10-31 用户反馈：原色偏黑）
+		// 枯草黄已取消，但原地两次 rnd 调用的消费节奏必须原样保留——否则后续随机序列整体挪位（整图重排硬坑）
+		if (rnd(0.0f, 1.0f) < 0.08f) {
+			(void)rnd(0.0f, 0.05f);
 		}
 		grass.add(Vector3(p.x, h - 0.01f, p.y), rnd(0.0f, 6.2831f), rnd(-0.15f, 0.15f), s, c);
 		if (grass.count() >= 100000) { // 点缀密度（草毯已铺满，簇草只负责野趣）
@@ -3180,9 +3338,9 @@ void TerrainBuilder::build_vegetation() {
 			};
 			Vector3 b0 = rot(-b.w, 0.0f, 0.0f), b1 = rot(b.w, 0.0f, 0.0f);
 			Vector3 t0 = rot(-b.w * 0.15f, b.h, b.tilt * b.h), t1 = rot(b.w * 0.15f, b.h, b.tilt * b.h);
+			// 单面（高草同样走 normal_up + cull_disabled，背面面片无像素贡献）
 			const PackedVector2Array uv_t = { Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0) };
 			tst->add_triangle_fan({ b0, b1, t1, t0 }, uv_t);
-			tst->add_triangle_fan({ b0, t0, t1, b1 }, uv_t);
 		}
 		tst->generate_normals();
 		tall_mesh.instantiate();
@@ -4004,30 +4162,35 @@ void TerrainBuilder::build_vegetation() {
 	}
 
 	// —— 提交为 MultiMesh 节点 ——
-	// 树干按原型分桶提交（每个原型一份 MultiMesh，共用的 mesh 没法逐实例换形状）
+	// 树干/树冠/雪毯/果实按 80m 网格分块提交（2026-10-30 性能专项）：
+	// 原来每种原型一张全图 MultiMesh，AABB 覆盖全图 → 视锥剔除永远不生效，
+	// 背后与视野外的树每帧照画（还叠加阴影 pass）。分块是纯分组，实例位置
+	// 与数量逐个不变，不碰任何随机序列。树要投影，p_shadow_off 传 false。
 	for (int i = 0; i < ARCH_N; i++) {
 		char nm[64];
 		snprintf(nm, sizeof(nm), "TreeTrunks_A%d", i);
-		commit_scatter(this, nm, archetypes[i].skeleton, trunks_by_arch[i]);
+		commit_scatter_chunked(this, nm, archetypes[i].skeleton, trunks_by_arch[i], 80.0f, false);
 	}
 	static const char *tier_names[3] = { "T1LowSnow", "T2MidSnow", "T3HighSnow" };
 	for (int b = 0; b < 3; b++) {
 		char name[64];
 		for (int i = 0; i < ARCH_N; i++) {
 			snprintf(name, sizeof(name), "TreeCanopy%s_A%d", tier_names[b], i);
-			commit_scatter(this, name, canopy_mesh_bands[b], canopy_lo[i][b]);
+			commit_scatter_chunked(this, name, canopy_mesh_bands[b], canopy_lo[i][b], 80.0f, false);
 		}
 		snprintf(name, sizeof(name), "TreeSnowCaps%s", tier_names[b]);
-		commit_scatter(this, name, snowcap_mesh_bands[b], snowcap_bands[b]);
+		commit_scatter_chunked(this, name, snowcap_mesh_bands[b], snowcap_bands[b], 80.0f, false);
 	}
-	commit_scatter(this, "TreeFruits", fruit_mesh, fruits);
+	commit_scatter_chunked(this, "TreeFruits", fruit_mesh, fruits, 80.0f, false);
 	commit_scatter(this, "Bushes", bush_mesh, bushes);
 	commit_scatter(this, "BerryBushes", bush_mesh, berry_bushes);
 	commit_scatter(this, "Berries", fruit_mesh, berries);
-	commit_scatter(this, "GrassTufts", grass_mesh, grass);
+	// 草毯分块提交：10 万实例切 80m 网格，视锥剔除按块生效（见 commit_scatter_chunked）
+	commit_scatter_chunked(this, "GrassTufts", grass_mesh, grass);
 	commit_scatter(this, "GrassCarpet", carpet_mesh, carpet);
 	// 草不投影：几十万片草叶的投影互相切割会让画面显"硬"（且省一半顶点开销）
-	for (const char *n : { "GrassTufts", "GrassCarpet", "TallGrass" }) {
+	// （GrassTufts 已在分块提交时逐块关闭投影，这里只管剩下两个整张散布）
+	for (const char *n : { "GrassCarpet", "TallGrass" }) {
 		if (MultiMeshInstance3D *gmi = Object::cast_to<MultiMeshInstance3D>(get_node_or_null(NodePath(n)))) {
 			gmi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 		}

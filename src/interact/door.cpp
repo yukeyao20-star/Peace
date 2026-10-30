@@ -15,6 +15,7 @@ using namespace godot;
 
 void CabinDoor::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_open"), &CabinDoor::is_open);
+	ClassDB::bind_method(D_METHOD("set_open_state", "open", "sign"), &CabinDoor::set_open_state);
 }
 
 void CabinDoor::_notification(int p_what) {
@@ -144,7 +145,17 @@ void CabinDoor::build(Ref<Shader> p_shader) {
 	audio_player->set_name("DoorAudio");
 	audio_player->set_unit_size(6.0f);
 	audio_player->set_max_distance(25.0f);
+	audio_player->set_bus(StringName("SFX"));
 	add_child(audio_player);
+}
+
+void CabinDoor::apply_pose() {
+	if (pivot == nullptr) {
+		return;
+	}
+	// Hermite 缓动：起步慢、中段快、收尾慢，像真实的门（快照恢复时 open_t 已就位，直接落位）
+	float e = open_t * open_t * (3.0f - 2.0f * open_t);
+	pivot->set_rotation(Vector3(0.0f, open_sign * 1.92f * e, 0.0f)); // ≈110°
 }
 
 void CabinDoor::_process(double p_delta) {
@@ -153,9 +164,17 @@ void CabinDoor::_process(double p_delta) {
 	}
 	float dir = open_target > open_t ? 1.0f : -1.0f;
 	open_t = Math::clamp(open_t + dir * (float)p_delta * 3.0f, 0.0f, 1.0f);
-	// Hermite 缓动：起步慢、中段快、收尾慢，像真实的门
-	float e = open_t * open_t * (3.0f - 2.0f * open_t);
-	pivot->set_rotation(Vector3(0.0f, open_sign * 1.92f * e, 0.0f)); // ≈110°
+	apply_pose();
+}
+
+void CabinDoor::set_open_state(bool p_open, int p_sign) {
+	// 存档回放（照 Chest::set_looted 套路）：快照就位，不补间不配音
+	open_target = p_open ? 1.0f : 0.0f;
+	open_t = open_target;
+	if (p_open && p_sign != 0) {
+		open_sign = p_sign > 0 ? 1.0f : -1.0f; // 推/拉开向随存档还原
+	}
+	apply_pose();
 }
 
 String CabinDoor::get_prompt() const {

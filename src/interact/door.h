@@ -47,10 +47,15 @@ public:
 
 	virtual String get_prompt() const override;
 	virtual Vector3 get_interact_pos() const override;
-	virtual float get_interact_distance() const override { return 1.8f; }
+	virtual float get_interact_distance() const override { return 2.6f; } // 1.8 太抠:门框+视线遮挡常把判定吃掉(用户实锤"门特别难开")
 	virtual void interact(const Vector3 &p_player_pos) override;
 
 	bool is_open() const { return open_target > 0.5f; }
+	int get_open_sign() const { return open_sign > 0.0f ? 1 : -1; } // 推(+1)/拉(-1)，存档序列化用
+	void set_open_state(bool p_open, int p_sign); // SaveSystem 读档回放：快照就位，不补间不配音
+
+private:
+	void apply_pose(); // 按 open_t/open_sign 把枢轴落位（补间与快照共用）
 };
 
 } // namespace godot

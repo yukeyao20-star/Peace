@@ -22,8 +22,8 @@ ambient_light_color = Color(0.7, 0.76, 0.72, 1)
 tonemap_mode = 2
 tonemap_white = 2.0
 ssr_enabled = true
-ssr_max_steps = 128
-ssr_fade_in = 0.05
+ssr_max_steps = 64
+ssr_fade_in = 0.08
 ssr_fade_out = 4.0
 ssr_depth_tolerance = 0.3
 ssao_enabled = true
@@ -33,6 +33,10 @@ glow_intensity = 0.55
 glow_strength = 1.05
 glow_bloom = 0.28
 glow_blend_mode = 0
+adjustment_enabled = true
+adjustment_brightness = 1.0
+adjustment_contrast = 1.04
+adjustment_saturation = 1.06
 fog_enabled = true
 fog_light_color = Color(0.8, 0.87, 0.95, 1)
 fog_density = 0.0035
@@ -204,6 +208,7 @@ transform = Transform3D(1, 0, 0, 0, 0.707107, -0.707107, 0, 0.707107, 0.707107, 
 light_color = Color(1, 0.96, 0.87, 1)
 light_energy = 1.2
 shadow_enabled = true
+shadow_blur = 1.0
 directional_shadow_max_distance = 150.0
 
 [node name="Terrain" type="TerrainBuilder" parent="." unique_id=1991770611]
@@ -491,6 +496,30 @@ material = SubResource("StoneDarkMat")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16.1, 1.95, -1.6)
 size = Vector3(0.18, 0.12, 0.18)
 material = SubResource("StoneDarkMat")
+
+[node name="DoorStone1" type="CSGCylinder3D" parent="." ]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14.6, 0.32, 15.2)
+radius = 0.46
+height = 0.1
+material = SubResource("StoneMat")
+
+[node name="DoorStone2" type="CSGCylinder3D" parent="." ]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15.7, 0.32, 14.6)
+radius = 0.46
+height = 0.1
+material = SubResource("StoneMat")
+
+[node name="DoorStone3" type="CSGCylinder3D" parent="." ]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16.8, 0.32, 15.1)
+radius = 0.46
+height = 0.1
+material = SubResource("StoneMat")
+
+[node name="DoorStone4" type="CSGCylinder3D" parent="." ]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.9, 0.32, 14.5)
+radius = 0.46
+height = 0.1
+material = SubResource("StoneMat")
 
 [node name="Homestead" type="Node3D" parent="." unique_id=130267118]
 transform = Transform3D(0.707, 0, -0.707, 0, 1, 0, 0.707, 0, 0.707, 12, 0.35, 8)
@@ -898,7 +927,7 @@ scale_amount_max = 1.2
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.2, 0.85, -0.6)
 light_color = Color(1, 0.64, 0.26, 1)
 light_energy = 2.0
-shadow_enabled = true
+shadow_enabled = false
 omni_range = 6.5
 omni_attenuation = 0.8
 
@@ -1105,33 +1134,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.89, 0.85, 5.06)
 size = Vector3(0.05, 0.2, 0.1)
 material = SubResource("WoodDarkMat")
 
-[node name="Path" type="CSGCombiner3D" parent="Homestead" unique_id=2076316460]
-use_collision = true
-
-[node name="Stone1" type="CSGCylinder3D" parent="Homestead/Path" unique_id=879465345]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3, 0.38, 6.6)
-radius = 0.34
-height = 0.1
-material = SubResource("StoneMat")
-
-[node name="Stone2" type="CSGCylinder3D" parent="Homestead/Path" unique_id=1213207529]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.25, 0.38, 7.3)
-radius = 0.34
-height = 0.1
-material = SubResource("StoneMat")
-
-[node name="Stone3" type="CSGCylinder3D" parent="Homestead/Path" unique_id=430778605]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3, 0.38, 8)
-radius = 0.34
-height = 0.1
-material = SubResource("StoneMat")
-
-[node name="Stone4" type="CSGCylinder3D" parent="Homestead/Path" unique_id=298878488]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.2, 0.38, 8.7)
-radius = 0.34
-height = 0.1
-material = SubResource("StoneMat")
-
 [node name="Well" type="Well" parent="Homestead" unique_id=1193317876]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0, 1.8)
 
@@ -1195,6 +1197,8 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 0.35, 4.5)
 
 [node name="Rabbit2" type="Rabbit" parent="." unique_id=634489497]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14, 0.35, 11)
+
+[node name="PauseMenu" type="PauseMenu" parent="."]
 
 [node name="Player" type="Player" parent="." unique_id=1321005318]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, -28)

@@ -35,6 +35,14 @@ private:
 	String current_version = "0.1.0";
 	int current_version_code = 100;
 
+	// 游戏本体编译期版本（与 project.godot config/version 同步，升版一起改）。
+	// 用户目录里的旧版 patch.pck（version_code < 本体）绝不能加载——补丁内的旧
+	// 资源会覆盖新版同名资源（water.gdshader/world.tscn 等），造成"小溪消失"
+	// 这类诡异回退（2026-10-24 实锤：v0.1.2 patch.pck 把 v0.2.0 的新水面着色器
+	// 盖回旧版，is_stream 剔除逻辑把溪流吃成干河床）。
+	static constexpr const char *GAME_VERSION = "0.2.0";
+	static constexpr int GAME_VERSION_CODE = 200;
+
 	// 远程元数据
 	String remote_version;
 	int remote_version_code = 0;

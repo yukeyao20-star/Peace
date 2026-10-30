@@ -122,6 +122,21 @@ void vertex() {
 }
 
 void fragment() {
-	ALBEDO = vcol.rgb * tint.rgb;
-	ALPHA = vcol.a * tint.a;
+	vec4 c = vcol * tint;
+	ALBEDO = c.rgb;
+	ALPHA = c.a;
+	// —— 雪花形状（2026-10-31 用户反馈"优化雪花形状 ❄️"）——
+	// 原来是一片均匀的方块；现在用四边形 UV 做程序化雪花：
+	//   柔边圆盘（主体） + 六角星芒（外圈慢慢散开），近看是 ❄ 远看是柔和雪点。
+	// 雨丝（fixed_y=true）保持原样，不做这个遮罩。
+	if (!fixed_y) {
+		vec2 p = UV - vec2(0.5);
+		float d = length(p) * 2.0;
+		float disc = smoothstep(1.0, 0.30, d);        // 中心柔边圆
+		float ang = atan(p.y, p.x);
+		// cos(6θ) 的峰方向每 60° 一根 → 六臂；只在外圈出现，中心保持圆点
+		float arms = pow(max(cos(ang * 6.0), 0.0), 10.0);
+		float ring = smoothstep(0.15, 0.55, d) * smoothstep(1.05, 0.55, d);
+		ALPHA *= clamp(disc * 0.9 + arms * ring * 0.85, 0.0, 1.0);
+	}
 }

@@ -156,14 +156,14 @@ void Ambience::_notification(int p_what) {
 			if (player_cache != nullptr) {
 				Vector3 pp = player_cache->get_global_position();
 				float d_fire = Vector2(pp.x - 9.16f, pp.z - 9.99f).length();
-				if (d_fire < 5.0f) {
+				if (d_fire < 6.5f) {
 					hearth_k = 1.0f; // 屋里（含门廊）满响
-				} else if (d_fire < 18.0f) {
-					hearth_k = 1.0f - (d_fire - 5.0f) / 13.0f;
+				} else if (d_fire < 20.0f) {
+					hearth_k = 1.0f - (d_fire - 6.5f) / 13.5f;
 				}
 			}
-			// 响应用户反馈：壁炉燃烧的声音太小了，大幅提升壁炉音效增益（由 -6.5dB 提升至 +2.0dB），确保在室内木柴燃烧噼啪声清晰清脆温润
-			float hearth_lin = (hearth_k > 0.01f) ? (std::pow(10.0f, 2.0f / 20.0f) * hearth_k * mg) : 0.0f;
+			// 响应用户反馈：壁炉燃烧声音加大，音效增益大幅提升至 +6.5dB，确保在室内能清晰、温暖、响亮地听到噼啪燃烧声
+			float hearth_lin = (hearth_k > 0.01f) ? (std::pow(10.0f, 6.5f / 20.0f) * hearth_k * mg) : 0.0f;
 			hearth_gain = Math::lerp(hearth_gain, hearth_lin, 0.05f);
 
 			if (wind != nullptr) {

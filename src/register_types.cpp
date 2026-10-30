@@ -13,12 +13,15 @@
 #include "chest.h"
 #include "well.h"
 #include "sky_cycle.h"
+#include "ice_surface.h"
 #include "bird.h"
 #include "rabbit.h"
 #include "hud_clock.h"
 #include "butterfly_swarm.h"
 #include "berry_bush.h"
+#include "farm_plot.h"
 #include "game_director.h"
+#include "pause_menu.h"
 #include "ambience.h"
 #include "save_system.h"
 #include "farm_animal.h"
@@ -47,12 +50,15 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(Chest);
 	GDREGISTER_CLASS(Well);
 	GDREGISTER_CLASS(SkyCycle);
+	GDREGISTER_CLASS(IceSurface);
 	GDREGISTER_CLASS(Bird);
 	GDREGISTER_CLASS(Rabbit);
 	GDREGISTER_CLASS(HUDClock);
 	GDREGISTER_CLASS(ButterflySwarm);
 	GDREGISTER_CLASS(BerryBush);
+	GDREGISTER_CLASS(FarmPlot);
 	GDREGISTER_CLASS(GameDirector);
+	GDREGISTER_CLASS(PauseMenu);
 	GDREGISTER_CLASS(Ambience);
 	GDREGISTER_CLASS(SaveSystem);
 	GDREGISTER_CLASS(FarmAnimal);

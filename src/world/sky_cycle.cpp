@@ -1,5 +1,7 @@
 #include "sky_cycle.h"
 
+#include "ice_surface.h" // 结冰可行走面（本节点 READY 时 spawn，ROADMAP #12）
+
 #include <cmath>
 #include <random>
 
@@ -114,6 +116,12 @@ void SkyCycle::_notification(int p_what) {
 			build_precip_shelter(); // 必须在两份降水材质都建好之后
 			build_stars();
 			build_moon();
+			// 结冰可行走面（ROADMAP #12）：与雨雪星空同为本节点营造的世界元素。
+			// IceSurface 自己沿祖先链找到本节点读雪量，雪量 ≥0.85 启用湖面碰撞、
+			// ≤0.70 解除（滞回防抖）；场景文件里不出现。
+			IceSurface *ice = memnew(IceSurface);
+			ice->set_name("IceSurface");
+			add_child(ice);
 			apply();
 			set_process(true);
 		} break;

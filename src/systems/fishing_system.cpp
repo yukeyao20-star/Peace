@@ -1,5 +1,8 @@
 #include "fishing_system.h"
 
+#include "ui_style.h"
+#include "sky_cycle.h"
+
 #include <cmath>
 
 #include <godot_cpp/classes/audio_stream.hpp>
@@ -8,10 +11,13 @@
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/canvas_layer.hpp>
 #include <godot_cpp/classes/color_rect.hpp>
+#include <godot_cpp/classes/config_file.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/font.hpp>
 #include <godot_cpp/classes/immediate_mesh.hpp>
+#include <godot_cpp/classes/panel.hpp>
+#include <godot_cpp/classes/panel_container.hpp>
 #include <godot_cpp/classes/input.hpp>
 #include <godot_cpp/classes/label.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
@@ -32,6 +38,9 @@ void FishingSystem::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_state"), &FishingSystem::get_state);
 	ClassDB::bind_method(D_METHOD("is_charging"), &FishingSystem::is_charging);
 	ClassDB::bind_method(D_METHOD("is_near_shore"), &FishingSystem::is_near_shore);
+	ClassDB::bind_method(D_METHOD("get_caught_count"), &FishingSystem::get_caught_count);
+
+	ADD_SIGNAL(MethodInfo("fish_caught")); // 每钓上一条时发出（GameDirector 每日待办计数用）
 }
 
 void FishingSystem::_notification(int p_what) {
@@ -42,6 +51,7 @@ void FishingSystem::_notification(int p_what) {
 			}
 			build_ui();
 			build_tackle();
+			load_records(); // 图鉴纪录（user://fishing_records.cfg）
 			set_process(true);
 		} break;
 
@@ -49,6 +59,7 @@ void FishingSystem::_notification(int p_what) {
 			if (Engine::get_singleton()->is_editor_hint()) {
 				return;
 			}
+			save_records(); // 纪录兜底存档（catch 时已随钓随存）
 			if (audio_player != nullptr) {
 				audio_player->stop();
 				audio_player->set_stream(Ref<AudioStream>());
@@ -63,12 +74,29 @@ void FishingSystem::_notification(int p_what) {
 			float delta = (float)get_process_delta_time();
 			Input *input = Input::get_singleton();
 
+			// —— B 键鱼获图鉴（钓鱼中不响应，避免误触）——
+			bool b_down = input != nullptr && input->is_key_pressed(KEY_B);
+			if (b_down && !b_prev && state != 2) {
+				book_open = !book_open;
+				if (book_open && book_layer == nullptr) {
+					build_book_ui();
+				}
+				if (book_layer != nullptr) {
+					if (book_open) {
+						refresh_book();
+					}
+					book_layer->set_visible(book_open);
+				}
+			}
+			b_prev = b_down;
+
 			// 懒查找玩家
 			if (player == nullptr) {
 				Node *p = get_parent();
 				if (p != nullptr) {
 					player = Object::cast_to<Player>(p->get_node_or_null(NodePath("Player")));
 					terrain = Object::cast_to<TerrainBuilder>(p->get_node_or_null(NodePath("Terrain")));
+					sky = Object::cast_to<SkyCycle>(p->get_node_or_null(NodePath("SkyCycle")));
 				}
 				if (player == nullptr) {
 					return;
@@ -127,6 +155,9 @@ void FishingSystem::build_ui() {
 		l->add_theme_color_override("font_outline_color", Color(0.08f, 0.06f, 0.04f));
 		l->add_theme_constant_override("outline_size", 7);
 		l->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+		// 统一「湖畔玻璃」底板：直接用 Label 的 normal stylebox，show/hide 全走原逻辑
+		l->add_theme_stylebox_override("normal", uistyle::make_glass(
+				Math::max(10.0f, p_size * 0.45f), 0.45f));
 		if (cjk.is_valid()) {
 			l->add_theme_font_override("font", cjk);
 		}
@@ -151,9 +182,10 @@ void FishingSystem::build_ui() {
 	result->set_offset(SIDE_TOP, -80.0f);
 	result->set_offset(SIDE_BOTTOM, -30.0f);
 
-	// 张力条（屏幕中下）：底槽 + 绿色目标区间 + 黄色张力游标 + 顶部进度细条
-	bar_bg = memnew(ColorRect);
-	bar_bg->set_color(Color(0.05f, 0.05f, 0.08f, 0.75f));
+	// 张力条（屏幕中下）：玻璃托槽 + 绿色目标区间 + 黄色张力游标 + 顶部进度细条
+	// 托槽用统一「湖畔玻璃」Panel（圆角+发丝边），绿区/游标仍是叠放的 ColorRect
+	bar_bg = memnew(Panel);
+	bar_bg->add_theme_stylebox_override("panel", uistyle::make_glass(8.0f, 0.75f));
 	bar_bg->set_anchors_preset(Control::PRESET_CENTER_BOTTOM);
 	bar_bg->set_offset(SIDE_LEFT, -180.0f);
 	bar_bg->set_offset(SIDE_RIGHT, 180.0f);
@@ -181,9 +213,9 @@ void FishingSystem::build_ui() {
 	prog->hide();
 
 	// 蓄力条（张力条上面一行）：按住 F 时从 0 涨到满，松手抛出去。
-	// 用暖黄→橙的填充色，和张力条（绿区/黄游标）区分开。
-	charge_bg = memnew(ColorRect);
-	charge_bg->set_color(Color(0.05f, 0.05f, 0.08f, 0.72f));
+	// 用暖黄→橙的填充色，和张力条（绿区/黄游标）区分开。托槽同款玻璃 Panel。
+	charge_bg = memnew(Panel);
+	charge_bg->add_theme_stylebox_override("panel", uistyle::make_glass(8.0f, 0.72f));
 	charge_bg->set_anchors_preset(Control::PRESET_CENTER_BOTTOM);
 	charge_bg->set_offset(SIDE_LEFT, -180.0f);
 	charge_bg->set_offset(SIDE_RIGHT, 180.0f);
@@ -232,6 +264,7 @@ void FishingSystem::build_ui() {
 	}
 	audio_player = memnew(AudioStreamPlayer);
 	audio_player->set_name("FishingVoice");
+	audio_player->set_bus(StringName("SFX"));
 	add_child(audio_player);
 }
 
@@ -708,15 +741,36 @@ void FishingSystem::start_cast(float p_charge) {
 
 	bobber_pos = Vector3(target.x, water_level + 0.05f, target.y);
 
-	// 定鱼：30% 大鱼
+	// 定鱼：按昼夜定种（金鳞 6% / 昼青鳞红尾 / 夜月影夜鳗），体型档随种
 	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
-	big_fish = d01(rng) < 0.30f;
+	bool night_now = (sky != nullptr) ? (sky->get_night_factor() > 0.5f) : false;
+	cur_species = pick_species(night_now);
+	// 金鳞与大鱼走"难拉"档（金鳞必难拉；昼红尾鲤/夜鳗 40% 大型化）
+	big_fish = (cur_species == FISH_JINLIN)
+			|| ((cur_species == FISH_HONGWEI || cur_species == FISH_YEMAN) && d01(rng) < 0.40f);
 	zone_half = big_fish ? 0.10f : 0.16f;
 	catch_need = big_fish ? 5.0f : 3.0f;
 	escape_limit = big_fish ? 1.6f : 2.5f;
-	// 鱼影大小按档位
+	// 体长在咬钩时就定死：大型 48~78cm / 常规 16~34cm；金鳞 40~65cm 修长
+	if (cur_species == FISH_JINLIN) {
+		cur_size_cm = 40.0f + d01(rng) * 25.0f;
+	} else {
+		cur_size_cm = big_fish ? (48.0f + d01(rng) * 30.0f) : (16.0f + d01(rng) * 18.0f);
+	}
+	// 鱼影大小按档位 + 按种着色（水下的第一辨识度：红鲤暗紫红/月影冷蓝/夜鳗墨绿/金鳞暗金）
 	float fs = big_fish ? 1.5f : 0.8f;
+	if (cur_species == FISH_JINLIN) {
+		fs = 1.25f; // 金鳞修长居中
+	}
 	fish->set_scale(Vector3(fs, fs, fs));
+	for (int ci = 0; ci < fish->get_child_count(); ci++) {
+		if (MeshInstance3D *mi = Object::cast_to<MeshInstance3D>(fish->get_child(ci))) {
+			Ref<StandardMaterial3D> m = Object::cast_to<StandardMaterial3D>(mi->get_material_override().ptr());
+			if (m.is_valid()) {
+				m->set_albedo(species_tint(cur_species));
+			}
+		}
+	}
 
 	nibble_t = 2.0f + d01(rng) * 4.0f;
 	swim_phase = d01(rng) * 6.28f;
@@ -747,10 +801,61 @@ void FishingSystem::start_hook() {
 	prog->show();
 }
 
-void FishingSystem::finish_caught() {
-	state = 3;
+// —— 鱼种定义 ——
+const char *FishingSystem::species_name(int p_species) {
+	switch (p_species) {
+		case FISH_HONGWEI:
+			return "红尾鲤";
+		case FISH_YUEYING:
+			return "月影鲈";
+		case FISH_YEMAN:
+			return "夜鳗";
+		case FISH_JINLIN:
+			return "金鳞鱼";
+		case FISH_QINGLIN:
+		default:
+			return "青鳞鱼";
+	}
+}
+
+bool FishingSystem::species_nocturnal(int p_species) {
+	return p_species == FISH_YUEYING || p_species == FISH_YEMAN;
+}
+
+Color FishingSystem::species_tint(int p_species) {
+	switch (p_species) {
+		case FISH_HONGWEI:
+			return Color(0.42f, 0.16f, 0.24f, 0.88f); // 红鲤暗紫红
+		case FISH_YUEYING:
+			return Color(0.20f, 0.28f, 0.52f, 0.82f); // 月影冷蓝
+		case FISH_YEMAN:
+			return Color(0.14f, 0.22f, 0.20f, 0.92f); // 夜鳗墨绿
+		case FISH_JINLIN:
+			return Color(0.62f, 0.50f, 0.14f, 0.95f); // 金鳞暗金
+		case FISH_QINGLIN:
+		default:
+			return Color(0.10f, 0.16f, 0.28f, 0.85f); // 青鳞原剪影蓝
+	}
+}
+
+// 按昼夜定种：昼池 青鳞62/红尾32/金鳞6，夜池 月影60/夜鳗34/金鳞6。
+// 金鳞两池同权——夜里钓到也别惊讶，月下金鳞是这湖的名场面。
+int FishingSystem::pick_species(bool p_night) {
+	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
+	float roll = d01(rng);
+	if (roll < 0.06f) {
+		return FISH_JINLIN;
+	}
+	if (p_night) {
+		return (d01(rng) < 0.638f) ? FISH_YUEYING : FISH_YEMAN;
+	}
+	return (d01(rng) < 0.66f) ? FISH_QINGLIN : FISH_HONGWEI;
+}
+
+void FishingSystem::finish_caught() {	state = 3;
 	state_t = 0.9f; // 跃出动画时长
 	caught_count++;
+	emit_signal("fish_caught"); // 通知每日待办计分（GameDirector）
 	play_sound(snd_caught, -6.0f);
 	bar_bg->hide();
 	bar_zone->hide();
@@ -759,8 +864,23 @@ void FishingSystem::finish_caught() {
 	if (hint != nullptr) {
 		hint->hide();
 	}
-	String name = big_fish ? String::utf8("大鱼") : String::utf8("小鱼");
-	set_result(String::utf8("钓到一条") + name + String::utf8("！（累计 ") + String::num_int64(caught_count) + String::utf8(" 条）"), 0.9f);
+	// —— 图鉴入账：按鱼种累计 + 破纪录检测 ——
+	bool record = cur_size_cm > rec_best[cur_species];
+	rec_count[cur_species]++;
+	if (record) {
+		rec_best[cur_species] = cur_size_cm;
+	}
+	save_records();
+	if (book_open) {
+		refresh_book();
+	}
+	String text = String::utf8("钓到一条") + String::utf8(species_name(cur_species))
+			+ String::utf8(" ") + String::num(cur_size_cm, 1) + String::utf8("cm！（累计 ")
+			+ String::num_int64(caught_count) + String::utf8(" 条）");
+	if (record) {
+		text += String::utf8(" 🏅新纪录！");
+	}
+	set_result(text, 0.9f);
 }
 
 void FishingSystem::finish_escaped() {
@@ -1014,4 +1134,84 @@ void FishingSystem::tick_leaping(float p_delta) {
 			state_t = 1.6f;
 		}
 	}
+}
+
+// —— 鱼获图鉴（B 键）——
+
+void FishingSystem::build_book_ui() {
+	book_layer = memnew(CanvasLayer);
+	book_layer->set_layer(8); // 在钓鱼 HUD(7) 之上、时钟之下
+	add_child(book_layer);
+
+	PanelContainer *panel = memnew(PanelContainer);
+	panel->set_name("FishBookPanel");
+	panel->set_anchors_preset(Control::PRESET_CENTER_RIGHT);
+	panel->set_offset(Side::SIDE_RIGHT, -24.0f);
+	panel->add_theme_stylebox_override("panel", uistyle::make_glass(16.0f, 0.62f));
+	book_layer->add_child(panel);
+
+	book_label = memnew(Label);
+	Ref<Font> cjk = uistyle::load_cjk();
+	if (cjk.is_valid()) {
+		book_label->add_theme_font_override("font", cjk);
+	}
+	book_label->add_theme_font_size_override("font_size", 20);
+	panel->add_child(book_label);
+	refresh_book();
+}
+
+void FishingSystem::refresh_book() {
+	if (book_label == nullptr) {
+		return;
+	}
+	String s = String::utf8("🎣 鱼获图鉴\n");
+	for (int sp = 0; sp < FISH_KIND_COUNT; sp++) {
+		s += String::utf8("  ");
+		if (rec_count[sp] > 0) {
+			s += String::utf8(species_name(sp)) + String::utf8(" ×")
+					+ String::num_int64(rec_count[sp]);
+			if (rec_best[sp] > 0.0f) {
+				s += String::utf8("（最长 ") + String::num(rec_best[sp], 1) + String::utf8("cm）");
+			}
+		} else {
+			// 未解锁：只露习性提示，钓到才显形
+			s += String::utf8("？？（")
+					+ (species_nocturnal(sp) ? String::utf8("夜行") : String::utf8("昼行"))
+					+ String::utf8("）");
+		}
+		s += String("\n");
+	}
+	s += String::utf8("  合计  ") + String::num_int64(caught_count) + String::utf8(" 条");
+	s += String::utf8("\n  （B 键收起）");
+	book_label->set_text(s);
+}
+
+void FishingSystem::load_records() {
+	Ref<ConfigFile> cf;
+	cf.instantiate();
+	if (cf->load("user://fishing_records.cfg") != Error::OK) {
+		return; // 没有纪录文件：全新开钓
+	}
+	// v2 键（按种）优先；v1 旧键（small/big 两档）迁移：青鳞+月影入"常见"、红尾+夜鳗入"次常见"不可分——
+	// 旧档只有两档,直接归青鳞/月影（同昼夜常见种）,红尾夜鳗金鳞重新钓
+	for (int sp = 0; sp < FISH_KIND_COUNT; sp++) {
+		rec_count[sp] = (int)cf->get_value("records", "count_" + String::num_int64(sp), 0);
+		rec_best[sp] = (float)cf->get_value("records", "best_" + String::num_int64(sp), 0.0f);
+	}
+	if (!cf->has_section_key("records", "count_0") && cf->has_section_key("records", "small")) {
+		rec_count[FISH_QINGLIN] = (int)cf->get_value("records", "small", 0);
+		rec_best[FISH_QINGLIN] = (float)cf->get_value("records", "best_small_cm", 0.0f);
+		rec_count[FISH_YUEYING] = (int)cf->get_value("records", "big", 0);
+		rec_best[FISH_YUEYING] = (float)cf->get_value("records", "best_big_cm", 0.0f);
+	}
+}
+
+void FishingSystem::save_records() {
+	Ref<ConfigFile> cf;
+	cf.instantiate();
+	for (int sp = 0; sp < FISH_KIND_COUNT; sp++) {
+		cf->set_value("records", "count_" + String::num_int64(sp), rec_count[sp]);
+		cf->set_value("records", "best_" + String::num_int64(sp), rec_best[sp]);
+	}
+	cf->save("user://fishing_records.cfg");
 }

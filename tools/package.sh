@@ -14,9 +14,10 @@
 #  环境变量：
 #    JOBS=1        强制串行编译（默认用满 CPU 核数；万一 scons 卡死时试这个）
 #    VERSION=0.1.0-1  deb 版本号
+#    GAME_VERSION=0.2.0  macOS zip 文件名版本号（默认取 project.godot 的 config/version）
 #
 #  产物（dist/）：
-#    peace-macos.zip           macOS .app（universal，未签名）
+#    peace-macos-<版本>.zip    macOS .app（universal，未签名；版本号 = config/version）
 #    peace-windows-x64.zip     exe + dll
 #    peace-linux-x64.zip       裸二进制 + so
 #    peace-linux-amd64.deb     deb 安装包
@@ -29,7 +30,7 @@ set -euo pipefail
 GODOT="${GODOT:-/Applications/Godot.app/Contents/MacOS/Godot}"
 PKG_NAME="peace"                 # deb 包名（改这里要同时改下面几处路径）
 PKG_DISPLAY="Peace"
-PKG_VERSION="${VERSION:-0.1.0-1}"
+PKG_VERSION="${VERSION:-0.2.0-1}"
 PKG_INSTALL_DIR="/opt/${PKG_NAME}"        # 游戏本体安装位置
 ICON_SRC="docs/Homestead.icns"
 JOBS="${JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
@@ -57,7 +58,7 @@ for arg in "$@"; do
 		--publish)   DO_PUBLISH=1 ;;
 		--deploy)    DO_DEPLOY=1; DO_PUBLISH=1 ;;
 		--only=*)    PLATFORMS="${arg#--only=}"; PLATFORMS="${PLATFORMS//,/ }" ;;
-		-h|--help)   sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+		-h|--help)   sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 		*) echo "未知参数：${arg}（--help 看用法）" >&2; exit 2 ;;
 	esac
 done
@@ -103,9 +104,21 @@ TPL_DIR="$HOME/Library/Application Support/Godot/export_templates/${ENGINE_VER}"
 ok "导出模板：${ENGINE_VER}"
 
 if [[ $DO_BUILD -eq 1 ]] && ( want macos || want windows || want linux ); then
-	if pgrep -fl scons >/dev/null 2>&1; then
+	# 只拦真正的 scons 构建进程；ZCode 会话包装 shell（cmdline 首行为 snapshot-zsh…）
+	# 的监视文本里常含 "scons" 字样且跨多行，须按 PID 整体判断排除（2026-10-24 实测）。
+	conflict_pids=""
+	for pid in $(pgrep -f scons); do
+		args=$(ps -p "$pid" -o command= 2>/dev/null) || continue
+		case "$args" in
+			*snapshot-zsh*|*".zcode/"*) ;; # 会话监视包装 shell，非构建
+			*) conflict_pids="$conflict_pids $pid" ;;
+		esac
+	done
+	if [[ -n "$conflict_pids" ]]; then
 		echo "已有 scons 在跑（同一时间只能一个）：" >&2
-		pgrep -fl scons >&2
+		for pid in $conflict_pids; do
+			ps -p "$pid" -o command= >&2
+		done
 		exit 1
 	fi
 fi
@@ -121,6 +134,12 @@ if want linux; then
 	fi
 fi
 ok "工具链齐备（JOBS=${JOBS}）"
+
+# macOS zip 文件名版本号与 project.godot config/version 同源（升版本只改一处），GAME_VERSION 可覆盖
+GAME_VERSION="${GAME_VERSION:-$(sed -n 's/^config\/version="\([^"]*\)".*/\1/p' project/project.godot | head -1)}"
+[[ -n "$GAME_VERSION" ]] || die "解析不到 project/project.godot 的 config/version；用 GAME_VERSION=x.y.z 指定"
+MACOS_ZIP="peace-macos-${GAME_VERSION}.zip"
+ok "macOS 产物名：${MACOS_ZIP}"
 
 # ---------------------------------------------------------------------------
 # 1. 编 release 库
@@ -165,9 +184,10 @@ if [[ $DO_EXPORT -eq 1 ]]; then
 
 	# preset 名取自 export_presets.cfg 的 name 字段（不是 platform 字段！）
 	if want macos; then
+		rm -f "$DIST/peace-macos.zip"   # 旧脚本的无版本号产物名，清场防止误拿陈旧包
 		run_logged "$DIST/.export-macos.log" \
-			"$GODOT" --headless --path project --export-release "macOS" "../dist/peace-macos.zip"
-		ok "macOS → dist/peace-macos.zip"
+			"$GODOT" --headless --path project --export-release "macOS" "../dist/${MACOS_ZIP}"
+		ok "macOS → dist/${MACOS_ZIP}"
 	fi
 	if want windows; then
 		run_logged "$DIST/.export-windows.log" \
@@ -285,8 +305,8 @@ fi
 if [[ -f "$DIST/peace-linux-x64.zip" ]]; then
 	unzip -tq "$DIST/peace-linux-x64.zip" >/dev/null && ok "linux zip 完整性 OK"
 fi
-if [[ -f "$DIST/peace-macos.zip" ]]; then
-	unzip -tq "$DIST/peace-macos.zip" >/dev/null && ok "macos zip 完整性 OK"
+if [[ -f "$DIST/$MACOS_ZIP" ]]; then
+	unzip -tq "$DIST/$MACOS_ZIP" >/dev/null && ok "macos zip 完整性 OK"
 fi
 if [[ -f "$DIST/peace-linux-amd64.deb" ]]; then
 	dpkg-deb --info "$DIST/peace-linux-amd64.deb" >/dev/null && ok "deb 结构 OK"
@@ -296,7 +316,7 @@ fi
 # 时间戳核对：产物必须是这一轮生成的，混进上一轮的旧包是最容易犯的错
 echo
 echo "  产物时间戳（本次运行开始于 $(date -r "$START_TS" '+%H:%M:%S')）："
-for f in peace-macos.zip peace-windows-x64.zip peace-linux-x64.zip peace-linux-amd64.deb; do
+for f in "${MACOS_ZIP}" peace-windows-x64.zip peace-linux-x64.zip peace-linux-amd64.deb; do
 	[[ -f "$DIST/$f" ]] || continue
 	mtime=$(stat -f %m "$DIST/$f")
 	if (( mtime >= START_TS )); then
@@ -310,10 +330,18 @@ done
 if [[ $DO_PUBLISH -eq 1 ]]; then
 	step "同步到官网 site/download/"
 	mkdir -p site/download
-	for f in peace-macos.zip peace-windows-x64.zip peace-linux-amd64.deb; do
+	# 官网是稳定无版本号 URL（site/index.html href、sync_site_sizes.py、deb 安装命令都写死旧名），
+	# 所以 dist 里带版本的 macOS 包落 site/download/ 时映射回 peace-macos.zip；
+	# 若日后官网要改带版本链接，这里 + site/index.html + sync_site_sizes.py 三处一起改
+	for f in "${MACOS_ZIP}" peace-windows-x64.zip peace-linux-amd64.deb; do
 		if [[ -f "$DIST/$f" ]]; then
-			cp "$DIST/$f" site/download/
-			ok "site/download/${f}"
+			if [[ "$f" == "$MACOS_ZIP" ]]; then
+				cp "$DIST/$f" site/download/peace-macos.zip
+				ok "site/download/peace-macos.zip  ← ${f}"
+			else
+				cp "$DIST/$f" site/download/
+				ok "site/download/${f}"
+			fi
 		else
 			warn "dist/${f} 不存在，跳过"
 		fi

@@ -1,0 +1,140 @@
+name: export
+
+# Win/Linux 导出 + 冒烟（手动触发）。
+#
+# 为什么只做 Win/Linux：macOS 正式包走本机 tools/package.sh（universal 双架构本机更快，
+# 已由 v0.2.0 包验证）；而 Windows/Linux 的 headless 冒烟只能在原生 runner 上跑
+# （macOS 无法执行 win/linux 二进制），这是路线图 #8 验收项"各平台 headless 冒烟通过"
+# 的唯一自动化通道。deb 组包依赖 macOS 侧 sips 转图标，仍由本机 package.sh 完成。
+#
+# 触发：Actions 页手动 Run workflow（push 不自动跑；出包主路径是本机 package.sh，
+# CI 是跨平台冒烟与备用出包通道）。首次运行如遇工具链/模板细节报错，按日志现场修。
+#
+# 产物：Actions Artifacts → peace-windows-x64.zip / peace-linux-x64.zip（deb 不在 CI 出）。
+
+on:
+  workflow_dispatch:
+
+jobs:
+  export:
+    name: export-${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: windows, os: windows-latest }
+          - { platform: linux,   os: ubuntu-24.04 }
+    env:
+      GODOT_REL: 4.7.2-stable
+      TPL_VER: 4.7.2.stable
+      # GitHub release 资产文件名带 v 前缀（Godot_v4.7.2-stable_*），tag 本身不带——拼 URL/解压名都按带 v 拼。
+    steps:
+      - name: Checkout (with godot-cpp submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install SCons
+        run: python -m pip install scons
+
+      - name: Build GDExtension (template_release)
+        shell: bash
+        run: scons platform=${{ matrix.platform }} arch=x86_64 target=template_release -j"$(nproc)"
+
+      - name: Install Godot editor + export templates
+        shell: bash
+        run: |
+          set -e
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            TPL_ROOT="$(cygpath -u "$APPDATA")/Godot/export_templates"
+            EDITOR_ASSET="Godot_v${GODOT_REL}_win64.exe.zip"
+          else
+            TPL_ROOT="$HOME/.local/share/godot/export_templates"
+            EDITOR_ASSET="Godot_v${GODOT_REL}_linux.x86_64.zip"
+          fi
+          mkdir -p "$HOME/.godot-ci" "$TPL_ROOT/$TPL_VER"
+          cd "$HOME/.godot-ci"
+
+          curl -fsSL -o templates.tpz \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_REL}/Godot_v${GODOT_REL}_export_templates.tpz"
+          python -m zipfile -e templates.tpz .
+          mv templates/* "$TPL_ROOT/$TPL_VER/"
+
+          curl -fsSL -o editor.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_REL}/${EDITOR_ASSET}"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            python -m zipfile -e editor.zip .
+          else
+            unzip -q editor.zip
+          fi
+          GODOT_BIN="$HOME/.godot-ci/Godot_v${GODOT_REL}_linux.x86_64"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            GODOT_BIN="$HOME/.godot-ci/Godot_v${GODOT_REL}_win64.exe"
+          fi
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+
+      # 导出日志一律落文件再 tail，严禁接 grep|head 管道（SIGPIPE 会杀进程出半残包，
+      # 见 MEMORY.md 发布链路坑）。
+      - name: Export
+        shell: bash
+        run: |
+          set -e
+          mkdir -p dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            PRESET="Windows"; OUT="../dist/peace-windows.exe"
+          else
+            PRESET="Linux";   OUT="../dist/peace-linux.x86_64"
+          fi
+          cd project
+          "$GODOT_BIN" --headless --path . --export-release "$PRESET" "$OUT" \
+            > ../dist/export.log 2>&1 || { tail -40 ../dist/export.log; exit 1; }
+          [ -f "../dist/$(basename "$OUT")" ] || { echo "导出产物缺失"; tail -40 ../dist/export.log; exit 1; }
+          tail -5 ../dist/export.log
+
+      - name: Headless smoke (120 frames)
+        shell: bash
+        run: |
+          cd dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            SMOKE=./peace-windows.exe
+          else
+            SMOKE=./peace-linux.x86_64
+          fi
+          chmod 755 "$SMOKE"
+          set +e
+          "$SMOKE" --headless --quit-after 120 > smoke.log 2>&1
+          RC=$?
+          set -e
+          tail -20 smoke.log
+          [ "$RC" -eq 0 ] || { echo "smoke EXIT=$RC"; exit 1; }
+          if grep -q "SCRIPT ERROR" smoke.log; then echo "smoke 有 SCRIPT ERROR"; exit 1; fi
+
+      - name: Zip + verify
+        shell: bash
+        run: |
+          set -e
+          cd dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ZIP=peace-windows-x64.zip
+            rm -f "$ZIP"
+            7z a -tzip "$ZIP" peace-windows.exe game3d.windows.template_release.x86_64.dll > /dev/null
+          else
+            ZIP=peace-linux-x64.zip
+            rm -f "$ZIP"
+            zip -q -j "$ZIP" peace-linux.x86_64 libgame3d.linux.template_release.x86_64.so
+          fi
+          python -c "import sys, zipfile; assert zipfile.ZipFile(sys.argv[1]).testzip() is None, 'zip 内有损坏条目'; print(sys.argv[1], '完整性 OK')" "$ZIP"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: peace-${{ matrix.platform }}-x64
+          path: dist/*.zip
+          if-no-files-found: error

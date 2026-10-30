@@ -13,8 +13,12 @@
 // （全部非编辑器守卫）。恢复走懒查找（SkyCycle/GameDirector 可能晚于本节点 READY），
 // 用 _process 里 restored 门控逐帧重试，同 GameDirector::connect_bushes 套路。
 //
-// v1 未覆盖（后续项）：门窗/木箱开关状态、玩家位置、weather_timer（读档后按默认
+// v1 未覆盖（后续项）：玩家位置、weather_timer（读档后按默认
 // 剩余时长继续，到点正常换天）、浆果丛当前重长进度。
+// v3 增量：菜畦状态（farm_plots 键，经 GameDirector 聚合/回放；旧档缺键=全空畦）。
+// v4 增量：木箱"发现野餐毯"一次性标志（chest_looted 键；旧档缺键=未发现）。
+// v5 增量：门窗开合状态（door_state "0/1/-1" 含推拉向 + windows_open "1,0,0,1"
+// 定位序 FL,FR,L,B；旧档缺键=全关）。
 
 #include <godot_cpp/classes/node.hpp>
 
@@ -22,6 +26,9 @@ namespace godot {
 
 class GameDirector;
 class SkyCycle;
+class Chest;
+class CabinDoor;
+class ShutterWindow;
 
 class SaveSystem : public Node {
 	GDCLASS(SaveSystem, Node)
@@ -45,10 +52,20 @@ private:
 	float snow = 0.0f, snow_target = 0.0f;
 	int director_count = 0;
 	bool director_done = false;
+	String director_daily; // 每日待办序列 "day:type,prog,target;..."（v2 存档格式）
+	String farm_serial;    // 菜畦序列 "state,%,浇灌;..."×4（v3 增量键，旧档缺省为空=全空畦）
+	bool chest_looted = false; // 木箱"发现野餐毯"标志（v4 增量键，旧档缺省=未发现）
+
+	String door_state;   // 木门 "0"关 / "1"推 / "-1"拉（v5 增量键，旧档缺省=关）
+	String windows_open; // 百叶窗定位序 "1,0,0,1"×4 FL,FR,L,B（v5 增量键，旧档缺省=全关）
 
 	SkyCycle *find_sky() const;
 	GameDirector *find_director() const;
+	Chest *find_chest() const;
+	CabinDoor *find_door() const;
+	ShutterWindow *find_window(int p_index) const; // 0..3 → ShutterFL/FR/L/B 固定路径
 	void restore_targets(); // 把缓存值写回 SkyCycle/GameDirector（缺谁下帧再试）
+	void trim_logs();       // user://logs/ 超过 10MB 时按最旧优先删除（引擎只按份数轮转不限体积）
 
 protected:
 	static void _bind_methods();

@@ -14,6 +14,7 @@ using namespace godot;
 
 void ShutterWindow::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_open"), &ShutterWindow::is_open);
+	ClassDB::bind_method(D_METHOD("set_open_state", "open"), &ShutterWindow::set_open_state);
 }
 
 void ShutterWindow::_notification(int p_what) {
@@ -92,6 +93,7 @@ void ShutterWindow::build(Ref<Shader> p_shader) {
 	audio_player->set_name("WindowAudio");
 	audio_player->set_unit_size(5.0f);
 	audio_player->set_max_distance(20.0f);
+	audio_player->set_bus(StringName("SFX"));
 	add_child(audio_player);
 }
 
@@ -101,9 +103,23 @@ void ShutterWindow::_process(double p_delta) {
 	}
 	float dir = open_target > open_t ? 1.0f : -1.0f;
 	open_t = Math::clamp(open_t + dir * (float)p_delta * 2.6f, 0.0f, 1.0f);
+	apply_pose();
+}
+
+void ShutterWindow::apply_pose() {
+	if (pivot == nullptr) {
+		return;
+	}
 	float e = open_t * open_t * (3.0f - 2.0f * open_t);
 	// 铰链在顶缘、板朝 -Y 垂下：负角度绕 X 轴把板向上、向外 (+Z) 撑开成遮阳篷
 	pivot->set_rotation(Vector3(-1.45f * e, 0.0f, 0.0f)); // ≈83° 向上撑开
+}
+
+void ShutterWindow::set_open_state(bool p_open) {
+	// 存档回放（照 Chest::set_looted 套路）：快照就位，不补间不配音
+	open_target = p_open ? 1.0f : 0.0f;
+	open_t = open_target;
+	apply_pose();
 }
 
 String ShutterWindow::get_prompt() const {

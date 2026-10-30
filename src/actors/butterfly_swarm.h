@@ -28,6 +28,8 @@ private:
 		Node3D *root = nullptr;
 		Node3D *wing_l = nullptr;
 		Node3D *wing_r = nullptr;
+		Node3D *hind_l = nullptr; // 后翅（2026-10-31：四翅蝴蝶，前翅 + 后翅各一对）
+		Node3D *hind_r = nullptr;
 		Vector3 anchor;   // 游走锚点（相对群节点，含离地高度）
 		float orbit_r = 0.0f;  // 绕锚点的漫游半径
 		float orbit_w = 0.0f;  // 漫游角速度（含方向）

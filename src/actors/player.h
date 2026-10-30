@@ -112,9 +112,12 @@ public:
 	void start_sleep(const Vector3 &p_bed_pos, float p_yaw);
 	void stop_sleep();
 	bool get_is_sleeping() const { return is_sleeping; }
+	bool get_is_map_open() const { return is_map_open; } // PauseMenu 判定"Esc 只关地图"用
+	void toggle_map(); // 已 bind ClassDB；PauseMenu 在 Esc 路径上直接调用
 	void teleport_to(const Vector3 &p_pos);
 	void play_ui(int type = 0);
 	void _on_map_gui_input(const Ref<InputEvent> &p_event);
+	void _on_map_bg_gui_input(const Ref<InputEvent> &p_event);
 	void _on_map_mouse_exited();
 	void _on_firework_burst(Node *burst, Node *sparks, Node *willow, Node *bang_voice, Node *flash_light, float max_energy);
 	void _on_firework_cleanup(Node *burst_root, Node *rocket, Node *launch_voice);
@@ -171,6 +174,14 @@ private:
 	void build_skate_shoes();
 	void set_skate_shoes_visible(bool p_vis);
 
+	// —— 二段跳系统 ——
+	int jump_count = 0;                 // 当前空中跳跃次数（0: 在地面, 1: 一段跳, 2: 二段跳）
+	bool space_prev = false;            // 空格键边沿检测，防止按住长跳
+	bool is_double_jumping = false;     // 空中二段跳特效/空翻标记
+	double double_jump_spin = 0.0;      // 二段跳空中前空翻角度
+	godot::Ref<godot::AudioStreamWAV> make_double_jump_snd(); // 二段跳专属空气动力清脆爆鸣声
+	godot::Ref<godot::AudioStreamWAV> snd_double_jump;
+
 	// —— 全地图与传送 ——
 	godot::CanvasLayer *map_layer = nullptr;
 	godot::Control *map_panel = nullptr;
@@ -180,7 +191,8 @@ private:
 	godot::Label *map_coords_label = nullptr;
 	bool is_map_open = false;
 	bool m_prev = false;
-	void toggle_map();
+	float map_hover_x = -9999.0f;
+	float map_hover_z = -9999.0f;
 	void build_map_ui();
 
 	// —— 夜晚放烟花功能（G 键触发） ——
@@ -203,6 +215,7 @@ private:
 	class Label3D *prompt = nullptr;           // 悬浮提示（"按 E 开门"等）
 	godot::CanvasLayer *hud_layer = nullptr;   // 交互提示的屏幕空间层（永不裁剪）
 	godot::Label *hud_prompt = nullptr;        // 屏幕下方居中的交互提示
+	float hud_prompt_timer = 0.0f;             // 瞬态提示自动消失倒计时（秒）
 	bool e_prev = false;                       // 上一物理帧 E 键状态（边沿触发）
 	double lean_time = 0.0;                    // 推门动画剩余时间（>0 表示播放中）
 	Vector3 facing = Vector3(0.0, 0.0, -1.0);  // 模型朝向（用于加前倾角度）
@@ -211,8 +224,7 @@ private:
 	double cam_yaw = 0.0;    // 环绕角色的偏航角（0 = 相机在 +Z 后方，看 -Z）
 	double cam_pitch = 0.47; // 俯仰角（>0 相机抬高向下看；鼠标上抬=看向地平线）
 	double cam_dist = 5.5;   // 当前相机距离（滚轮缩放）
-	bool mouse_captured = false; // 鼠标是否已捕获（点击捕获 / ESC 释放）
-	bool esc_prev = false;
+	bool mouse_captured = false; // 鼠标是否已捕获（点击捕获；释放与还原由 PauseMenu 统一接管）
 	bool lmb_prev = false;
 
 	// —— 鼠标视角必须用"像素位移"，不能用"速度×帧时间" ——

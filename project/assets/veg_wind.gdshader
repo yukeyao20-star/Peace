@@ -156,13 +156,22 @@ void fragment() {
 		base *= t.rgb;
 		shape_a = t.a;
 	}
-	// 覆盖噪声：低频决定成片、高频加碎雪颗粒
-	float cov_n = vnoise(wpos.xz * 0.8 + vec2(3.7, 1.3)) * 0.7
-			+ vnoise(wpos.xz * 3.1) * 0.3;
-	float cov = smoothstep(1.0 - snow_amount - 0.08, 1.0 - snow_amount + 0.08, cov_n)
-			* snow_amount;
-	// 雪色保留 15% 实例色底味（草雪偏绿、冠雪偏深，MC 雪层覆在方块上的层次）
-	ALBEDO = mix(base, snow_color * (0.85 + 0.15 * COLOR.rgb), cov);
+	// 覆盖噪声：低频决定成片、高频加碎雪颗粒。
+	// 无雪时整段跳过（snow_amount=0 → cov 恒为 0，数学上与旧路径逐像素一致）：
+	// 每片草叶像素省两次 value-noise（~32 次 hash/sin），是植被片元成本的大头；
+	// 雪天仍走原路径，观感不变。
+	ALBEDO = base;
+	ROUGHNESS = 1.0;
+	float cov = 0.0;
+	if (snow_amount > 0.001) {
+		float cov_n = vnoise(wpos.xz * 0.8 + vec2(3.7, 1.3)) * 0.7
+				+ vnoise(wpos.xz * 3.1) * 0.3;
+		cov = smoothstep(1.0 - snow_amount - 0.08, 1.0 - snow_amount + 0.08, cov_n)
+				* snow_amount;
+		// 雪色保留 15% 实例色底味（草雪偏绿、冠雪偏深，MC 雪层覆在方块上的层次）
+		ALBEDO = mix(base, snow_color * (0.85 + 0.15 * COLOR.rgb), cov);
+		ROUGHNESS = mix(1.0, 0.5, cov);
+	}
 	// 叶片透光：法线背对太阳时，光从叶子背面透过来（越"侧对"太阳越明显）。
 	// NORMAL 在片元里是视图空间，先用 INV_VIEW_MATRIX 转回世界空间再和太阳方向比。
 	// 这一项加在 ALBEDO 上而不是自发光：它是"被照亮"，要跟着叶色走、也要吃遮挡。
@@ -171,7 +180,6 @@ void fragment() {
 		float trans = pow(max(-dot(wn, normalize(sun_dir)), 0.0), 1.5);
 		ALBEDO += backlight_color * (trans * backlight * (1.0 - cov));
 	}
-	ROUGHNESS = mix(1.0, 0.5, cov);
 	METALLIC = 0.0;
 	ALPHA = alpha * shape_a;
 	// 关键：写了 ALPHA 会被踢进透明管线（树冠互相穿透的元凶）——

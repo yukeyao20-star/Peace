@@ -3,6 +3,9 @@
 #include <cmath>
 
 #include <godot_cpp/classes/animatable_body3d.hpp>
+#include <godot_cpp/classes/audio_stream.hpp>
+#include <godot_cpp/classes/audio_stream_wav.hpp>
+#include <godot_cpp/classes/audio_stream_player3d.hpp>
 #include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/capsule_mesh.hpp>
 #include <godot_cpp/classes/collision_shape3d.hpp>
@@ -14,6 +17,7 @@
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/physics_direct_space_state3d.hpp>
 #include <godot_cpp/classes/physics_ray_query_parameters3d.hpp>
+#include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/classes/sphere_shape3d.hpp>
@@ -40,6 +44,22 @@ void FarmAnimal::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_kind"), &FarmAnimal::get_kind);
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "kind", PROPERTY_HINT_RANGE, "0,3,1"),
 			"set_kind", "get_kind");
+
+	ADD_SIGNAL(MethodInfo("animal_fed")); // 喂食成功时发出（GameDirector 每日待办计分用）
+}
+
+const char *FarmAnimal::kind_name(int p_kind) {
+	switch (p_kind) {
+		case 0:
+			return "小猫";
+		case 1:
+			return "小狗";
+		case 2:
+			return "奶牛";
+		case 3:
+		default:
+			return "绵羊";
+	}
 }
 
 void FarmAnimal::set_kind(int p_kind) {
@@ -75,6 +95,49 @@ void FarmAnimal::_notification(int p_what) {
 
 			build_model();
 			add_to_group("farm_animals"); // TerrainBuilder 收集"踩草者"用
+			add_to_group("interactables"); // Player E 键喂食交互用
+			// 喂食回应声源：奶牛用真牛哞，其余用清铃（按存在性优雅降级）
+			voice = memnew(AudioStreamPlayer3D);
+			voice->set_name("Voice");
+			voice->set_volume_db(-7.0f);
+			voice->set_max_distance(26.0f);
+			add_child(voice);
+			// 喂食回应声：猫=喵、狗=汪、羊=咩（程序化合成）；牛=真牛哞资产。
+			// 合成失败再降级清铃——总之喂了必有回应。
+			switch (kind) {
+				case 0:
+					snd_voice = make_meow();
+					break;
+				case 1:
+					snd_voice = make_woof();
+					break;
+				case 3:
+					snd_voice = make_baa();
+					break;
+				case 2:
+				default: {
+					ResourceLoader *rl = ResourceLoader::get_singleton();
+					if (rl != nullptr && rl->exists("res://assets/audio/cow_moo.mp3")) {
+						Ref<Resource> r = rl->load("res://assets/audio/cow_moo.mp3");
+						if (r.is_valid()) {
+							snd_voice = Object::cast_to<AudioStream>(r.ptr());
+						}
+					}
+					break;
+				}
+			}
+			if (snd_voice.is_null()) {
+				ResourceLoader *rl = ResourceLoader::get_singleton();
+				if (rl != nullptr && rl->exists("res://assets/audio/organic_chime.mp3")) {
+					Ref<Resource> r = rl->load("res://assets/audio/organic_chime.mp3");
+					if (r.is_valid()) {
+						snd_voice = Object::cast_to<AudioStream>(r.ptr());
+					}
+				}
+			}
+			if (snd_voice.is_valid()) {
+				voice->set_stream(snd_voice);
+			}
 			set_process(true);
 		} break;
 
@@ -90,7 +153,19 @@ void FarmAnimal::_notification(int p_what) {
 				night = sky->get_night_factor();
 				wet = Math::clamp(sky->get_rain_amount() + sky->get_snow_amount(), 0.0f, 1.0f);
 			}
-			tick_behavior((float)get_process_delta_time(), night, wet);
+			const float dt = (float)get_process_delta_time();
+			tick_behavior(dt, night, wet);
+			// —— 喂食反馈：开心跳一下（身体根做抛物线小跳）——
+			if (hop_t > 0.0f) {
+				hop_t = Math::max(hop_t - dt, 0.0f);
+				float prog = 1.0f - hop_t / 0.6f; // 0→1
+				if (body != nullptr) {
+					body->set_position(Vector3(0.0f, Math::sin(prog * Math::PI) * 0.22f, 0.0f));
+				}
+			}
+			if (fed_t > 0.0f) {
+				fed_t = Math::max(fed_t - dt, 0.0f);
+			}
 		} break;
 
 		default:
@@ -686,4 +761,167 @@ void FarmAnimal::update_shroom_glow_trail(float p_delta) {
 	} else if (shroom_glow_trail != nullptr && shroom_glow_trail->is_emitting()) {
 		shroom_glow_trail->set_emitting(false);
 	}
+}
+
+// —— 喂食交互（Interactable）——
+
+String FarmAnimal::get_prompt() const {
+	if (fed_t > 0.0f) {
+		return String::utf8("❤ ") + String::utf8(kind_name(kind)) + String::utf8("开心进食中…");
+	}
+	return String::utf8("按 E 喂") + String::utf8(kind_name(kind));
+}
+
+Vector3 FarmAnimal::get_interact_pos() const {
+	return get_global_position() + Vector3(0.0f, 0.6f, 0.0f);
+}
+
+void FarmAnimal::interact(const Vector3 &p_player_pos) {
+	if (fed_t > 0.0f) {
+		return; // 进食冷却中
+	}
+	fed_t = 8.0f;
+	hop_t = 0.6f; // 开心跳一下
+	if (voice != nullptr && snd_voice.is_valid()) {
+		voice->play();
+	}
+	emit_signal("animal_fed"); // 通知每日待办计分（GameDirector）
+}
+
+
+// —— 程序化叫声（22050Hz 16-bit 单声道，无外部资源）——
+
+// 猫 v3：「喵」= 加法合成 + 共振峰 EQ(先合成后用静态带通逐帧滤波,系数稳定)。
+// 简化方案:声源谐波列直接按共振峰加权(每帧算谐波幅度权重),免滤波器发散。
+// F1/F2 滑动 → 对 1..5 次谐波按与共振峰的距离高斯加权,即"共振峰塑形"。
+Ref<AudioStreamWAV> FarmAnimal::make_meow() {
+	const int sr = 22050;
+	const float dur = 0.75f;
+	const int n = (int)(dur * sr);
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
+	float phase = 0.0f;
+	for (int i = 0; i < n; i++) {
+		float t = (float)i / sr;
+		float u = t / dur;
+		float f0 = (u < 0.55f) ? Math::lerp(620.0f, 660.0f, u / 0.55f)
+				: Math::lerp(660.0f, 240.0f, (u - 0.55f) / 0.45f);
+		float env = Math::clamp(t / 0.04f, 0.0f, 1.0f)
+				* Math::clamp((dur - t) / 0.16f, 0.0f, 1.0f);
+		float vib = 1.0f + 0.018f * Math::sin(t * Math::TAU * 12.0f);
+		phase += Math::TAU * f0 * vib / sr;
+		float f1 = (u < 0.5f) ? Math::lerp(340.0f, 480.0f, u / 0.5f)
+				: Math::lerp(480.0f, 880.0f, (u - 0.5f) / 0.5f);
+		float f2 = (u < 0.5f) ? Math::lerp(2150.0f, 1700.0f, u / 0.5f)
+				: Math::lerp(1700.0f, 880.0f, (u - 0.5f) / 0.5f);
+		// 共振峰塑形:谐波 k(幅度 1/k)按落在 F1/F2 附近加权(高斯带宽~15%)
+		float samp = 0.0f;
+		for (int k = 1; k <= 5; k++) {
+			float hf = f0 * k;
+			float g1 = Math::exp(-Math::pow((hf - f1) / (f1 * 0.35f), 2.0f));
+			float g2 = Math::exp(-Math::pow((hf - f2) / (f2 * 0.35f), 2.0f));
+			float amp = (1.0f / k) * (0.5f + 1.6f * g1 + 1.1f * g2);
+			samp += amp * Math::sin(phase * k);
+		}
+		samp *= 0.28f;
+		// 尾段气声
+		if (u > 0.72f) {
+			samp += (d01(rng) - 0.5f) * (u - 0.72f) * 1.4f;
+		}
+		samp *= env;
+		int16_t q = (int16_t)Math::clamp(samp * 30000.0f, -32000.0f, 32000.0f);
+		w[i * 2] = (uint8_t)(q & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
+	}
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_data(bytes);
+	return wav;
+}
+
+// 狗：「汪！汪！」两声短吠，间隔 150ms。每声 = 120Hz 粗基频 + 开口爆音
+// (10ms 噪声冲击) + 快速衰减，第二声比第一声高 8%(兴奋上扬)。
+Ref<AudioStreamWAV> FarmAnimal::make_woof() {
+	const int sr = 22050;
+	const float dur = 0.42f;
+	const int n = (int)(dur * sr);
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
+	for (int i = 0; i < n; i++) {
+		float t = (float)i / sr;
+		float samp = 0.0f;
+		for (int b = 0; b < 2; b++) {
+			float bt = t - b * 0.19f; // 第二声 190ms 后
+			if (bt < 0.0f || bt > 0.15f) {
+				continue;
+			}
+			float f0 = 118.0f * (b == 1 ? 1.08f : 1.0f);
+			float env = Math::clamp(bt / 0.008f, 0.0f, 1.0f)
+					* Math::exp(-bt * 26.0f); // 极快衰减=吠
+			float ph = Math::TAU * f0 * bt;
+			float v = 0.7f * Math::sin(ph) + 0.3f * Math::sin(ph * 2.0f);
+			float burst = (bt < 0.012f) ? (d01(rng) - 0.5f) * 0.9f * (1.0f - bt / 0.012f) : 0.0f;
+			samp += (v * 0.85f + burst) * env;
+		}
+		int16_t q = (int16_t)Math::clamp(samp * 30000.0f, -32000.0f, 32000.0f);
+		w[i * 2] = (uint8_t)(q & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
+	}
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_data(bytes);
+	return wav;
+}
+
+// 羊 v3：「咩↔」高亢哭腔,共振峰塑形(免滤波器,稳定)。
+// 430→520→380Hz 基频 + 24Hz 快浅唇颤(±14%),谐波按 F1 820 / F2 1900 加权。
+Ref<AudioStreamWAV> FarmAnimal::make_baa() {
+	const int sr = 22050;
+	const float dur = 1.0f;
+	const int n = (int)(dur * sr);
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+	float phase = 0.0f;
+	for (int i = 0; i < n; i++) {
+		float t = (float)i / sr;
+		float u = t / dur;
+		float env = Math::clamp(t / 0.03f, 0.0f, 1.0f)
+				* Math::clamp((dur - t) / 0.25f, 0.0f, 1.0f);
+		float f0 = (u < 0.4f) ? Math::lerp(430.0f, 520.0f, u / 0.4f)
+				: Math::lerp(520.0f, 380.0f, (u - 0.4f) / 0.6f);
+		float vib = 1.0f + 0.14f * Math::sin(t * Math::TAU * 24.0f);
+		phase += Math::TAU * f0 * vib / sr;
+		float samp = 0.0f;
+		for (int k = 1; k <= 6; k++) {
+			float hf = f0 * k;
+			float g1 = Math::exp(-Math::pow((hf - 820.0f) / 300.0f, 2.0f));
+			float g2 = Math::exp(-Math::pow((hf - 1900.0f) / 500.0f, 2.0f));
+			float amp = (1.0f / k) * (0.4f + 1.7f * g1 + 0.9f * g2);
+			// 偶次谐波掺一点方波感(喉音粗粝)
+			float osc = Math::sin(phase * k) + ((k % 2 == 0) ? 0.18f : 0.0f) * Math::sin(phase * k * 1.02f);
+			samp += amp * osc;
+		}
+		samp *= 0.26f * env;
+		int16_t q = (int16_t)Math::clamp(samp * 30000.0f, -32000.0f, 32000.0f);
+		w[i * 2] = (uint8_t)(q & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
+	}
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_data(bytes);
+	return wav;
 }

@@ -16,6 +16,8 @@ using namespace godot;
 void SoccerBall::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("kick", "impulse"), &SoccerBall::kick);
 	ClassDB::bind_method(D_METHOD("reset_to_center"), &SoccerBall::reset_to_center);
+
+	ADD_SIGNAL(MethodInfo("goal_scored")); // 踢进任一球门时发出（GameDirector 每日待办计数用）
 }
 
 void SoccerBall::_notification(int p_what) {
@@ -93,6 +95,7 @@ void SoccerBall::build_model() {
 	audio_player = memnew(AudioStreamPlayer3D);
 	audio_player->set_unit_size(10.0f);
 	audio_player->set_max_distance(45.0f);
+	audio_player->set_bus(StringName("SFX"));
 	add_child(audio_player);
 
 	if (rl != nullptr) {
@@ -190,6 +193,7 @@ void SoccerBall::_physics_process(double p_delta) {
 		if (in_goal_y && in_goal_z) {
 			if (pos.x < 36.2f && pos.x > 33.8f) { // 进西球门！
 				goal_cooldown = 4.0f;
+				emit_signal("goal_scored"); // 通知每日待办计分（GameDirector）
 				if (audio_player != nullptr && snd_goal.is_valid()) {
 					audio_player->set_stream(snd_goal);
 					audio_player->set_volume_db(2.0f);
@@ -197,6 +201,7 @@ void SoccerBall::_physics_process(double p_delta) {
 				}
 			} else if (pos.x > 83.8f && pos.x < 86.2f) { // 进东球门！
 				goal_cooldown = 4.0f;
+				emit_signal("goal_scored"); // 通知每日待办计分（GameDirector）
 				if (audio_player != nullptr && snd_goal.is_valid()) {
 					audio_player->set_stream(snd_goal);
 					audio_player->set_volume_db(2.0f);

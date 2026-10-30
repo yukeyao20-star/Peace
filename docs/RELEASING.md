@@ -1,6 +1,15 @@
 # 发布流程（RELEASING）
 
-「湖畔家园 Homestead」v0.1.0 发布指南。工程为纯 C++ GDExtension（Godot 4.7.2 标准版，非 .NET），导出配置见 `project/export_presets.cfg`（macOS / Windows Desktop / Linux 三个 preset）。
+「湖畔家园 Homestead」v0.2.0 发布指南。工程为纯 C++ GDExtension（Godot 4.7.2 标准版，非 .NET），导出配置见 `project/export_presets.cfg`（macOS / Windows / Linux 三个 preset）。
+
+> **时效注记（2026-10-24，v0.2.0）**：本文第二、三节的手工命令写于 v0.1.0（2026-10-01），
+> 保留作原理参考；**当前发布以 `tools/package.sh` 为唯一权威流程**，与旧文的差异：
+> ① 产物名已统一为 `dist/peace-macos-0.2.0.zip`（带版本号，自动取 project.godot 的
+> config/version）、`peace-windows-x64.zip`、`peace-linux-x64.zip`、`peace-linux-amd64.deb`；
+> ② macOS 包内是 `Peace.app`（config/name 用户手改 "Peace"，产品名仍为"湖畔家园 Homestead"）；
+> ③ deb 包名/启动器为 `peace`、安装目录 `/opt/peace`（旧文 lakeside-cabin 已弃用）；
+> ④ preset 的 `export_path`（`../release/peace.dmg` 等）已被 package.sh 的显式输出路径覆盖，
+> 不再生效。下文命令中的旧产物名（game3d-*）以本注记为准。
 
 > **懒人路线**：下面所有步骤已经封成 `tools/package.sh`，一条命令跑完
 > 编库 → 导出 → 压 zip → 组 deb → 校验：
@@ -155,7 +164,16 @@ dpkg-deb --build --root-owner-group "$PKG" dist/game3d-linux-amd64.deb
 
 也就是说，**CI 已经能产出全部三个平台的 release 库**——发布前可从 Actions 页面下载对应 artifact，解包放进 `project/bin/` 各平台子目录，满足第二节的前置条件 2。
 
-「完整游戏导出」可在此基础上扩展：给 workflow 增加一个 job，安装 Godot 4.7.2 + 导出模板（如用 `godotengine/godot` 官方镜像或下载模板 zip 解压到 `~/Library/Application Support/Godot/export_templates/`），再执行第二节的三条导出命令并上传 `dist/` 产物。本仓库暂未修改 workflow，此为后续可选步骤。
+「完整游戏导出」可在此基础上扩展：给 workflow 增加一个 job，安装 Godot 4.7.2 + 导出模板（如用 `godotengine/godot` 官方镜像或下载模板 zip 解压到 `~/Library/Application Support/Godot/export_templates/`），再执行第二节的三条导出命令并上传 `dist/` 产物。
+
+> **2026-10-24 增补**：上段"可选步骤"已落地——仓库现新增 `.github/workflows/export.yml`
+> （手动 `workflow_dispatch` 触发，不动 build.yml 的 push 编库流）：Windows/Linux 两 job，
+> 各自 编 release 库 → 装 4.7.2-stable 导出模板 → `--export-release`（preset 名 Windows/Linux）
+> → 产物在本机 headless 冒烟 120 帧（退出码 + SCRIPT ERROR 扫描）→ zip 完整性校验并上传
+> Artifact。这是 ROADMAP #8「跨平台 headless 冒烟」的唯一自动化通道（macOS 无法运行
+> win/linux 二进制）；deb 组包因 sips 转图标仍留本机 package.sh。**该 workflow 静态审计
+> 已过（会话Q 修复 Godot 资产 URL 缺 `v` 前缀 5 处），待 git 建 remote 并授权 push 后
+> 首跑按日志现场修。**
 
 ## 四、本机实测结果（2026-10-01，macOS / Godot 4.7.2.stable）
 

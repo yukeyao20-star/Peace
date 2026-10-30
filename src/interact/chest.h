@@ -11,6 +11,10 @@
 //         ├─ 盖板 / 黄铜锁鼻 / 两道横向加固条
 //
 // 开关动画与 CabinDoor 相同：Hermite 缓动约 0.33 秒；盖板向后旋开约 109°。
+//
+// 一次性彩蛋（ROADMAP #11）：首次打开翻出"野餐毯"——发 chest_looted 信号
+// （GameDirector 中央公告），毯子+藤篮小道具摆在箱旁，本地合成"叮咚"提示音；
+// looted 标志经 SaveSystem 的 chest_looted 键持久化（读档回放只补摆毯子）。
 
 #include "interactable.h"
 
@@ -31,7 +35,15 @@ private:
 	Ref<class AudioStream> snd_open;
 	Ref<class AudioStream> snd_close;
 
+	bool looted = false;          // "发现野餐毯"已触发（SaveSystem 持久化）
+	float chime_t = -1.0f;        // 发现叮咚延时计时（>0 = 等开箱吱呀收尾）
+	Node3D *blanket = nullptr;    // 野餐毯小道具（发现后摆在箱旁）
+	class AudioStreamPlayer3D *chime_player = nullptr;
+	Ref<class AudioStream> snd_discover; // 程序合成两音上行"叮咚"
+
 	void build(Ref<Shader> p_shader);
+	void spawn_blanket(Ref<Shader> p_shader);
+	Ref<class AudioStreamWAV> make_discover_chime(); // 22050Hz 16-bit，纯代码合成
 
 protected:
 	static void _bind_methods();
@@ -46,6 +58,8 @@ public:
 	virtual void interact(const Vector3 &p_player_pos) override;
 
 	bool is_open() const { return open_target > 0.5f; }
+	bool is_looted() const { return looted; }
+	void set_looted(bool p_looted); // SaveSystem 读档回放用（true 时补摆毯子）
 };
 
 } // namespace godot

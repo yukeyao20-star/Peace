@@ -82,6 +82,15 @@ void ButterflySwarm::_notification(int p_what) {
 						* (1.0f - night * 0.7f) * (1.0f - 0.85f * wet);
 				f.wing_r->set_rotation(Vector3(0.0f, 0.0f, a));
 				f.wing_l->set_rotation(Vector3(0.0f, 0.0f, -a));
+				// 后翅：幅度略小 + 相位滞后，四翅扑动有层次（不是整块板一起扇）
+				float ah = std::sin(anim_t * f.flap - 0.55f) * 0.78f
+						* (1.0f - night * 0.7f) * (1.0f - 0.85f * wet);
+				if (f.hind_r != nullptr) {
+					f.hind_r->set_rotation(Vector3(0.0f, 0.0f, ah));
+				}
+				if (f.hind_l != nullptr) {
+					f.hind_l->set_rotation(Vector3(0.0f, 0.0f, -ah));
+				}
 			}
 			first_frame = false;
 		} break;
@@ -189,6 +198,24 @@ void ButterflySwarm::spawn_flyer(const Vector3 &p_anchor, int p_variant, unsigne
 			Vector3(-0.044f, 0.0f, 0.0f), wing_hi);
 	meshutil::add_box(f.wing_l, toon, Vector3(0.030f, 0.0035f, 0.058f),
 			Vector3(-0.082f, 0.0f, 0.0f), wing_lo);
+
+	// 后翅一对（2026-10-31：四翅蝴蝶——前翅 + 后翅各一对，后翅更小、偏尾侧）
+	f.hind_r = memnew(Node3D);
+	f.hind_r->set_name("HindWingR");
+	f.hind_r->set_position(Vector3(0.011f, 0.0035f, 0.030f));
+	f.root->add_child(f.hind_r);
+	meshutil::add_box(f.hind_r, toon, Vector3(0.060f, 0.003f, 0.040f),
+			Vector3(0.032f, 0.0f, 0.0f), wing_hi);
+	meshutil::add_box(f.hind_r, toon, Vector3(0.024f, 0.0035f, 0.034f),
+			Vector3(0.062f, 0.0f, 0.0f), wing_lo);
+	f.hind_l = memnew(Node3D);
+	f.hind_l->set_name("HindWingL");
+	f.hind_l->set_position(Vector3(-0.011f, 0.0035f, 0.030f));
+	f.root->add_child(f.hind_l);
+	meshutil::add_box(f.hind_l, toon, Vector3(0.060f, 0.003f, 0.040f),
+			Vector3(-0.032f, 0.0f, 0.0f), wing_hi);
+	meshutil::add_box(f.hind_l, toon, Vector3(0.024f, 0.0035f, 0.034f),
+			Vector3(-0.062f, 0.0f, 0.0f), wing_lo);
 
 	flyers.push_back(f);
 	last_pos.push_back(p_anchor);

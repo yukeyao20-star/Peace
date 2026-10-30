@@ -28,10 +28,10 @@ import wave
 SRC = "/tmp/audm/cabin_fireplace.wav"          # afconvert 出来的单声道 WAV
 DST = "project/assets/audio/cabin_fireplace_loop.wav"
 
-LOOP_SEC = 40.0        # 循环长度
-XFADE_SEC = 0.6        # 首尾交叉淡化长度
-TARGET_RMS_DB = -20.0  # 目标响度（典型循环素材的 RMS 水平）
-CEIL_DB = -1.5         # 软限幅的天花板
+LOOP_SEC = 45.0        # 循环长度
+XFADE_SEC = 0.8        # 首尾交叉淡化长度
+TARGET_RMS_DB = -14.0  # 目标响度（提升 6dB，显著增强整体燃烧与柴火噼啪存在感）
+CEIL_DB = -0.5         # 软限幅天花板（充分利用动态范围）
 
 
 def db(x):

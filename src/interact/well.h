@@ -15,6 +15,7 @@
 // 交互：按 E 在"打水（桶升上来）"与"放桶（桶沉回井里）"间切换，
 // Hermite 缓动约 1.2 秒（比门窗慢，摇辘轳本来就该费点劲）；
 // 摇把随桶的升降同步旋转（升满恰好两整圈）。
+// 打水方向带程序合成动作音（辘轳吱呀 + 水花，走 SFX 总线）。
 
 #include "interactable.h"
 
@@ -35,7 +36,11 @@ private:
 	float up_t = 0.0f;        // 当前 0(桶在井底)..1(桶到横轴)
 	float up_target = 0.0f;   // 目标进度
 
+	class AudioStreamPlayer3D *audio_player = nullptr; // 打水动作音
+	Ref<class AudioStream> snd_draw;                   // 程序合成，无外部资源
+
 	void build(Ref<Shader> p_shader);
+	Ref<class AudioStreamWAV> make_draw_sound(); // 22050Hz 16-bit，纯代码合成
 
 protected:
 	static void _bind_methods();

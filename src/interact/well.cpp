@@ -1,5 +1,7 @@
 #include "well.h"
 
+#include <godot_cpp/classes/audio_stream_player3d.hpp>
+#include <godot_cpp/classes/audio_stream_wav.hpp>
 #include <godot_cpp/classes/box_shape3d.hpp>
 #include <godot_cpp/classes/collision_shape3d.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
@@ -9,6 +11,7 @@
 #include <godot_cpp/classes/static_body3d.hpp>
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/core/memory.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 
@@ -48,6 +51,8 @@ MeshInstance3D *add_cylinder(Node3D *p_parent, float p_radius, float p_height, c
 
 void Well::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_up"), &Well::is_up);
+
+	ADD_SIGNAL(MethodInfo("water_drawn")); // 摇上一桶井水时发出（GameDirector 每日待办计数用）
 }
 
 void Well::_notification(int p_what) {
@@ -59,6 +64,16 @@ void Well::_notification(int p_what) {
 			build(meshutil::load_toon_shader());
 			add_to_group("interactables");
 			set_process(true);
+		} break;
+		case NOTIFICATION_EXIT_TREE: {
+			if (Engine::get_singleton()->is_editor_hint()) {
+				break;
+			}
+			if (audio_player != nullptr) {
+				audio_player->stop();
+				audio_player->set_stream(Ref<AudioStream>());
+			}
+			snd_draw = Ref<AudioStream>();
 		} break;
 		default:
 			break;
@@ -173,6 +188,15 @@ void Well::build(Ref<Shader> p_shader) {
 	meshutil::add_box(bucket, p_shader, Vector3(0.36f, 0.04f, 0.36f), Vector3(0.0f, -0.02f, 0.0f), wood_dark);
 	meshutil::add_box(bucket, p_shader, Vector3(0.03f, 0.03f, 0.30f), Vector3(0.0f, 0.02f, 0.0f), wood_dark); // 提梁
 	add_cylinder(bucket, 0.02f, 0.05f, rope_c, p_shader, Vector3(0.0f, 0.05f, 0.0f)); // 绳结
+
+	// —— 打水动作音（程序合成：辘轳吱呀 + 水花，走 SFX 总线） ——
+	snd_draw = make_draw_sound();
+	audio_player = memnew(AudioStreamPlayer3D);
+	audio_player->set_name("WellAudio");
+	audio_player->set_unit_size(6.0f);
+	audio_player->set_max_distance(25.0f);
+	audio_player->set_bus(StringName("SFX"));
+	add_child(audio_player);
 }
 
 void Well::_process(double p_delta) {
@@ -205,4 +229,77 @@ void Well::interact(const Vector3 &p_player_pos) {
 		return; // 动画进行中不接受新指令
 	}
 	up_target = is_up() ? 0.0f : 1.0f;
+	if (up_target > 0.5f) {
+		emit_signal("water_drawn"); // 这次摇柄是"打水"方向，通知每日待办计分
+		if (audio_player != nullptr && snd_draw.is_valid()) {
+			audio_player->set_stream(snd_draw);
+			audio_player->set_volume_db(-4.0f);
+			audio_player->play(); // 吱呀 + 水花约 1.15s，与升程同步
+		}
+	}
+}
+
+// 程序化合成打水音（22050Hz 16-bit 单声道，无外部资源），约 1.15 秒与升程同步：
+// 三声辘轳木轴"吱呀"（滑频 + 木质感谐波，逐声低沉）→ 尾部水花（噪声爆 + 井筒低频"咚"）。
+// 噪声用确定性哈希采样，不碰全局随机流（terrain_builder 随机序列铁律）。
+Ref<AudioStreamWAV> Well::make_draw_sound() {
+	const int sr = 22050;
+	const float dur = 1.15f;
+	const int n = (int)(dur * (float)sr);
+
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+
+	struct Creak {
+		float t0;
+		float f0;
+	};
+	const Creak creaks[3] = { { 0.02f, 330.0f }, { 0.32f, 285.0f }, { 0.60f, 245.0f } };
+	const float creak_len = 0.26f;
+
+	for (int i = 0; i < n; ++i) {
+		float t = (float)i / (float)sr;
+		float s = 0.0f;
+
+		for (const Creak &c : creaks) {
+			float lt = t - c.t0;
+			if (lt < 0.0f || lt > creak_len) {
+				continue;
+			}
+			float f = c.f0 - 430.0f * lt; // 摇把转动，音调下滑
+			if (f < 95.0f) {
+				f = 95.0f;
+			}
+			// 相位闭式积分：∫(f0 − 430t)dt = f0·t − 215·t²
+			float ph = 6.2831853f * (c.f0 * lt - 215.0f * lt * lt);
+			float wood = std::sin(ph) + 0.42f * std::sin(2.0f * ph) + 0.22f * std::sin(3.0f * ph);
+			float env = Math::clamp(lt * 90.0f, 0.0f, 1.0f) * std::exp(-lt * 7.5f);
+			s += wood * env * 0.30f;
+		}
+
+		// —— 水花：桶出井那一刻（0.82s 起）——
+		float st = t - 0.82f;
+		if (st >= 0.0f) {
+			float nz = std::sin((float)i * 12.9898f) * 43758.5453f; // 确定性哈希噪声
+			nz -= std::floor(nz);
+			float env = Math::clamp(st * 26.0f, 0.0f, 1.0f) * std::exp(-st * 10.0f);
+			s += (nz * 2.0f - 1.0f) * env * 0.40f;
+			s += std::sin(6.2831853f * 130.0f * st) * std::exp(-st * 9.0f) * 0.26f;
+		}
+
+		s = Math::clamp(s, -0.85f, 0.85f);
+		int v = (int)std::lround(s * 32767.0f);
+		v = Math::clamp(v, -32768, 32767);
+		w[i * 2] = (uint8_t)(v & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((v >> 8) & 0xFF); // 小端 16-bit
+	}
+
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_data(bytes);
+	return wav;
 }

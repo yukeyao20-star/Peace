@@ -94,10 +94,10 @@ void SoccerField::build_goal(Node3D *p_parent, const Vector3 &p_pos, float p_fac
 			Vector3(back_dir * gd * 0.5f, gh * 0.5f, gw * 0.5f - 0.02f), net_mesh);
 
 	// 5. 物理碰撞体
-	// 左右立柱碰撞
+	// 左右立柱碰撞（加宽至 1.5 倍管径，确保高速球无法从缝隙挤入）
 	Ref<BoxShape3D> post_shape;
 	post_shape.instantiate();
-	post_shape->set_size(Vector3(post_w * 1.2f, gh, post_w * 1.2f));
+	post_shape->set_size(Vector3(post_w * 1.5f, gh, post_w * 1.5f));
 
 	CollisionShape3D *col_l = memnew(CollisionShape3D);
 	col_l->set_name("ColPostL");
@@ -114,7 +114,7 @@ void SoccerField::build_goal(Node3D *p_parent, const Vector3 &p_pos, float p_fac
 	// 横梁碰撞
 	Ref<BoxShape3D> bar_shape;
 	bar_shape.instantiate();
-	bar_shape->set_size(Vector3(post_w * 1.2f, post_w * 1.2f, gw + post_w));
+	bar_shape->set_size(Vector3(post_w * 1.5f, post_w * 1.5f, gw + post_w * 2.0f));
 
 	CollisionShape3D *col_bar = memnew(CollisionShape3D);
 	col_bar->set_name("ColBar");
@@ -122,15 +122,44 @@ void SoccerField::build_goal(Node3D *p_parent, const Vector3 &p_pos, float p_fac
 	col_bar->set_position(Vector3(0.0f, gh, 0.0f));
 	goal->add_child(col_bar);
 
-	// 后网物理阻挡（进球后把球拦住，产生真实的网窝感）
+	// 左侧网碰撞体（厚度 0.30m，严防人或足球从球门左侧穿透）
+	Ref<BoxShape3D> side_net_shape;
+	side_net_shape.instantiate();
+	side_net_shape->set_size(Vector3(gd, gh, 0.30f));
+
+	CollisionShape3D *col_side_l = memnew(CollisionShape3D);
+	col_side_l->set_name("ColSideNetL");
+	col_side_l->set_shape(side_net_shape);
+	col_side_l->set_position(Vector3(back_dir * gd * 0.5f, gh * 0.5f, -gw * 0.5f - 0.10f));
+	goal->add_child(col_side_l);
+
+	// 右侧网碰撞体（厚度 0.30m，严防人或足球从球门右侧穿透）
+	CollisionShape3D *col_side_r = memnew(CollisionShape3D);
+	col_side_r->set_name("ColSideNetR");
+	col_side_r->set_shape(side_net_shape);
+	col_side_r->set_position(Vector3(back_dir * gd * 0.5f, gh * 0.5f, gw * 0.5f + 0.10f));
+	goal->add_child(col_side_r);
+
+	// 顶网碰撞体（厚度 0.25m，拦截高空反弹球，严防飞球冲顶出界）
+	Ref<BoxShape3D> top_net_shape;
+	top_net_shape.instantiate();
+	top_net_shape->set_size(Vector3(gd, 0.25f, gw + 0.20f));
+
+	CollisionShape3D *col_top = memnew(CollisionShape3D);
+	col_top->set_name("ColTopNet");
+	col_top->set_shape(top_net_shape);
+	col_top->set_position(Vector3(back_dir * gd * 0.5f, gh + 0.10f, 0.0f));
+	goal->add_child(col_top);
+
+	// 后网物理阻挡（加厚至 0.35m，向球门外侧扩展，且在 Z 轴覆盖角部缝隙，人与球绝不穿透）
 	Ref<BoxShape3D> back_net_shape;
 	back_net_shape.instantiate();
-	back_net_shape->set_size(Vector3(0.12f, gh, gw));
+	back_net_shape->set_size(Vector3(0.35f, gh, gw + 0.40f));
 
 	CollisionShape3D *col_net = memnew(CollisionShape3D);
 	col_net->set_name("ColNet");
 	col_net->set_shape(back_net_shape);
-	col_net->set_position(Vector3(back_dir * gd, gh * 0.5f, 0.0f));
+	col_net->set_position(Vector3(back_dir * (gd + 0.15f), gh * 0.5f, 0.0f));
 	goal->add_child(col_net);
 }
 

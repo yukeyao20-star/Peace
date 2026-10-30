@@ -10,6 +10,7 @@ namespace godot {
 
 class CanvasLayer;
 class ColorRect;
+class Panel;
 class Label;
 class MeshInstance3D;
 class Node3D;
@@ -52,6 +53,7 @@ public:
 	int get_state() const { return state; }
 	bool is_charging() const { return charging; }
 	bool is_near_shore() const { return near_shore; }
+	int get_caught_count() const { return caught_count; } // 存档/待办展示用
 
 protected:
 
@@ -97,16 +99,48 @@ protected:
 	float swim_walk = 0.0f;    // 区间漂移的随机游走
 	int caught_count = 0;
 
+	// —— 鱼种系统 ——
+	// 五种鱼：昼间青鳞鱼/红尾鲤，夜间月影鲈/夜鳗，全时段稀有金鳞鱼(6%)。
+	// 咬钩时按昼夜+权重定 species；结算/图鉴/纪录全按种走。
+	enum FishSpecies {
+		FISH_QINGLIN = 0, // 青鳞鱼（昼，常见）
+		FISH_HONGWEI,     // 红尾鲤（昼，中见）
+		FISH_YUEYING,     // 月影鲈（夜，常见）
+		FISH_YEMAN,       // 夜鳗（夜，中见）
+		FISH_JINLIN,      // 金鳞鱼（稀有，昼夜都有）
+		FISH_KIND_COUNT
+	};
+	static const char *species_name(int p_species);   // UTF-8 中文名
+	static bool species_nocturnal(int p_species);     // 是否夜行种
+	static Color species_tint(int p_species);         // 鱼影着色（水下的第一辨识度）
+
+	class SkyCycle *sky = nullptr; // 懒查找（读昼夜定鱼种池）
+	int pick_species(bool p_night); // 按昼夜权重定种（金鳞 6% 两池都有）
+
+	// —— 鱼获图鉴（B 键呼出，user://fishing_records.cfg 持久化）——
+	int rec_count[FISH_KIND_COUNT] = { 0 };  // 各鱼种累计
+	float rec_best[FISH_KIND_COUNT] = { 0 }; // 各鱼种最长纪录（cm）
+	float cur_size_cm = 0.0f;                // 本条鱼的体长
+	int cur_species = FISH_QINGLIN;          // 本条鱼的鱼种
+	bool b_prev = false;                     // B 键边沿检测
+	bool book_open = false;
+	CanvasLayer *book_layer = nullptr; // 图鉴层（懒建，玻璃面板）
+	void build_book_ui();
+	void refresh_book();
+	void load_records();
+	void save_records();
+
 	// UI（CanvasLayer 代码搭建）
 	CanvasLayer *layer = nullptr;
 	Label *hint = nullptr;       // 底部提示（抛竿/咬钩/结果）
-	ColorRect *bar_bg = nullptr; // 张力条底
+	Panel *bar_bg = nullptr; // 张力条底（玻璃托槽）
 	ColorRect *bar_zone = nullptr; // 目标区间（绿）
 	ColorRect *bar_cur = nullptr;  // 当前张力游标（黄）
 	ColorRect *prog = nullptr;   // 上鱼进度细条
 	Label *result = nullptr;     // 中央结算
-	ColorRect *charge_bg = nullptr;   // 蓄力条底槽
+	Panel *charge_bg = nullptr;   // 蓄力条底槽（玻璃托槽）
 	ColorRect *charge_fill = nullptr; // 蓄力条填充（张力条上方一行）
+	Label *book_label = nullptr;  // 图鉴正文（多行，refresh_book 刷新）
 
 	// 音效
 	class AudioStreamPlayer *audio_player = nullptr;

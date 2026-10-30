@@ -41,6 +41,17 @@ void BerryBush::_notification(int p_what) {
 			add_to_group("berry_bushes"); // GameDirector 用它接采摘信号
 			set_process(true);
 		} break;
+		case NOTIFICATION_EXIT_TREE: {
+			if (Engine::get_singleton()->is_editor_hint()) {
+				break;
+			}
+			// 采摘音效正在播放时退出，会泄 AudioStreamWAV/AudioStreamPlaybackWAV
+			// 各 2 个 ObjectDB 实例（qa_report P2#1）——先停声源再放掉流引用。
+			if (voice != nullptr) {
+				voice->stop();
+			}
+			snd_pop = Ref<AudioStreamWAV>();
+		} break;
 		default:
 			break;
 	}
@@ -121,6 +132,7 @@ void BerryBush::build() {
 	voice->set_volume_db(-6.0f);
 	voice->set_max_distance(24.0f);
 	voice->set_unit_size(8.0f);
+	voice->set_bus(StringName("SFX"));
 	add_child(voice);
 	snd_pop = make_pop();
 	voice->set_stream(snd_pop); // 之前漏挂音源，play() 静默无效——测试脚本抓出

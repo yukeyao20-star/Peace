@@ -63,7 +63,7 @@ private:
 	float pitch_half_w = 24.0f;                    // 半宽（东西），全宽 = 2×这个
 	float pitch_half_d = 15.0f;                    // 半深（南北）
 	float pitch_height = 0.10f;                    // 场地海拔（压平到这个高度）
-	int pitch_blades = 700000;                     // 草叶卡片数（70万张 × 12根/张 = 840万根视觉草）
+	int pitch_blades = 400000;                     // 草叶卡片数（40万张 × 12根/张 = 480万根视觉草；2026-10-30 性能专项：700k→400k，球场机位实测 116ms，密度仍 ~2450 根/m²）
 
 	// —— 石桥引道参数（与 world.tscn 里 StoneBridge 的几何保持一致：
 	//     桥体沿 X 轴跨湖，桥面端头在 x = lake_center.x ± 15、标高 -0.2） ——
@@ -108,8 +108,8 @@ private:
 	Ref<ShaderMaterial> terrain_mat;           // 地形雪盖材质（snow_ground.gdshader，加载失败时为空 → 用标准材质兜底）
 	Ref<ShaderMaterial> water_mat;             // 水面材质（water.gdshader）——用于把湖岸礁石坐标写进着色器
 	Ref<ShaderMaterial> stream_mat;            // 溪流材质（water.gdshader）——冬天下雪同步结冰
-	StaticBody3D *lake_ice_col = nullptr;      // 结冰湖面物理碰撞体（冬天下雪激活，可踏冰滑行）
-	StaticBody3D *stream_ice_col = nullptr;    // 结冰小溪物理碰撞体（冬天下雪激活，可踏冰滑行）
+	StaticBody3D *stream_ice_col = nullptr;    // 结冰小溪/深潭物理碰撞体（雪量 0.20 起激活；湖面冰归 IceSurface 独有，不在此建）
+	mutable Node *lake_ice_surface = nullptr;  // SkyCycle spawn 的 IceSurface（湖面冰唯一碰撞源，is_on_frozen_lake 懒查缓存）
 
 	// 湖岸礁石（水线带的大石头）：xyz = 世界坐标，w = 视觉半径。
 	// 生成后写进 water.gdshader 的 shore_rocks 数组 —— 让拍岸浪精确地在

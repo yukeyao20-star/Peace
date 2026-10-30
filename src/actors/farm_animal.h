@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../interact/interactable.h"
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/variant/vector2.hpp>
@@ -10,6 +11,8 @@
 namespace godot {
 
 class AnimatableBody3D;
+class AudioStream;
+class AudioStreamPlayer3D;
 class CollisionShape3D;
 class CPUParticles3D;
 class Node3D;
@@ -26,8 +29,8 @@ class SkyCycle;
 //   * 夜里（夜幕因子 > 0.5）：原地趴下睡觉（头埋低、身体压扁 12%）；
 //   * 雨雪天（wet>0.5）：不再漫游，原地缩着偶尔甩头。
 // 随机源按出生世界坐标哈希播种，整图行为可复现。
-class FarmAnimal : public Node3D {
-	GDCLASS(FarmAnimal, Node3D)
+class FarmAnimal : public Interactable {
+	GDCLASS(FarmAnimal, Interactable)
 
 	int kind = 2;            // 0 猫 / 1 狗 / 2 牛 / 3 羊
 	float home_radius = 10.0f; // 漫游半径（相对出生点）
@@ -70,6 +73,15 @@ class FarmAnimal : public Node3D {
 	void build_shroom_glow_trail();
 	void update_shroom_glow_trail(float p_delta);
 
+	// —— 喂食交互（E 键）——
+	float fed_t = 0.0f;   // 喂食冷却/进食中计时（>0 提示"开心进食中"）
+	float hop_t = 0.0f;   // 开心跳跳动画剩余秒
+	AudioStreamPlayer3D *voice = nullptr; // 喂食回应声源（牛哞资产/喵汪咩程序化合成）
+	Ref<AudioStream> snd_voice;
+	Ref<class AudioStreamWAV> make_meow(); // 猫：m-i-ao 三段滑音 + 呼气颗粒
+	Ref<class AudioStreamWAV> make_woof(); // 狗：短促双吠（汪！汪！）
+	Ref<class AudioStreamWAV> make_baa();  // 羊：颤唇长咩（meeee-eh）
+
 protected:
 	static void _bind_methods();
 	void _notification(int p_what);
@@ -80,6 +92,13 @@ public:
 
 	void set_kind(int p_kind);
 	int get_kind() const { return kind; }
+	static const char *kind_name(int p_kind); // UTF-8 中文名（提示文案用）
+
+	// —— Interactable 喂食交互 ——
+	virtual String get_prompt() const override;
+	virtual Vector3 get_interact_pos() const override;
+	virtual float get_interact_distance() const override { return 2.6f; }
+	virtual void interact(const Vector3 &p_player_pos) override;
 
 private:
 	void build_model();                    // 按 kind 拼程序化模型

@@ -48,6 +48,10 @@ public:
 	virtual void interact(const Vector3 &p_player_pos) override;
 
 	bool is_open() const { return open_target > 0.5f; }
+	void set_open_state(bool p_open); // SaveSystem 读档回放：快照就位，不补间不配音
+
+private:
+	void apply_pose(); // 按 open_t 把枢轴落位（补间与快照共用）
 };
 
 } // namespace godot
