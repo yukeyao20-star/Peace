@@ -51,3 +51,10 @@ site/download/
 
 # ---- WorkBuddy AI 会话/记忆目录 ----
 .workbuddy-ai/
+
+# ---- 音频素材（体积大，不入库；本地保留，游戏内代码有合成兜底/本地资源优先） ----
+project/assets/audio/
+*.mp3
+*.wav
+*.ogg
+*.flac
