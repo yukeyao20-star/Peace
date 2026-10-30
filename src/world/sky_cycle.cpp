@@ -565,7 +565,7 @@ void SkyCycle::build_snow() {
 
 	Ref<QuadMesh> flake;
 	flake.instantiate();
-	flake->set_size(Vector2(0.07f, 0.07f));
+	flake->set_size(Vector2(0.085f, 0.085f)); // 略放大：雪白背景下更拎得清形状（2026-10-31）
 	flake->set_material(mat);
 
 	snowflakes = memnew(CPUParticles3D);
@@ -573,7 +573,7 @@ void SkyCycle::build_snow() {
 	snowflakes->set_amount(480);
 	snowflakes->set_lifetime(12.0f); // 慢落，需要长寿命铺满整段下落路径
 	snowflakes->set_mesh(flake);
-	snowflakes->set_color(Color(0.96f, 0.97f, 1.0f, 0.85f));
+	snowflakes->set_color(Color(0.95f, 0.97f, 1.0f, 0.92f));
 	snowflakes->set_direction(Vector3(0.0f, -1.0f, 0.0f));
 	snowflakes->set_spread(25.0f); // 大散布角 → 横向漂移
 	snowflakes->set_gravity(Vector3(0.0f, -0.55f, 0.0f));

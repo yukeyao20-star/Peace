@@ -58,3 +58,7 @@ project/assets/audio/
 *.wav
 *.ogg
 *.flac
+
+# ---- 本地草稿与智能体会话状态（不入库） ----
+tmp/
+.agent/
