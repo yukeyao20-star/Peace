@@ -14,7 +14,9 @@
 #include <godot_cpp/classes/quad_mesh.hpp>
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
+#include <godot_cpp/classes/omni_light3d.hpp>
 #include <godot_cpp/classes/static_body3d.hpp>
+#include <godot_cpp/classes/torus_mesh.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 
 #include "../actors/player.h"
@@ -281,6 +283,7 @@ void Rowboat::build_dock() {
 	const Color wood(0.43f, 0.30f, 0.18f);
 	const Color wood_light(0.55f, 0.40f, 0.24f);
 	const Color wood_dark(0.26f, 0.17f, 0.09f);
+	const Color trim_dock(0.62f, 0.46f, 0.27f);
 
 	// 码头必须挂到世界（不能挂在船下，否则会跟着船一起漂走）
 	StaticBody3D *body = memnew(StaticBody3D);
@@ -292,7 +295,6 @@ void Rowboat::build_dock() {
 		world->call_deferred("add_child", body);
 	} else {
 		add_child(body);
-		printf("[Rowboat] dock added to boat (no parent)\n");
 	}
 
 	Ref<BoxShape3D> shape;
@@ -330,4 +332,59 @@ void Rowboat::build_dock() {
 
 	// 系船柱
 	meshutil::add_box(body, toon, Vector3(0.14f, 0.42f, 0.14f), Vector3(-5.1f, -0.05f, -7.2f), wood_dark);
+
+	// 灯柱 + 灯箱：夜里给码头和船边一小圈暖光
+	const Vector3 lamp_base(-6.68f, -0.30f, -6.95f);
+	meshutil::add_box(body, toon, Vector3(0.13f, 2.25f, 0.13f),
+			lamp_base + Vector3(0.0f, 1.12f, 0.0f), wood_dark);
+	meshutil::add_box(body, toon, Vector3(0.30f, 0.06f, 0.30f),
+			lamp_base + Vector3(0.0f, 2.28f, 0.0f), wood_dark);
+	meshutil::add_box(body, toon, Vector3(0.10f, 0.10f, 0.10f),
+			lamp_base + Vector3(0.0f, 2.36f, 0.0f), trim_dock);
+	// 灯箱四框
+	meshutil::add_box(body, toon, Vector3(0.28f, 0.30f, 0.04f),
+			lamp_base + Vector3(0.0f, 2.06f, -0.13f), wood_dark);
+	meshutil::add_box(body, toon, Vector3(0.28f, 0.30f, 0.04f),
+			lamp_base + Vector3(0.0f, 2.06f, 0.13f), wood_dark);
+	meshutil::add_box(body, toon, Vector3(0.04f, 0.30f, 0.28f),
+			lamp_base + Vector3(-0.13f, 2.06f, 0.0f), wood_dark);
+	meshutil::add_box(body, toon, Vector3(0.04f, 0.30f, 0.28f),
+			lamp_base + Vector3(0.13f, 2.06f, 0.0f), wood_dark);
+	Ref<StandardMaterial3D> glow;
+	glow.instantiate();
+	glow->set_albedo(Color(1.0f, 0.86f, 0.58f, 0.9f));
+	glow->set_feature(BaseMaterial3D::FEATURE_EMISSION, true);
+	glow->set_emission(Color(1.0f, 0.78f, 0.44f));
+	glow->set_emission_energy_multiplier(1.6f);
+	Ref<BoxMesh> glass;
+	glass.instantiate();
+	glass->set_size(Vector3(0.22f, 0.24f, 0.22f));
+	glass->set_material(glow);
+	MeshInstance3D *glass_mi = memnew(MeshInstance3D);
+	glass_mi->set_mesh(glass);
+	glass_mi->set_position(lamp_base + Vector3(0.0f, 2.06f, 0.0f));
+	body->add_child(glass_mi);
+
+	OmniLight3D *lamp = memnew(OmniLight3D);
+	lamp->set_name("DockLantern");
+	lamp->set_position(lamp_base + Vector3(0.0f, 2.06f, 0.0f));
+	lamp->set_color(Color(1.0f, 0.78f, 0.48f));
+	lamp->set_param(Light3D::PARAM_ENERGY, 1.7f);
+	lamp->set_param(Light3D::PARAM_RANGE, 9.0f);
+	lamp->set_shadow(false);
+	body->add_child(lamp);
+
+	// 甲板上的缆绳圈
+	Ref<TorusMesh> rope;
+	rope.instantiate();
+	rope->set_inner_radius(0.12f);
+	rope->set_outer_radius(0.18f);
+	rope->set_rings(8);
+	rope->set_ring_segments(20);
+	rope->set_material(meshutil::toon_material(toon, Color(0.62f, 0.53f, 0.36f)));
+	MeshInstance3D *rope_mi = memnew(MeshInstance3D);
+	rope_mi->set_mesh(rope);
+	rope_mi->set_position(Vector3(-6.2f, -0.24f, -7.3f));
+	rope_mi->set_rotation(Vector3(1.5707964f, 0.0f, 0.3f));
+	body->add_child(rope_mi);
 }
