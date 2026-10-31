@@ -224,6 +224,7 @@ void Player::_notification(int p_what) {
 			rebuild_costume();
 			build_skate_shoes();
 			build_propeller();
+			build_swim_bubbles();
 
 			// 脚步声：真实雪地踩雪声优先读取外部音频资源（用户下载的踩雪声录音），其余程序化合成
 			steps_voice = memnew(AudioStreamPlayer);
@@ -907,6 +908,17 @@ void Player::_physics_step() {
 				bob_y = std::abs(std::sin(bob_phase)) * 0.05f;
 			}
 			model->set_position(Vector3(0.0, bob_y, 0.0));
+		}
+	}
+
+	// 螺旋桨气泡尾迹：游动时从桨叶处冒出，上浮消散
+	if (swim_bubbles != nullptr) {
+		const Vector3 bv = get_velocity();
+		float hspd_b = Vector2(bv.x, bv.z).length();
+		bool emit_b = is_swimming && (hspd_b > 0.35f || std::abs(bv.y) > 0.25);
+		swim_bubbles->set_emitting(emit_b);
+		if (emit_b && propeller != nullptr) {
+			swim_bubbles->set_global_position(propeller->get_global_position());
 		}
 	}
 
@@ -3662,4 +3674,41 @@ void Player::build_propeller() {
 	}
 
 	propeller->set_visible(false);
+}
+
+// —— 游泳气泡：从螺旋桨位置冒出的细小白泡，上浮后消散 ——
+void Player::build_swim_bubbles() {
+	Ref<SphereMesh> bubble;
+	bubble.instantiate();
+	bubble->set_radius(0.012f);
+	bubble->set_height(0.024f);
+	bubble->set_radial_segments(6);
+	bubble->set_rings(3);
+
+	Ref<StandardMaterial3D> bmat;
+	bmat.instantiate();
+	bmat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	bmat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	bmat->set_albedo(Color(0.82f, 0.93f, 1.0f, 0.55f));
+	bmat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	bubble->set_material(bmat);
+
+	swim_bubbles = memnew(CPUParticles3D);
+	swim_bubbles->set_name("SwimBubbles");
+	swim_bubbles->set_amount(28);
+	swim_bubbles->set_lifetime(1.7f);
+	swim_bubbles->set_mesh(bubble);
+	swim_bubbles->set_use_local_coordinates(false); // 气泡留在世界里，形成尾迹
+	swim_bubbles->set_direction(Vector3(0.0f, 1.0f, 0.0f));
+	swim_bubbles->set_spread(26.0f);
+	swim_bubbles->set_gravity(Vector3(0.0f, 0.85f, 0.0f));
+	swim_bubbles->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.12f);
+	swim_bubbles->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.38f);
+	swim_bubbles->set_param_min(CPUParticles3D::PARAM_SCALE, 0.5f);
+	swim_bubbles->set_param_max(CPUParticles3D::PARAM_SCALE, 1.3f);
+	swim_bubbles->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_SPHERE);
+	swim_bubbles->set_emission_sphere_radius(0.09f);
+	swim_bubbles->set_visibility_aabb(AABB(Vector3(-3.0f, -3.0f, -3.0f), Vector3(6.0f, 6.0f, 6.0f)));
+	swim_bubbles->set_emitting(false);
+	add_child(swim_bubbles);
 }

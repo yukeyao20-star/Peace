@@ -178,10 +178,12 @@ private:
 	bool is_swimming = false;
 	bool was_swimming = false;
 	Node3D *propeller = nullptr;
+	CPUParticles3D *swim_bubbles = nullptr; // 螺旋桨气泡尾迹
 	Node3D *propeller_blades = nullptr;
 	double swim_t = 0.0;
 	float swim_roll = 0.0f;
 	void build_propeller();
+	void build_swim_bubbles();
 
 	// —— 二段跳系统 ——
 	int jump_count = 0;                 // 当前空中跳跃次数（0: 在地面, 1: 一段跳, 2: 二段跳）
