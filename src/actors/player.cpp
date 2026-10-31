@@ -19,6 +19,8 @@
 #include <godot_cpp/classes/capsule_mesh.hpp>
 #include <godot_cpp/classes/color_rect.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
+#include <godot_cpp/classes/audio_server.hpp>
+#include <godot_cpp/classes/display_server.hpp>
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/font.hpp>
@@ -197,6 +199,19 @@ void Player::_notification(int p_what) {
 			}
 			photo_toast->hide();
 			photo_layer->add_child(photo_toast);
+
+			debug_overlay = memnew(Label);
+			debug_overlay->set_name("DebugOverlay");
+			debug_overlay->set_position(Vector2(14.0f, 300.0f));
+			debug_overlay->add_theme_font_size_override("font_size", 15);
+			debug_overlay->add_theme_color_override("font_color", Color(0.92f, 1.0f, 0.88f));
+			debug_overlay->add_theme_color_override("font_outline_color", Color(0.05f, 0.07f, 0.04f));
+			debug_overlay->add_theme_constant_override("outline_size", 5);
+			if (cjk.is_valid()) {
+				debug_overlay->add_theme_font_override("font", cjk);
+			}
+			debug_overlay->hide();
+			photo_layer->add_child(debug_overlay);
 			hud_prompt = memnew(Label);
 			hud_prompt->set_anchors_preset(Control::PRESET_CENTER_BOTTOM);
 			hud_prompt->set_offset(SIDE_LEFT, -200.0f);
@@ -221,7 +236,7 @@ void Player::_notification(int p_what) {
 			guide_panel->set_offset(SIDE_LEFT, -214.0f);
 			guide_panel->set_offset(SIDE_RIGHT, -16.0f);
 			guide_panel->set_offset(SIDE_TOP, 16.0f);
-			guide_panel->set_offset(SIDE_BOTTOM, 240.0f);
+			guide_panel->set_offset(SIDE_BOTTOM, 286.0f);
 
 			// 小黑板：墨绿板面 + 原木边框，粉笔字（与木牌/木屋同一材质语言）
 			guide_panel->add_theme_stylebox_override("panel", uistyle::make_blackboard_textured(0.98f));
@@ -240,10 +255,13 @@ void Player::_notification(int p_what) {
 				"[空格] 跳跃 · 支持凌空二段跳",
 				"[空格/Ctrl] 游泳 · 上浮 / 下潜",
 				"[E] 划船 · W/S 划行 · A/D 转向",
-				"[P] 拍照 · 隐藏界面 · F12 保存"
+				"[P] 拍照 · [H] 隐藏界面 · F12 保存",
+				"[F11] 全屏 · [V] 镜头远近",
+				"[F3] 调试 · [ - / = ] 音量"
 			};
 
-			for (int hi = 0; hi < 8; ++hi) {
+			const int hint_count = (int)(sizeof(hints) / sizeof(hints[0]));
+			for (int hi = 0; hi < hint_count; ++hi) {
 				Label *hl = memnew(Label);
 				hl->set_text(String::utf8(hints[hi]));
 				uistyle::dress_chalk_label(hl, 13, uistyle::chalk_font());
@@ -523,6 +541,28 @@ void Player::_notification(int p_what) {
 				_update_look(p_delta); // 睡觉或展开大地图时鼠标不转动视角
 			}
 			_update_camera(p_delta);
+			if (debug_overlay != nullptr && debug_overlay->is_visible()) {
+				debug_t -= p_delta;
+				if (debug_t <= 0.0f) {
+					debug_t = 0.2f;
+					const Vector3 pp = get_global_position();
+					String state = String::utf8("行走");
+					if (photo_mode) {
+						state = String::utf8("拍照");
+					} else if (is_sitting) {
+						state = String::utf8("坐下");
+					} else if (is_boating) {
+						state = String::utf8("划船");
+					} else if (is_swimming) {
+						state = String::utf8("游泳");
+					}
+					debug_overlay->set_text(String::utf8("FPS ") + String::num_int64(Engine::get_singleton()->get_frames_per_second())
+							+ String::utf8(" · ") + state
+							+ String::utf8(" · X ") + String::num(pp.x, 1.0)
+							+ String::utf8("  Y ") + String::num(pp.y, 1.0)
+							+ String::utf8("  Z ") + String::num(pp.z, 1.0));
+				}
+			}
 			if (photo_toast_t > 0.0f && photo_toast != nullptr) {
 				photo_toast_t -= p_delta;
 				if (photo_toast_t <= 0.0f) {
@@ -625,6 +665,53 @@ void Player::_physics_step() {
 		}
 		return;
 	}
+
+	// 2.2 界面/显示快捷操作：H 收起 HUD、F11 全屏、[ - / = ] 音量、F3 调试、C 镜头远近
+	bool h_down = input->is_key_pressed(KEY_H);
+	if (h_down && !hud_key_prev && !photo_mode) {
+		hud_hidden = !hud_hidden;
+		set_hud_visible(!hud_hidden);
+		show_photo_toast(hud_hidden ? String::utf8("界面已收起 · H 恢复") : String::utf8("界面已恢复"), 1.8f);
+	}
+	hud_key_prev = h_down;
+
+	bool f11_down = input->is_key_pressed(KEY_F11);
+	if (f11_down && !f11_prev) {
+		DisplayServer *ds = DisplayServer::get_singleton();
+		bool fs = ds->window_get_mode() == DisplayServer::WINDOW_MODE_FULLSCREEN
+				|| ds->window_get_mode() == DisplayServer::WINDOW_MODE_EXCLUSIVE_FULLSCREEN;
+		ds->window_set_mode(fs ? DisplayServer::WINDOW_MODE_WINDOWED : DisplayServer::WINDOW_MODE_FULLSCREEN);
+		show_photo_toast(fs ? String::utf8("窗口模式") : String::utf8("全屏模式 · F11 返回"), 1.6f);
+	}
+	f11_prev = f11_down;
+
+	bool vol_down = input->is_key_pressed(KEY_MINUS) || input->is_key_pressed(KEY_KP_SUBTRACT)
+			|| input->is_key_pressed(KEY_EQUAL) || input->is_key_pressed(KEY_KP_ADD);
+	if (vol_down && !vol_key_prev) {
+		bool up = input->is_key_pressed(KEY_EQUAL) || input->is_key_pressed(KEY_KP_ADD);
+		master_volume = Math::clamp(master_volume + (up ? 0.1f : -0.1f), 0.0f, 1.0f);
+		AudioServer *as = AudioServer::get_singleton();
+		as->set_bus_mute(0, master_volume <= 0.001f);
+		as->set_bus_volume_db(0, Math::linear_to_db(Math::max(master_volume, 0.001f)));
+		show_photo_toast(String::utf8("音量 ") + String::num_int64((int)Math::round(master_volume * 100.0f)) + String::utf8("%"), 1.2f);
+	}
+	vol_key_prev = vol_down;
+
+	bool f3_down = input->is_key_pressed(KEY_F3);
+	if (f3_down && !f3_prev && debug_overlay != nullptr) {
+		debug_overlay->set_visible(!debug_overlay->is_visible());
+		debug_t = 0.0f;
+	}
+	f3_prev = f3_down;
+
+	bool cam_down = input->is_key_pressed(KEY_V);
+	if (cam_down && !cam_key_prev && !photo_mode) {
+		cam_preset = (cam_preset + 1) % 3;
+		cam_dist = (cam_preset == 0) ? 3.2 : ((cam_preset == 1) ? 5.5 : 8.2);
+		show_photo_toast(cam_preset == 0 ? String::utf8("镜头 · 近")
+				: (cam_preset == 1 ? String::utf8("镜头 · 标准") : String::utf8("镜头 · 远")), 1.4f);
+	}
+	cam_key_prev = cam_down;
 
 	// 2.3 拍照模式：位置冻结、隐藏角色和 HUD，只留自由机位
 	bool p_down = input->is_key_pressed(KEY_P);
@@ -1156,6 +1243,15 @@ void Player::_update_interaction() {
 			}
 		}
 	}
+	if (hud_hidden) {
+		if (prompt != nullptr) {
+			prompt->hide();
+		}
+		if (hud_prompt != nullptr) {
+			hud_prompt->hide();
+		}
+	}
+
 	// 已选中的目标开着/关着时提示文案可能变化（开门后变"关门"）
 	if (near_target != nullptr && prompt != nullptr && prompt->is_visible()) {
 		prompt->set_text(near_target->get_prompt());
@@ -1297,31 +1393,35 @@ void Player::_update_look(double delta) {
 //   鼠标一转，目标机位是绕球面瞬移的，但相机位置在慢慢追，
 //   结果就是"视角永远慢半拍"。用户报的"有延迟/有积分"主要就是这一条。
 //   现在改成：跟随时（角色走动）平滑，环绕（鼠标转动）直接给到位。
-void Player::set_photo_mode(bool p_on) {
-	photo_mode = p_on;
-	if (model != nullptr) {
-		model->set_visible(!p_on);
-	}
+void Player::set_hud_visible(bool p_visible) {
 	if (hud_layer != nullptr) {
-		hud_layer->set_visible(!p_on);
+		hud_layer->set_visible(p_visible);
 	}
 	if (get_parent() != nullptr) {
 		CanvasLayer *gd = Object::cast_to<CanvasLayer>(get_parent()->get_node_or_null("GameDirector"));
 		if (gd != nullptr) {
-			gd->set_visible(!p_on);
+			gd->set_visible(p_visible);
 		}
 		CanvasLayer *clock = Object::cast_to<CanvasLayer>(get_parent()->get_node_or_null("HUDClock"));
 		if (clock != nullptr) {
-			clock->set_visible(!p_on);
+			clock->set_visible(p_visible);
 		}
 		Node *fishing = get_parent()->get_node_or_null("FishingSystem");
 		if (fishing != nullptr) {
 			CanvasLayer *flayer = Object::cast_to<CanvasLayer>(fishing->get_node_or_null("FishingUI"));
 			if (flayer != nullptr) {
-				flayer->set_visible(!p_on);
+				flayer->set_visible(p_visible);
 			}
 		}
 	}
+}
+
+void Player::set_photo_mode(bool p_on) {
+	photo_mode = p_on;
+	if (model != nullptr) {
+		model->set_visible(!p_on);
+	}
+	set_hud_visible(!p_on && !hud_hidden);
 	if (p_on) {
 		show_photo_toast(String::utf8("拍照模式 · 鼠标转视角 · 滚轮缩放 · F12 保存 · P 退出"), 5.0f);
 		if (prompt != nullptr) {

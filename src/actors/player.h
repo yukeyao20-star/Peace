@@ -210,10 +210,21 @@ private:
 	bool photo_mode = false;   // 拍照模式：隐藏 HUD/角色，只留自由机位
 	bool photo_prev = false;
 	bool f12_prev = false;
+	bool hud_hidden = false;   // H：手动收起 HUD
+	bool hud_key_prev = false;
+	bool f11_prev = false;
+	bool f3_prev = false;
+	bool cam_key_prev = false;
+	bool vol_key_prev = false;
+	int cam_preset = 1;        // C：镜头近/标准/远
+	float master_volume = 1.0f;
 	godot::CanvasLayer *photo_layer = nullptr;
 	godot::Label *photo_toast = nullptr;
+	godot::Label *debug_overlay = nullptr;
 	float photo_toast_t = 0.0f;
+	float debug_t = 0.0f;
 	void set_photo_mode(bool p_on);
+	void set_hud_visible(bool p_visible);
 	void save_photo();
 	void show_photo_toast(const godot::String &p_text, float p_seconds);
 	Vector3 sit_pos;
