@@ -903,6 +903,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.15, 0.18, 4.9)
 
 [node name="LeafDrift" type="LeafDrift" parent="."]
 
+[node name="Scarecrow" type="Scarecrow" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15, 0, 19)
+
 [node name="MorningGlory" type="MorningGlory" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11.65, 0, 14.72)
 
