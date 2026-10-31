@@ -18,6 +18,7 @@
 namespace godot {
 
 class MeshInstance3D;
+class SkyCycle;
 
 class Sunflowers : public Node3D {
 	GDCLASS(Sunflowers, Node3D)
@@ -34,6 +35,7 @@ class Sunflowers : public Node3D {
 	float head_pitch = 0.0f;
 	int bees_visible = 0;
 	bool sun_up = true;
+	SkyCycle *sky = nullptr;
 
 	void build();
 

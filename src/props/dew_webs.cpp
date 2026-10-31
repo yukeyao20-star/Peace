@@ -10,6 +10,8 @@
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
+#include <godot_cpp/classes/multi_mesh.hpp>
+#include <godot_cpp/classes/multi_mesh_instance3d.hpp>
 #include <godot_cpp/classes/torus_mesh.hpp>
 #include <godot_cpp/classes/window.hpp>
 
@@ -87,18 +89,19 @@ void DewWebs::_notification(int p_what) {
 
 			// 露珠
 			dew_visible = 0;
+			const bool dew_on = webs_visible && dew > 0.08f;
+			const float ds = 0.4f + 0.6f * dew;
 			for (int w = 0; w < WEB_COUNT; w++) {
+				if (!dew_multimesh[w].is_valid()) {
+					continue;
+				}
 				for (int d = 0; d < DEW_PER_WEB; d++) {
-					MeshInstance3D *drop = dewdrops[w][d];
-					if (drop == nullptr) {
-						continue;
-					}
-					const bool vis = webs_visible && dew > 0.08f;
-					drop->set_visible(vis);
-					if (vis) {
-						const float s = 0.4f + 0.6f * dew;
-						drop->set_scale(Vector3(s, s, s));
+					if (dew_on) {
+						const Basis b = Basis().scaled(Vector3(ds, ds, ds));
+						dew_multimesh[w]->set_instance_transform(d, Transform3D(b, dew_pos[w][d]));
 						dew_visible++;
+					} else {
+						dew_multimesh[w]->set_instance_transform(d, Transform3D(Basis().scaled(Vector3()), Vector3()));
 					}
 				}
 			}
@@ -166,6 +169,14 @@ void DewWebs::build() {
 	dew_mesh->set_rings(2);
 	dew_mesh->set_material(dew_mat);
 
+	Ref<TorusMesh> unit_ring;
+	unit_ring.instantiate();
+	unit_ring->set_inner_radius(0.985f);
+	unit_ring->set_outer_radius(1.0f);
+	unit_ring->set_rings(20);
+	unit_ring->set_ring_segments(3);
+	unit_ring->set_material(web_mat);
+
 	const Vector3 wpos[WEB_COUNT] = {
 		Vector3(0.0f, 1.05f, 0.0f),
 		Vector3(0.52f, 0.86f, 0.10f),
@@ -181,44 +192,55 @@ void DewWebs::build() {
 		add_child(web);
 		webs[w] = web;
 
+		Ref<MultiMesh> spokes;
+		spokes.instantiate();
+		spokes->set_transform_format(MultiMesh::TRANSFORM_3D);
+		spokes->set_mesh(spoke);
+		spokes->set_instance_count(8);
 		for (int s = 0; s < 8; s++) {
 			const float a = (float)s * 0.7854f;
 			const float len = wradius[w];
 			const Basis b(Vector3(0.0f, 0.0f, 1.0f), a - 1.5707964f);
 			const Basis sb = b.scaled(Vector3(1.0f, len, 1.0f));
-			MeshInstance3D *sp = memnew(MeshInstance3D);
-			sp->set_mesh(spoke);
-			sp->set_transform(Transform3D(sb, Vector3(std::cos(a) * len * 0.5f, std::sin(a) * len * 0.5f, 0.0f)));
-			sp->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
-			web->add_child(sp);
+			spokes->set_instance_transform(s, Transform3D(sb,
+					Vector3(std::cos(a) * len * 0.5f, std::sin(a) * len * 0.5f, 0.0f)));
 		}
+		MultiMeshInstance3D *spoke_mi = memnew(MultiMeshInstance3D);
+		spoke_mi->set_multimesh(spokes);
+		spoke_mi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+		web->add_child(spoke_mi);
+
+		Ref<MultiMesh> rings;
+		rings.instantiate();
+		rings->set_transform_format(MultiMesh::TRANSFORM_3D);
+		rings->set_mesh(unit_ring);
+		rings->set_instance_count(3);
 		for (int r = 1; r <= 3; r++) {
-			Ref<TorusMesh> ring;
-			ring.instantiate();
 			const float rad = wradius[w] * (float)r / 3.0f;
-			ring->set_inner_radius(rad - 0.0025f);
-			ring->set_outer_radius(rad + 0.0025f);
-			ring->set_rings(20);
-			ring->set_ring_segments(3);
-			ring->set_material(web_mat);
-			MeshInstance3D *rm = memnew(MeshInstance3D);
-			rm->set_mesh(ring);
-			rm->set_rotation(Vector3(1.5707964f, 0.0f, 0.0f));
-			rm->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
-			web->add_child(rm);
+			const Basis rb = Basis(Vector3(1.0f, 0.0f, 0.0f), 1.5707964f).scaled(Vector3(rad, rad, 1.0f));
+			rings->set_instance_transform(r - 1, Transform3D(rb, Vector3()));
 		}
-		// 露珠分布在网线上
+		MultiMeshInstance3D *ring_mi = memnew(MultiMeshInstance3D);
+		ring_mi->set_multimesh(rings);
+		ring_mi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+		web->add_child(ring_mi);
+
+		Ref<MultiMesh> dew_mm;
+		dew_mm.instantiate();
+		dew_mm->set_transform_format(MultiMesh::TRANSFORM_3D);
+		dew_mm->set_mesh(dew_mesh);
+		dew_mm->set_instance_count(DEW_PER_WEB);
 		for (int d = 0; d < DEW_PER_WEB; d++) {
 			const float a = (float)d * 0.9f + (float)w * 0.7f;
 			const float rad = wradius[w] * (0.25f + 0.7f * (float)((d + w) % 3) / 2.0f);
-			MeshInstance3D *dm = memnew(MeshInstance3D);
-			dm->set_mesh(dew_mesh);
-			dm->set_position(Vector3(std::cos(a) * rad, std::sin(a) * rad, 0.006f));
-			dm->set_visible(false);
-			dm->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
-			web->add_child(dm);
-			dewdrops[w][d] = dm;
+			dew_pos[w][d] = Vector3(std::cos(a) * rad, std::sin(a) * rad, 0.006f);
+			dew_mm->set_instance_transform(d, Transform3D(Basis().scaled(Vector3()), Vector3()));
 		}
+		dew_multimesh[w] = dew_mm;
+		MultiMeshInstance3D *dew_mi = memnew(MultiMeshInstance3D);
+		dew_mi->set_multimesh(dew_mm);
+		dew_mi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+		web->add_child(dew_mi);
 	}
 
 	// 小蜘蛛

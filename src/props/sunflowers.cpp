@@ -2,12 +2,17 @@
 
 #include <cmath>
 
+#include <godot_cpp/classes/array_mesh.hpp>
 #include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/geometry_instance3d.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/mesh.hpp>
+#include <godot_cpp/classes/multi_mesh.hpp>
+#include <godot_cpp/classes/multi_mesh_instance3d.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
+#include <godot_cpp/classes/surface_tool.hpp>
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/classes/window.hpp>
@@ -38,9 +43,9 @@ void Sunflowers::_notification(int p_what) {
 		case NOTIFICATION_PROCESS: {
 			const float delta = (float)get_process_delta_time();
 			t += delta;
-			SkyCycle *sky = (get_tree() != nullptr)
-					? Object::cast_to<SkyCycle>(get_tree()->get_root()->find_child("SkyCycle", true, false))
-					: nullptr;
+			if (sky == nullptr && get_tree() != nullptr) {
+				sky = Object::cast_to<SkyCycle>(get_tree()->get_root()->find_child("SkyCycle", true, false));
+			}
 			float target_yaw = 0.0f;
 			float target_pitch = 0.0f;
 			sun_up = true;
@@ -127,9 +132,29 @@ void Sunflowers::build() {
 	Ref<BoxMesh> petal_mesh;
 	petal_mesh.instantiate();
 	petal_mesh->set_size(Vector3(0.11f, 0.045f, 0.012f));
-	petal_mesh->set_material(meshutil::toon_material(toon, Color(0.95f, 0.76f, 0.18f), 0.25f));
 
-	const Color leaf_col(0.32f, 0.50f, 0.22f);
+	// 优化（第 120 轮）：茎/叶各自合成一个 MultiMesh，每朵花盘的 12 片花瓣
+	// 用 SurfaceTool 烘成一张网格，6 株向日葵的 draw call 从约 100 降到 14。
+	Ref<MultiMesh> stem_mm;
+	stem_mm.instantiate();
+	stem_mm->set_transform_format(MultiMesh::TRANSFORM_3D);
+	stem_mm->set_mesh(stem_mesh);
+	stem_mm->set_instance_count(FLOWER_COUNT);
+
+	Ref<SphereMesh> leaf_sphere;
+	leaf_sphere.instantiate();
+	leaf_sphere->set_radius(1.0f);
+	leaf_sphere->set_height(2.0f);
+	leaf_sphere->set_radial_segments(6);
+	leaf_sphere->set_rings(3);
+	leaf_sphere->set_material(meshutil::toon_material(toon, Color(0.32f, 0.50f, 0.22f), 0.2f));
+	Ref<MultiMesh> leaf_mm;
+	leaf_mm.instantiate();
+	leaf_mm->set_transform_format(MultiMesh::TRANSFORM_3D);
+	leaf_mm->set_mesh(leaf_sphere);
+	leaf_mm->set_instance_count(FLOWER_COUNT * 3);
+
+	int leaf_i = 0;
 	const float xs[FLOWER_COUNT] = { -1.5f, -0.9f, -0.3f, 0.3f, 0.9f, 1.5f };
 	for (int i = 0; i < FLOWER_COUNT; i++) {
 		const float zoff = 0.25f * std::sin((float)i * 2.1f);
@@ -137,15 +162,13 @@ void Sunflowers::build() {
 		stem->set_name(String("Sunflower") + String::num_int64(i));
 		stem->set_position(Vector3(xs[i], 0.0f, zoff));
 		add_child(stem);
-		MeshInstance3D *smi = memnew(MeshInstance3D);
-		smi->set_mesh(stem_mesh);
-		smi->set_position(Vector3(0.0f, 0.65f, 0.0f));
-		stem->add_child(smi);
+		stem_mm->set_instance_transform(i, Transform3D(Basis(), Vector3(xs[i], 0.65f, zoff)));
 
 		for (int l = 0; l < 3; l++) {
-			MeshInstance3D *leaf = meshutil::add_sphere(stem, toon, 0.13f,
-					Vector3((l % 2 == 0 ? -1.0f : 1.0f) * 0.16f, 0.35f + 0.28f * (float)l, 0.02f), leaf_col);
-			leaf->set_scale(Vector3(1.1f, 0.16f, 0.55f));
+			const Basis sb(Vector3(0.0f, 1.0f, 0.0f), (float)(i * 3 + l) * 1.1f);
+			const Basis scaled = sb.scaled(Vector3(0.143f, 0.021f, 0.0715f));
+			leaf_mm->set_instance_transform(leaf_i++, Transform3D(scaled,
+					Vector3(xs[i] + (l % 2 == 0 ? -1.0f : 1.0f) * 0.16f, 0.35f + 0.28f * (float)l, zoff + 0.02f)));
 		}
 
 		Node3D *head = memnew(Node3D);
@@ -157,15 +180,30 @@ void Sunflowers::build() {
 		dmi->set_mesh(disc_mesh);
 		dmi->set_rotation(Vector3(1.5707964f, 0.0f, 0.0f));
 		head->add_child(dmi);
+
+		Ref<SurfaceTool> st;
+		st.instantiate();
+		st->begin(Mesh::PRIMITIVE_TRIANGLES);
 		for (int p = 0; p < 12; p++) {
 			const float a = (float)p * 0.5236f;
-			MeshInstance3D *petal = memnew(MeshInstance3D);
-			petal->set_mesh(petal_mesh);
-			petal->set_position(Vector3(std::cos(a) * 0.22f, std::sin(a) * 0.22f, 0.0f));
-			petal->set_rotation(Vector3(0.0f, 0.0f, a));
-			head->add_child(petal);
+			const Basis pb(Vector3(0.0f, 0.0f, 1.0f), a);
+			st->append_from(petal_mesh, 0, Transform3D(pb, Vector3(std::cos(a) * 0.22f, std::sin(a) * 0.22f, 0.0f)));
 		}
+		Ref<ArrayMesh> petals = st->commit();
+		petals->surface_set_material(0, meshutil::toon_material(toon, Color(0.95f, 0.76f, 0.18f), 0.25f));
+		MeshInstance3D *pmi = memnew(MeshInstance3D);
+		pmi->set_mesh(petals);
+		head->add_child(pmi);
 	}
+
+	MultiMeshInstance3D *stem_mi = memnew(MultiMeshInstance3D);
+	stem_mi->set_name("Stems");
+	stem_mi->set_multimesh(stem_mm);
+	add_child(stem_mi);
+	MultiMeshInstance3D *leaf_mi = memnew(MultiMeshInstance3D);
+	leaf_mi->set_name("Leaves");
+	leaf_mi->set_multimesh(leaf_mm);
+	add_child(leaf_mi);
 
 	// 两只小蜂
 	const Color black(0.16f, 0.13f, 0.10f);

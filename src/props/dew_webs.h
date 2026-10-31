@@ -11,11 +11,13 @@
 //   * Godot 官方 Environment glow 文档 —— 清晨露珠用自发光小点表现。
 
 #include <godot_cpp/classes/node3d.hpp>
+#include <godot_cpp/classes/ref.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
 namespace godot {
 
 class MeshInstance3D;
+class MultiMesh;
 class SkyCycle;
 
 class DewWebs : public Node3D {
@@ -26,7 +28,8 @@ class DewWebs : public Node3D {
 
 	Node3D *webs[WEB_COUNT] = {};
 	Node3D *spider = nullptr;
-	MeshInstance3D *dewdrops[WEB_COUNT][DEW_PER_WEB] = {};
+	Ref<MultiMesh> dew_multimesh[WEB_COUNT];
+	Vector3 dew_pos[WEB_COUNT][DEW_PER_WEB];
 	Node3D *player = nullptr;
 	SkyCycle *sky = nullptr;
 
