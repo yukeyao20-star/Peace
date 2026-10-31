@@ -124,7 +124,8 @@
 | 111 | 院中晾衣绳（调研悬挂布摆动后：四件衣物挂点轻摆/淋湿变深滴水/雪落绳面/按 E 收衣服再晾回） | 84ba546 |
 | 112 | 篱笆牵牛花（调研藤蔓生成后：5 根藤 MultiMesh/6 朵晨开午合/清晨露珠/白天小蜂/雨雪闭花） | a8f3034 |
 | 113 | 院角稻草人（调研乌鸦 AI 后：木架草人/袖子随风/两只乌鸦绕飞不落近/程序化鸦叫/按 E 扶正草帽） | a9b2061 |
-| 114 | 小鸡舍（调研鸡群漫步后：木窝草窝/三只母鸡走-啄食状态机/靠近扑翅逃开/按 E 收蛋/定时再下蛋） | 本轮提交 |
+| 114 | 小鸡舍（调研鸡群漫步后：木窝草窝/三只母鸡走-啄食状态机/靠近扑翅逃开/按 E 收蛋/定时再下蛋） | 54ef5af |
+| 115 | 室内书架（调研书籍交互后：三层木架 27 本书/书脊随机深浅与歪斜/按 E 抽书读短文/翻页声/书架尘光） | 本轮提交 |
 
 ## 编号对账
 
@@ -225,6 +226,12 @@ FPS 基本不变：当前场景主要瓶颈仍在整片地形/植被的三角形
 - konbel/steering-behaviors-godot-4 —— Wander + Flee 的基本行为
 - dusoleil/chicken-chaser-gd —— mov_length / peck_chance / flap_chance 概率状态
 - CSDN《Godot4.3 小鸡 NPC》—— 行走/空闲由计时器驱动、靠近玩家逃跑
+
+第 115 轮补充参考：
+- godot-tutorial.net 逃脱教程 Part 3 —— 书架/门/物品统一成 LOOKABLE /
+  OPENABLE / PICKABLE 交互类型
+- mbiggeri/Aura_Interaction-Godot3D —— RayCast + Interactable 基类的聚焦/检视交互
+- miskatonicstudio/interactive-book-godot —— 可翻阅书籍的结构参考
 
 ## 收尾
 
