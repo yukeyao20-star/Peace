@@ -103,6 +103,7 @@
 #include "weather_station.h"
 #include "garden_windmill.h"
 #include "hanging_baskets.h"
+#include "hearth_tools.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
 #include "leaf_drift.h"
@@ -230,6 +231,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(WeatherStation);
 	GDREGISTER_CLASS(GardenWindmill);
 	GDREGISTER_CLASS(HangingBaskets);
+	GDREGISTER_CLASS(HearthTools);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
 	GDREGISTER_CLASS(LeafDrift);
