@@ -87,6 +87,7 @@ void SkyCycle::_bind_methods() {
 	// 雨雪因子 getter 此前只有 C++ 调用方，-s 脚本摸不到（坑 17.3），补绑
 	ClassDB::bind_method(D_METHOD("get_rain_amount"), &SkyCycle::get_rain_amount);
 	ClassDB::bind_method(D_METHOD("get_rainbow_fade"), &SkyCycle::get_rainbow_fade);
+	ClassDB::bind_method(D_METHOD("get_aurora_fade"), &SkyCycle::get_aurora_fade);
 	ClassDB::bind_method(D_METHOD("get_snow_amount"), &SkyCycle::get_snow_amount);
 	// —— 天气状态快照（SaveSystem 存读用）——
 	ClassDB::bind_method(D_METHOD("set_day_count", "p_day"), &SkyCycle::set_day_count);
@@ -142,6 +143,7 @@ void SkyCycle::_notification(int p_what) {
 			build_underwater_ambience();
 			build_storm();
 			build_rainbow();
+			build_aurora();
 			// 调试：ZCODE_FORCE_METEOR=1 时首次流星提前到 0.4s（探针截图用）
 			if (OS::get_singleton() != nullptr
 					&& OS::get_singleton()->get_environment("ZCODE_FORCE_METEOR") == "1") {
@@ -174,6 +176,7 @@ void SkyCycle::_notification(int p_what) {
 			snow = Math::move_toward(snow, snow_target, (float)delta * 0.045f); // 积雪与消融过渡放缓3倍，从容自然
 			apply();
 			update_rainbow((float)delta);
+			update_aurora((float)delta);
 			// —— 暴雨闪电：厚雨云里偶尔一道白光，随后传来雷声 ——
 			{
 				static std::mt19937 storm_rng(20261101u);
@@ -1325,6 +1328,76 @@ void SkyCycle::update_rainbow(float p_delta) {
 			Color c = rainbow_mats[i]->get_albedo();
 			c.a = base_alpha[i] * rainbow_fade;
 			rainbow_mats[i]->set_albedo(c);
+		}
+	}
+}
+
+
+void SkyCycle::build_aurora() {
+	Ref<Resource> res = ResourceLoader::get_singleton()->load("res://assets/aurora.gdshader");
+	Ref<Shader> shader = Ref<Shader>(Object::cast_to<Shader>(res.ptr()));
+	if (shader.is_null()) {
+		return;
+	}
+	const Color pairs[3][2] = {
+		{Color(0.25f, 1.0f, 0.55f), Color(0.30f, 0.70f, 1.0f)},
+		{Color(0.35f, 0.95f, 0.80f), Color(0.55f, 0.45f, 0.95f)},
+		{Color(0.50f, 0.90f, 0.70f), Color(0.85f, 0.45f, 0.75f)},
+	};
+	aurora = memnew(Node3D);
+	aurora->set_name("Aurora");
+	add_child(aurora);
+	aurora->set_visible(false);
+	for (int i = 0; i < 3; i++) {
+		Ref<QuadMesh> quad;
+		quad.instantiate();
+		quad->set_size(Vector2(150.0f - (float)i * 16.0f, 46.0f - (float)i * 5.0f));
+		aurora_mats[i].instantiate();
+		aurora_mats[i]->set_shader(shader);
+		aurora_mats[i]->set_shader_parameter("color_a", pairs[i][0]);
+		aurora_mats[i]->set_shader_parameter("color_b", pairs[i][1]);
+		aurora_mats[i]->set_shader_parameter("strength", 0.0f);
+		aurora_mats[i]->set_shader_parameter("phase", (float)i * 1.7f);
+		quad->set_material(aurora_mats[i]);
+		MeshInstance3D *mi = memnew(MeshInstance3D);
+		mi->set_name(String("AuroraRibbon") + String::num_int64(i));
+		mi->set_mesh(quad);
+		mi->set_position(Vector3(-6.0f, 58.0f + (float)i * 7.0f, 128.0f + (float)i * 5.0f));
+		mi->set_rotation(Vector3(0.0f, 3.1415926f, 0.0f));
+		aurora->add_child(mi);
+	}
+}
+
+void SkyCycle::update_aurora(float p_delta) {
+	if (aurora == nullptr) {
+		return;
+	}
+	bool force = OS::get_singleton() != nullptr
+			&& OS::get_singleton()->get_environment("ZCODE_FORCE_AURORA") == "1";
+	const float night_f = get_night_factor();
+	aurora_timer -= p_delta;
+	if (force) {
+		aurora_hold = Math::max(aurora_hold, 30.0f);
+	} else if (aurora_timer <= 0.0f) {
+		if (night_f > 0.82f && rain < 0.08f && snow < 0.08f && aurora_hold <= 0.0f) {
+			aurora_hold = 42.0f;
+		}
+		aurora_timer = 150.0f + (float)(std::rand() % 120);
+	}
+	if (aurora_hold > 0.0f) {
+		aurora_hold -= p_delta;
+	}
+	const float target = aurora_hold > 0.0f ? 1.0f : 0.0f;
+	aurora_fade = Math::move_toward(aurora_fade, target, p_delta * (target > aurora_fade ? 0.20f : 0.30f));
+	if (aurora_fade <= 0.008f) {
+		aurora_fade = 0.0f;
+		aurora->set_visible(false);
+		return;
+	}
+	aurora->set_visible(true);
+	for (int i = 0; i < 3; i++) {
+		if (aurora_mats[i].is_valid()) {
+			aurora_mats[i]->set_shader_parameter("strength", aurora_fade);
 		}
 	}
 }

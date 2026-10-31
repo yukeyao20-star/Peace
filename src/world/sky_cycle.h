@@ -80,6 +80,15 @@ private:
 	CPUParticles3D *fireflies_b = nullptr; // 长椅水湾的第二簇萤火虫
 	CPUParticles3D *fireflies_c = nullptr; // 秋千草地的第三簇萤火虫
 
+	// —— 极光 ——
+	Node3D *aurora = nullptr;
+	Ref<class ShaderMaterial> aurora_mats[3];
+	float aurora_fade = 0.0f;
+	float aurora_hold = 0.0f;
+	float aurora_timer = 90.0f;
+	void build_aurora();
+	void update_aurora(float p_delta);
+
 	// —— 雨后彩虹 ——
 	Node3D *rainbow = nullptr;
 	Ref<class StandardMaterial3D> rainbow_mats[7];
@@ -182,6 +191,7 @@ public:
 	float get_snow_amount() const { return snow; } // 雪强因子 0..1
 	Vector3 get_sun_dir() const { return sun_dir; } // 指向太阳/月亮的世界方向（植被透光等用）
 	float get_rainbow_fade() const { return rainbow_fade; }
+	float get_aurora_fade() const { return aurora_fade; }
 
 	// 某世界坐标点是否在屋檐下（屋里 / 檐下）。与降水粒子剔除用同一套遮蔽体，
 	// 供 Ambience 判断"人在室内就该把雨雪声压掉"。
