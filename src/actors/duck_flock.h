@@ -52,6 +52,7 @@ private:
 	AudioStreamPlayer3D *voice = nullptr; // 嘎嘎声源
 	Ref<AudioStreamWAV> quack_stream;
 	float quack_timer = 6.0f;
+	float rest_k = 0.0f; // 夜间栖岸权重（0 巡游 → 1 靠岸歇息）
 	bool first_frame = true;
 	std::vector<Vector3> last_pos;
 

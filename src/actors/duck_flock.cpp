@@ -100,16 +100,24 @@ void DuckFlock::_notification(int p_what) {
 					quack_timer = 4.0f;
 				}
 			}
-			// 夜晚鸭子放慢巡游（贴着水面歇着漂），白天正常速度
+			// 夜晚：先放慢巡游，再渐渐靠向南岸歇息（栖岸）；清晨自动散回巡游
 			float night_mul = 1.0f;
+			float rest_target = 0.0f;
 			if (sky_cycle != nullptr) {
 				SkyCycle *sky = Object::cast_to<SkyCycle>(sky_cycle);
 				if (sky != nullptr) {
 					float td = sky->get_time_of_day();
 					bool night = td < 0.22f || td > 0.78f;
 					night_mul = night ? 0.35f : 1.0f;
+					if (sky->get_night_factor() > 0.65f) {
+						rest_target = 1.0f;
+					}
 				}
 			}
+			if (feed_t > 0.0f) {
+				rest_target = 0.0f; // 投喂时优先聚拢
+			}
+			rest_k = Math::move_toward(rest_k, rest_target, (float)delta * 0.30f);
 			// 喂食聚拢权重：1.2s 游过去、最后 1.5s 散开
 			float gather_k = 0.0f;
 			if (feed_t > 0.0f) {
@@ -123,7 +131,7 @@ void DuckFlock::_notification(int p_what) {
 				if (d.root == nullptr) {
 					continue;
 				}
-				d.angle += d.speed * night_mul * (float)delta;
+				d.angle += d.speed * night_mul * (float)delta * (1.0f - rest_k * 0.92f);
 				float bob = std::sin(anim_t * d.bob_w + d.bob_phase) * 0.012f;
 				Vector3 pos(lake_center.x + std::cos(d.angle) * d.radius,
 						water_level + 0.02f + bob,
@@ -135,6 +143,14 @@ void DuckFlock::_notification(int p_what) {
 							water_level + 0.02f + bob,
 							feed_point.z + std::sin(ga) * gr);
 					pos = pos.lerp(gather, gather_k);
+				} else if (rest_k > 0.001f) {
+					// 南岸一溜儿歇脚点：绕着桥南浅水，各自错开避免叠在一起
+					float ra = 2.05f + ((float)di - 0.5f * (float)(ducks.size() - 1)) * 0.17f;
+					float rr = 13.2f + 0.35f * (float)(di % 3);
+					Vector3 rest(lake_center.x + std::cos(ra) * rr,
+							water_level + 0.02f + bob * 0.35f,
+							lake_center.y + std::sin(ra) * rr);
+					pos = pos.lerp(rest, rest_k * 0.92f);
 				}
 				d.root->set_global_position(pos);
 				Vector3 gpos = pos;
@@ -153,6 +169,13 @@ void DuckFlock::_notification(int p_what) {
 					Vector3 tangent(-std::sin(d.angle) * sgn, 0.0f, std::cos(d.angle) * sgn);
 					float yaw = std::atan2(tangent.x, tangent.z) + d.yaw_offset;
 					dir = Vector3(std::sin(yaw), 0.0f, std::cos(yaw));
+					if (rest_k > 0.02f) {
+						// 栖岸时大多面向湖心，安静漂着
+						Vector3 to_center(lake_center.x - gpos.x, 0.0f, lake_center.y - gpos.z);
+						if (to_center.length_squared() > 0.0001f) {
+							dir = dir.lerp(to_center.normalized(), Math::min(1.0f, rest_k)).normalized();
+						}
+					}
 				}
 				d.root->look_at(gpos + dir, Vector3(0.0f, 1.0f, 0.0f));
 				// 轻微左右摇晃（像踩水）
