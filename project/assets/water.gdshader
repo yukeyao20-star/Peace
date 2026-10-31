@@ -33,6 +33,8 @@ uniform float freeze_amount : hint_range(0.0, 1.0) = 0.0; // 结冰量 0..1（Sk
 uniform vec3 ice_color : source_color = vec3(0.72, 0.85, 0.93); // 冰面底色
 uniform vec3 sun_dir = vec3(0.3, 0.8, 0.5);      // 指向太阳/月亮的方向（SkyCycle 每帧写入）
 uniform float sun_glint : hint_range(0.0, 1.0) = 1.0; // 高光强度（白昼×晴天度；夜里=月光残量）
+uniform vec3 glint_color : source_color = vec3(1.0, 0.96, 0.86); // 高光颜色（白天暖白/夜里冷银蓝）
+uniform float night_glint : hint_range(0.0, 1.0) = 0.0;          // 夜间月光水路强度
 uniform float shore_wave_speed : hint_range(0.0, 5.0) = 2.8;  // 拍岸浪推进速度（向岸翻滚周期）
 uniform float shore_wave_freq : hint_range(1.0, 20.0) = 7.5;  // 破浪深度频率（浪卷紧凑度）
 uniform float shore_wave_reach : hint_range(0.2, 6.0) = 2.6;  // 拍岸浪作用水深范围（米，越大影响越深处）
@@ -274,8 +276,28 @@ void fragment() {
 	// 强度由 SkyCycle 按白昼×晴天度驱动（夜里剩月光残量），结冰大幅衰减
 	float spec_t = pow(max(dot(reflect(-view_dir, n), sun_dir), 0.0), 240.0);
 	float spec_w = pow(max(dot(reflect(-view_dir, n), sun_dir), 0.0), 24.0);
-	col += vec3(1.0, 0.96, 0.86) * (spec_t * 2.6 + spec_w * 0.10) * sun_glint
+	col += glint_color * (spec_t * 2.6 + spec_w * 0.10) * sun_glint
 			* (1.0 - freeze_amount * 0.85);
+
+	// 夜间月光水路：朝月亮方向的宽反射带 + 细碎闪烁，湖面会拖出一条银蓝光路
+	float moon_lobe = pow(max(dot(reflect(-view_dir, n), sun_dir), 0.0), 7.0);
+	float moon_sparkle = vnoise(world_pos.xz * 2.7 + vec2(TIME * 0.18, -TIME * 0.13));
+	col += vec3(0.70, 0.82, 1.0) * moon_lobe * (0.30 + 0.70 * moon_sparkle) * night_glint * 1.4;
+
+	// 风格化月光水路：以"相机→月亮"的方位开一条向远处收窄/展宽的银蓝带，
+	// 不依赖波面法线，保证任何视角都能看到月亮在水面拖出的光路。
+	vec2 moon_h = normalize(sun_dir.xz + vec2(0.0001));
+	vec2 to_frag = world_pos.xz - CAMERA_POSITION_WORLD.xz;
+	float df = length(to_frag);
+	if (df > 0.5) {
+		float along = dot(to_frag / df, moon_h);
+		float band_pow = mix(55.0, 16.0, clamp(df / 45.0, 0.0, 1.0));
+		float band = pow(max(along, 0.0), band_pow);
+		float near_fade = smoothstep(1.2, 5.0, df) * (1.0 - smoothstep(35.0, 75.0, df));
+		float shimmer = vnoise(world_pos.xz * 2.4 + vec2(TIME * 0.22, -TIME * 0.17));
+		col += vec3(0.72, 0.82, 1.0) * band * near_fade
+				* (0.30 + 0.70 * shimmer) * night_glint * 2.2;
+	}
 
 	// ══════════════════════════════════════════════════════════════════════
 	// 动态拍岸浪涌与石头激浪系统 ── 大湖最重要的生命力表达

@@ -467,11 +467,28 @@ void SkyCycle::apply() {
 		if (sun != nullptr) {
 			Vector3 sd = sun->get_global_transform().basis.xform(
 					Vector3(0.0f, 0.0f, 1.0f)).normalized();
+			// 夜间：水面高光要跟着"看得见的月亮"走，而不是方向光的旋转角
+			// （两者方位约定不同，直接用灯光方向会让月光水路偏离月盘）。
+			if (sun_h < 0.0f && moon != nullptr) {
+				Camera3D *cam = get_viewport() != nullptr
+						? Object::cast_to<Camera3D>(get_viewport()->get_camera_3d()) : nullptr;
+				Vector3 mo = moon->get_global_position()
+						- (cam != nullptr ? cam->get_global_position() : Vector3());
+				if (mo.length_squared() > 0.001f) {
+					sd = mo.normalized();
+				}
+			}
 			sun_dir = sd; // 存下来供植被透光等其它系统读（不受 water_mat 是否就绪影响）
 			water_mat->set_shader_parameter("sun_dir", sd);
 			float glint = (sun_h >= 0.0f) ? (day * (1.0f - 0.6f * gloom))
 					: (0.15f * (1.0f - cloud * 0.8f));
 			water_mat->set_shader_parameter("sun_glint", glint);
+			// 月光水路：夜里的冷色宽反射带（白天强度 0），云厚时一起被遮没
+			water_mat->set_shader_parameter("glint_color",
+					sun_h >= 0.0f ? Color(1.0f, 0.96f, 0.86f) : Color(0.72f, 0.82f, 1.0f));
+			float moon_glint = (sun_h >= 0.0f) ? 0.0f
+					: (get_night_factor() * (1.0f - cloud * 0.92f));
+			water_mat->set_shader_parameter("night_glint", moon_glint);
 		}
 	}
 
