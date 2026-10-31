@@ -123,6 +123,17 @@ public:
 		if (propeller != nullptr) propeller->set_visible(false);
 		set_velocity(Vector3(0, 0, 0));
 	}
+	void sit_down(const Vector3 &p_seat, float p_yaw) {
+		is_sitting = true;
+		is_boating = false;
+		sit_pos = p_seat;
+		sit_yaw = p_yaw;
+		set_velocity(Vector3(0, 0, 0));
+		if (propeller != nullptr) propeller->set_visible(false);
+	}
+	void stand_up() { is_sitting = false; }
+	void suppress_interaction(float p_seconds) { interact_lock = p_seconds; }
+	bool get_is_sitting() const { return is_sitting; }
 	void leave_boat() {
 		is_boating = false;
 		boat = nullptr;
@@ -194,7 +205,11 @@ private:
 	bool is_swimming = false;
 	bool was_swimming = false;
 	bool is_boating = false;   // 坐在小木船上（Rowboat 控制移动）
+	bool is_sitting = false;   // 坐在长椅上（Bench 控制起坐）
+	Vector3 sit_pos;
+	float sit_yaw = 0.0f;
 	bool swim_hint_shown = false; // 入水操作提示只弹一次
+	float interact_lock = 0.0f;   // >0 时暂时吞掉 E 交互（起身防立刻再坐下）
 	Node3D *boat = nullptr;
 	Node3D *propeller = nullptr;
 	CPUParticles3D *swim_bubbles = nullptr; // 螺旋桨气泡尾迹

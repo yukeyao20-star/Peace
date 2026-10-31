@@ -523,7 +523,7 @@ void Rowboat::build_dock() {
 		sign->set_font(cjk);
 	}
 	sign->set_position(Vector3(-6.0f, 0.82f, -11.50f));
-	sign->set_rotation(Vector3(0.0f, 3.1415926f, 0.0f));
+	sign->set_rotation(Vector3(0.0f, 0.0f, 0.0f));
 	body->add_child(sign);
 
 	// 甲板上的缆绳圈

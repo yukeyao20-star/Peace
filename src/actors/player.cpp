@@ -113,6 +113,7 @@ void Player::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("toggle_map"), &Player::toggle_map);
 	ClassDB::bind_method(D_METHOD("get_is_map_open"), &Player::get_is_map_open);
 	ClassDB::bind_method(D_METHOD("get_is_boating"), &Player::get_is_boating);
+	ClassDB::bind_method(D_METHOD("get_is_sitting"), &Player::get_is_sitting);
 	ClassDB::bind_method(D_METHOD("launch_firework"), &Player::launch_firework);
 	ClassDB::bind_method(D_METHOD("_on_map_gui_input", "event"), &Player::_on_map_gui_input);
 	ClassDB::bind_method(D_METHOD("_on_map_bg_gui_input", "event"), &Player::_on_map_bg_gui_input);
@@ -585,6 +586,26 @@ void Player::_physics_step() {
 		if (sleep_key_released && sleep_fade_t > 0.6f && any_cancel_down) {
 			stop_sleep();
 		}
+		return;
+	}
+
+	// 2.4 坐长椅：位置锁定在座位，模型压扁成坐姿，交互只留 E 起身
+	if (is_sitting) {
+		set_global_position(sit_pos);
+		set_velocity(Vector3(0.0f, 0.0f, 0.0f));
+		if (model != nullptr) {
+			model->set_scale(Vector3(1.0f, 0.65f, 1.0f));
+			model->set_basis(Basis(Vector3(0.0f, 1.0f, 0.0f), sit_yaw)
+					* Basis(Vector3(1.0f, 0.0f, 0.0f), -0.10f));
+			model->set_position(Vector3(0.0f, -0.24f, 0.0f));
+		}
+		if (prompt != nullptr) {
+			prompt->hide();
+		}
+		if (hud_prompt != nullptr) {
+			hud_prompt->hide();
+		}
+		e_prev = act_pressed("interact", KEY_E);
 		return;
 	}
 
@@ -1082,6 +1103,11 @@ void Player::_update_interaction() {
 
 	// E 键按下瞬间触发（按住不放只触发一次）
 	bool e_down = act_pressed("interact", KEY_E);
+	if (interact_lock > 0.0f) {
+		interact_lock = Math::max(0.0f, interact_lock - (float)get_physics_process_delta_time());
+		e_prev = e_down;
+		return;
+	}
 	if (e_down && !e_prev && near_target != nullptr) {
 		near_target->interact(get_global_position());
 		lean_time = 0.5; // 播放推门/推窗的前倾动作
