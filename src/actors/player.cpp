@@ -24,6 +24,8 @@
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/font.hpp>
+#include <godot_cpp/classes/grid_container.hpp>
+#include <godot_cpp/classes/h_box_container.hpp>
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/cpu_particles3d.hpp>
@@ -55,6 +57,7 @@
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/classes/torus_mesh.hpp>
 #include <godot_cpp/classes/viewport.hpp>
+#include <godot_cpp/classes/v_box_container.hpp>
 #include <godot_cpp/classes/viewport_texture.hpp>
 #include <godot_cpp/classes/world3d.hpp>
 #include <godot_cpp/core/class_db.hpp>
@@ -122,6 +125,10 @@ void Player::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_is_sitting"), &Player::get_is_sitting);
 	ClassDB::bind_method(D_METHOD("get_is_lying"), &Player::get_is_lying);
 	ClassDB::bind_method(D_METHOD("get_photo_mode"), &Player::get_photo_mode);
+	ClassDB::bind_method(D_METHOD("toggle_album"), &Player::toggle_album);
+	ClassDB::bind_method(D_METHOD("close_album"), &Player::close_album);
+	ClassDB::bind_method(D_METHOD("album_prev_page"), &Player::album_prev_page);
+	ClassDB::bind_method(D_METHOD("album_next_page"), &Player::album_next_page);
 	ClassDB::bind_method(D_METHOD("launch_firework"), &Player::launch_firework);
 	ClassDB::bind_method(D_METHOD("_on_map_gui_input", "event"), &Player::_on_map_gui_input);
 	ClassDB::bind_method(D_METHOD("_on_map_bg_gui_input", "event"), &Player::_on_map_bg_gui_input);
@@ -235,6 +242,7 @@ void Player::_notification(int p_what) {
 			}
 			debug_overlay->hide();
 			photo_layer->add_child(debug_overlay);
+			build_album_ui();
 			hud_prompt = memnew(Label);
 			hud_prompt->set_anchors_preset(Control::PRESET_CENTER_BOTTOM);
 			hud_prompt->set_offset(SIDE_LEFT, -200.0f);
@@ -259,7 +267,7 @@ void Player::_notification(int p_what) {
 			guide_panel->set_offset(SIDE_LEFT, -214.0f);
 			guide_panel->set_offset(SIDE_RIGHT, -16.0f);
 			guide_panel->set_offset(SIDE_TOP, 16.0f);
-			guide_panel->set_offset(SIDE_BOTTOM, 308.0f);
+			guide_panel->set_offset(SIDE_BOTTOM, 330.0f);
 
 			// 小黑板：墨绿板面 + 原木边框，粉笔字（与木牌/木屋同一材质语言）
 			guide_panel->add_theme_stylebox_override("panel", uistyle::make_blackboard_textured(0.98f));
@@ -281,7 +289,8 @@ void Player::_notification(int p_what) {
 				"[E] 坐下 · 长椅 / 秋千",
 				"[P] 拍照 · [H] 隐藏界面 · F12 保存",
 				"[F11] 全屏 · [V] 镜头远近",
-				"[F3] 调试 · [ - / = ] 音量"
+				"[F3] 调试 · [ - / = ] 音量",
+				"[O] 相册 · 浏览湖畔照片"
 			};
 
 			const int hint_count = (int)(sizeof(hints) / sizeof(hints[0]));
@@ -561,8 +570,8 @@ void Player::_notification(int p_what) {
 
 		case NOTIFICATION_PROCESS: {
 			float p_delta = get_process_delta_time();
-			if (!is_sleeping && !is_map_open) {
-				_update_look(p_delta); // 睡觉或展开大地图时鼠标不转动视角
+			if (!is_sleeping && !is_map_open && !album_open) {
+				_update_look(p_delta); // 睡觉 / 大地图 / 相册打开时鼠标不转动视角
 			}
 			_update_camera(p_delta);
 			ring_t += p_delta;
@@ -669,6 +678,18 @@ void Player::_physics_step() {
 
 	// 1. 全局大地图状态阻断（M 在 _input 事件驱动，Esc 关地图归 PauseMenu 统一处理）
 	if (is_map_open) {
+		set_velocity(Vector3(0, 0, 0));
+		move_and_slide();
+		return;
+	}
+
+	// 1.5 相册（O）：打开时不移动、不转视角
+	bool o_down = input->is_key_pressed(KEY_O);
+	if (o_down && !album_key_prev && !photo_mode) {
+		toggle_album();
+	}
+	album_key_prev = o_down;
+	if (album_open) {
 		set_velocity(Vector3(0, 0, 0));
 		move_and_slide();
 		return;
@@ -1470,6 +1491,9 @@ void Player::_update_look(double delta) {
 //   结果就是"视角永远慢半拍"。用户报的"有延迟/有积分"主要就是这一条。
 //   现在改成：跟随时（角色走动）平滑，环绕（鼠标转动）直接给到位。
 void Player::set_hud_visible(bool p_visible) {
+	if (!p_visible && album_open) {
+		close_album();
+	}
 	if (hud_layer != nullptr) {
 		hud_layer->set_visible(p_visible);
 	}
@@ -1529,6 +1553,203 @@ void Player::show_photo_toast(const String &p_text, float p_seconds) {
 	photo_toast->set_modulate(Color(1, 1, 1, 1));
 	photo_toast->show();
 	photo_toast_t = p_seconds;
+}
+
+void Player::build_album_ui() {
+	album_layer = memnew(CanvasLayer);
+	album_layer->set_name("PhotoAlbumLayer");
+	album_layer->set_layer(10);
+	add_child(album_layer);
+	album_layer->set_visible(false);
+
+	ColorRect *dim = memnew(ColorRect);
+	dim->set_anchors_preset(Control::PRESET_FULL_RECT);
+	dim->set_color(Color(0.0f, 0.0f, 0.0f, 0.55f));
+	dim->set_mouse_filter(Control::MOUSE_FILTER_STOP);
+	album_layer->add_child(dim);
+
+	PanelContainer *panel = memnew(PanelContainer);
+	panel->set_name("AlbumPanel");
+	panel->set_anchors_preset(Control::PRESET_CENTER);
+	panel->set_offset(SIDE_LEFT, -390.0f);
+	panel->set_offset(SIDE_RIGHT, 390.0f);
+	panel->set_offset(SIDE_TOP, -255.0f);
+	panel->set_offset(SIDE_BOTTOM, 255.0f);
+	panel->add_theme_stylebox_override("panel", uistyle::make_wood_textured(16.0f, 0.97f));
+	album_layer->add_child(panel);
+
+	VBoxContainer *box = memnew(VBoxContainer);
+	box->add_theme_constant_override("separation", 10);
+	panel->add_child(box);
+
+	Ref<Font> cjk = ResourceLoader::get_singleton()->load("res://assets/fonts/NotoSansSC-Regular.ttf");
+	Label *title = memnew(Label);
+	title->set_text(String::utf8("湖 畔 相 册"));
+	title->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+	title->add_theme_font_size_override("font_size", 30);
+	title->add_theme_color_override("font_color", uistyle::wood_text());
+	title->add_theme_color_override("font_outline_color", uistyle::wood_dark());
+	title->add_theme_constant_override("outline_size", 2);
+	if (cjk.is_valid()) {
+		title->add_theme_font_override("font", cjk);
+	}
+	box->add_child(title);
+
+	album_grid = memnew(GridContainer);
+	album_grid->set_name("AlbumGrid");
+	album_grid->set_columns(3);
+	album_grid->add_theme_constant_override("h_separation", 10);
+	album_grid->add_theme_constant_override("v_separation", 10);
+	box->add_child(album_grid);
+
+	for (int i = 0; i < 6; i++) {
+		TextureRect *tr = memnew(TextureRect);
+		tr->set_name(String("Thumb") + String::num_int64(i));
+		tr->set_custom_minimum_size(Vector2(225.0f, 135.0f));
+		tr->set_expand_mode(TextureRect::EXPAND_IGNORE_SIZE);
+		tr->set_stretch_mode(TextureRect::STRETCH_KEEP_ASPECT_COVERED);
+		tr->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+		tr->hide();
+		album_grid->add_child(tr);
+		album_thumbs.push_back(tr);
+	}
+
+	album_empty = memnew(Label);
+	album_empty->set_text(String::utf8("还没有照片 · 按 P 拍照，再按 F12 保存"));
+	album_empty->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+	album_empty->add_theme_font_size_override("font_size", 20);
+	album_empty->add_theme_color_override("font_color", uistyle::wood_text());
+	if (cjk.is_valid()) {
+		album_empty->add_theme_font_override("font", cjk);
+	}
+	box->add_child(album_empty);
+
+	HBoxContainer *footer = memnew(HBoxContainer);
+	footer->set_alignment(BoxContainer::ALIGNMENT_CENTER);
+	footer->add_theme_constant_override("separation", 14);
+	box->add_child(footer);
+
+	auto make_button = [&](const char *p_name, const String &p_text) -> Button * {
+		Button *b = memnew(Button);
+		b->set_name(p_name);
+		b->set_text(p_text);
+		b->add_theme_stylebox_override("normal", uistyle::make_button_style(false, 0));
+		b->add_theme_stylebox_override("hover", uistyle::make_button_style(false, 1));
+		b->add_theme_stylebox_override("pressed", uistyle::make_button_style(false, 2));
+		b->add_theme_font_size_override("font_size", 16);
+		b->add_theme_color_override("font_color", uistyle::wood_text());
+		if (cjk.is_valid()) {
+			b->add_theme_font_override("font", cjk);
+		}
+		footer->add_child(b);
+		return b;
+	};
+	Button *prev = make_button("AlbumPrev", String::utf8("‹ 上一页"));
+	prev->connect("pressed", Callable(this, "album_prev_page"));
+	album_page_label = memnew(Label);
+	album_page_label->set_text(String::utf8("第 1 / 1 页"));
+	album_page_label->add_theme_font_size_override("font_size", 16);
+	album_page_label->add_theme_color_override("font_color", uistyle::wood_text());
+	if (cjk.is_valid()) {
+		album_page_label->add_theme_font_override("font", cjk);
+	}
+	footer->add_child(album_page_label);
+	Button *next = make_button("AlbumNext", String::utf8("下一页 ›"));
+	next->connect("pressed", Callable(this, "album_next_page"));
+	Button *close = make_button("AlbumClose", String::utf8("关闭 (O)"));
+	close->connect("pressed", Callable(this, "close_album"));
+}
+
+void Player::toggle_album() {
+	if (album_open) {
+		close_album();
+		return;
+	}
+	if (album_layer == nullptr) {
+		build_album_ui();
+	}
+	album_open = true;
+	album_page = 0;
+	refresh_album();
+	album_layer->set_visible(true);
+	mouse_captured = false;
+	mouse_rel = Vector2();
+	Input::get_singleton()->set_mouse_mode(Input::MOUSE_MODE_VISIBLE);
+}
+
+void Player::close_album() {
+	album_open = false;
+	if (album_layer != nullptr) {
+		album_layer->set_visible(false);
+	}
+	if (!is_map_open && !is_sleeping) {
+		mouse_captured = true;
+		mouse_rel = Vector2();
+		Input::get_singleton()->set_mouse_mode(Input::MOUSE_MODE_CAPTURED);
+	}
+}
+
+void Player::refresh_album() {
+	if (album_grid == nullptr || album_page_label == nullptr) {
+		return;
+	}
+	std::vector<String> files;
+	PackedStringArray names = DirAccess::get_files_at("user://screenshots");
+	for (int i = 0; i < names.size(); i++) {
+		String n = names[i];
+		if (n.to_lower().ends_with(".png")) {
+			files.push_back(String::utf8("user://screenshots/") + n);
+		}
+	}
+	std::sort(files.begin(), files.end());
+	std::reverse(files.begin(), files.end());
+	album_files = files;
+
+	const int per_page = 6;
+	int pages = (int)((files.size() + per_page - 1) / per_page);
+	if (pages < 1) {
+		pages = 1;
+	}
+	album_page = Math::clamp(album_page, 0, pages - 1);
+	for (int i = 0; i < 6; i++) {
+		TextureRect *tr = album_thumbs[i];
+		int idx = album_page * per_page + i;
+		if (idx < (int)files.size()) {
+			Ref<Image> img;
+			img.instantiate();
+			if (img->load(files[idx]) == Error::OK) {
+				tr->set_texture(ImageTexture::create_from_image(img));
+				tr->show();
+			} else {
+				tr->set_texture(Ref<Texture2D>());
+				tr->hide();
+			}
+		} else {
+			tr->set_texture(Ref<Texture2D>());
+			tr->hide();
+		}
+	}
+	album_page_label->set_text(String::utf8("第 ") + String::num_int64(album_page + 1)
+			+ String::utf8(" / ") + String::num_int64(pages) + String::utf8(" 页"));
+	if (album_empty != nullptr) {
+		album_empty->set_visible(files.empty());
+	}
+}
+
+void Player::album_prev_page() {
+	if (!album_open) {
+		return;
+	}
+	album_page = Math::max(0, album_page - 1);
+	refresh_album();
+}
+
+void Player::album_next_page() {
+	if (!album_open) {
+		return;
+	}
+	album_page++;
+	refresh_album();
 }
 
 void Player::save_photo() {

@@ -12,7 +12,10 @@
 #include <godot_cpp/variant/vector3.hpp>
 
 #include <random>
+#include <string>
 #include <vector>
+
+#include <godot_cpp/variant/string.hpp>
 
 #include "interactable.h"
 
@@ -29,6 +32,9 @@ class OmniLight3D;
 class MeshInstance3D;
 class StandardMaterial3D;
 class TextureRect;
+class GridContainer;
+class HBoxContainer;
+class PanelContainer;
 class TerrainBuilder;
 } // namespace godot
 
@@ -235,6 +241,23 @@ private:
 	godot::Label *debug_overlay = nullptr;
 	float photo_toast_t = 0.0f;
 	float debug_t = 0.0f;
+
+	// —— 相册（O）——
+	godot::CanvasLayer *album_layer = nullptr;
+	godot::GridContainer *album_grid = nullptr;
+	godot::Label *album_page_label = nullptr;
+	godot::Label *album_empty = nullptr;
+	std::vector<godot::TextureRect *> album_thumbs;
+	std::vector<godot::String> album_files;
+	int album_page = 0;
+	bool album_open = false;
+	bool album_key_prev = false;
+	void build_album_ui();
+	void toggle_album();
+	void close_album();
+	void refresh_album();
+	void album_prev_page();
+	void album_next_page();
 	void set_photo_mode(bool p_on);
 	void set_hud_visible(bool p_visible);
 	void save_photo();
