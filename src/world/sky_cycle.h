@@ -15,6 +15,7 @@
 
 #include <cmath>
 
+#include <godot_cpp/classes/audio_effect_low_pass_filter.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/variant/node_path.hpp>
 #include <godot_cpp/variant/string.hpp>
@@ -99,6 +100,9 @@ private:
 	CanvasLayer *uw_layer = nullptr;   // 水下氛围覆盖层（相机入水时淡入）
 	ColorRect *uw_tint = nullptr;
 	float uw_alpha = 0.0f;             // 当前不透明度（平滑过渡）
+	Ref<AudioEffectLowPassFilter> uw_lp; // 水下低通（Master 总线）
+	int uw_lp_idx = -1;
+	float uw_cutoff = 20000.0f;
 	Ref<StandardMaterial3D> lamp_glow_mat;   // 桥头石灯灯芯材质（两盏灯共用 LampGlowMat，懒查找，改一次全生效）
 	float lamp_energy = 0.0f;                // 石灯当前自发光强度（apply() 里 move_toward 平滑逼近目标）
 

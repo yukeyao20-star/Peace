@@ -1225,6 +1225,8 @@ sky_cycle_path = NodePath("../SkyCycle")
 [node name="Butterflies" type="ButterflySwarm" parent="." unique_id=1407488790]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, -24)
 
+[node name="Ducks" type="DuckFlock" parent="."]
+
 [node name="GameDirector" type="GameDirector" parent="." unique_id=1818518943]
 
 [node name="Ambience" type="Ambience" parent="." unique_id=564152197]

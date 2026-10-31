@@ -8,6 +8,7 @@
 #include <godot_cpp/classes/cpu_particles3d.hpp>
 #include <godot_cpp/classes/csg_box3d.hpp>
 #include <godot_cpp/classes/directional_light3d.hpp>
+#include <godot_cpp/classes/audio_server.hpp>
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/canvas_layer.hpp>
 #include <godot_cpp/classes/color_rect.hpp>
@@ -160,6 +161,12 @@ void SkyCycle::_notification(int p_what) {
 				Color col = uw_tint->get_color();
 				col.a = uw_alpha;
 				uw_tint->set_color(col);
+				// 音频低通随水下状态平滑过渡（指数逼近，避免线性扫频的"呼呼"声）
+				float cut_target = target > 0.0f ? 700.0f : 20000.0f;
+				uw_cutoff += (cut_target - uw_cutoff) * Math::min(1.0f, (float)delta * 4.0f);
+				if (uw_lp.is_valid()) {
+					uw_lp->set_cutoff(uw_cutoff);
+				}
 			}
 			// —— 星空缓慢漂移（北极星附近的视运动，极简版绕竖轴慢转）——
 			if (stars != nullptr) {
@@ -623,6 +630,17 @@ void SkyCycle::build_underwater() {
 	uw_tint->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
 	uw_tint->set_color(Color(0.04f, 0.26f, 0.30f, 0.0f));
 	uw_layer->add_child(uw_tint);
+
+	// 水下音频：Master 总线挂一个低通，入水时截止频率滑到 ~700Hz（声音发闷），
+	// 出水滑回 20kHz（近似直通）。始终启用、只改截止频率，避免开关时的咔哒声。
+	AudioServer *as = AudioServer::get_singleton();
+	if (as != nullptr) {
+		uw_lp.instantiate();
+		uw_lp->set_cutoff(20000.0f);
+		uw_lp->set_resonance(0.35f);
+		as->add_bus_effect(0, uw_lp);
+		uw_lp_idx = as->get_bus_effect_count(0) - 1;
+	}
 }
 
 void SkyCycle::build_stars() {
