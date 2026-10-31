@@ -974,6 +974,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 0, 23.5)
 [node name="TabletopGames" type="TabletopGames" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.8, 0, 20.7)
 
+[node name="BeachFinds" type="BeachFinds" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, 16)
+
 [node name="CheckersTable" type="CheckersTable" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.5, 0, 20)
 
