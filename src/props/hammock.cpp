@@ -107,6 +107,7 @@ void Hammock::interact(const Vector3 &p_player_pos) {
 	if (get_parent() != nullptr) {
 		Node *gd = get_parent()->get_node_or_null("GameDirector");
 		if (gd != nullptr) {
+			gd->call("on_hammock_lay");
 			gd->call("flash_hint", String::utf8("吊床轻轻晃 · 再按 E 下来"), 3.0f);
 		}
 	}

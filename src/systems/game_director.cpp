@@ -87,6 +87,8 @@ float marker_height(int p_type) {
 			return 1.8f;
 		case GameDirector::TASK_AURORA:
 			return 3.0f;
+		case GameDirector::TASK_HAMMOCK:
+			return 1.3f;
 		default:
 			return 2.0f;
 	}
@@ -124,6 +126,8 @@ const char *task_name(int p_type) {
 			return "听见啄木鸟";
 		case GameDirector::TASK_AURORA:
 			return "仰望极光";
+		case GameDirector::TASK_HAMMOCK:
+			return "躺一会儿吊床";
 		default:
 			return "?";
 	}
@@ -148,6 +152,7 @@ void GameDirector::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("on_deer_seen"), &GameDirector::on_deer_seen);
 	ClassDB::bind_method(D_METHOD("on_woodpecker_heard"), &GameDirector::on_woodpecker_heard);
 	ClassDB::bind_method(D_METHOD("on_aurora_seen"), &GameDirector::on_aurora_seen);
+	ClassDB::bind_method(D_METHOD("on_hammock_lay"), &GameDirector::on_hammock_lay);
 	ClassDB::bind_method(D_METHOD("get_count"), &GameDirector::get_count);
 	ClassDB::bind_method(D_METHOD("get_target"), &GameDirector::get_target);
 	ClassDB::bind_method(D_METHOD("is_done"), &GameDirector::is_done);
@@ -550,8 +555,8 @@ void GameDirector::roll_day_tasks(int p_day) {
 		berry.type = TASK_BERRY;
 		berry.target = 3 + (int)(rng() % 3);
 		tasks.push_back(berry);
-		int others[14] = { TASK_FISH, TASK_GOAL, TASK_WELL, TASK_CHEST, TASK_HARVEST, TASK_FEED, TASK_SHELL, TASK_SWING, TASK_PHOTO, TASK_STEW, TASK_CAT, TASK_DEER, TASK_WOODPECKER, TASK_AURORA };
-		for (int i = 13; i > 0; i--) { // Fisher-Yates 洗牌
+		int others[15] = { TASK_FISH, TASK_GOAL, TASK_WELL, TASK_CHEST, TASK_HARVEST, TASK_FEED, TASK_SHELL, TASK_SWING, TASK_PHOTO, TASK_STEW, TASK_CAT, TASK_DEER, TASK_WOODPECKER, TASK_AURORA, TASK_HAMMOCK };
+		for (int i = 14; i > 0; i--) { // Fisher-Yates 洗牌
 			int j = (int)(rng() % (unsigned)(i + 1));
 			int tmp = others[i];
 			others[i] = others[j];
@@ -746,6 +751,9 @@ Node3D *GameDirector::resolve_marker_target(int p_type) {
 	}
 	if (p_type == TASK_AURORA) {
 		return Object::cast_to<Node3D>(root->find_child("Aurora", true, false));
+	}
+	if (p_type == TASK_HAMMOCK) {
+		return Object::cast_to<Node3D>(root->find_child("Hammock", true, false));
 	}
 	if (p_type == TASK_FEED) {
 		// 就近挑一只农场动物
@@ -988,6 +996,11 @@ void GameDirector::on_woodpecker_heard() {
 void GameDirector::on_aurora_seen() {
 	note_first_interaction();
 	mark_task_progress(TASK_AURORA);
+}
+
+void GameDirector::on_hammock_lay() {
+	note_first_interaction();
+	mark_task_progress(TASK_HAMMOCK);
 }
 
 void GameDirector::on_chest_looted() {
