@@ -971,6 +971,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.6, 0, -13.2)
 [node name="GardenGnome" type="GardenGnome" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 0, 23.5)
 
+[node name="FireflyJar" type="FireflyJar" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10.5, 0.55, 12.5)
+
 [node name="Signpost" type="Signpost" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11.5, 0, 15.5)
 
