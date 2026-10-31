@@ -1,8 +1,9 @@
 name: build
 
+# 触发：仅 Actions 页手动 Run workflow。
+# 私有库的 macOS runner 按 10 倍计费分钟消耗额度，过去每次 push 都三平台全量构建，
+# 一个月 ~2500 计费分钟超出免费额度；跨平台构建属低频操作，改为手动触发。
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 jobs:

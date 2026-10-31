@@ -134,7 +134,7 @@ scons platform=macos target=template_debug
 
 ## 跨平台构建（CI）
 
-三平台动态库由 `.github/workflows/build.yml` 自动构建：每次 push / PR / 手动触发时，
+三平台动态库由 `.github/workflows/build.yml` 构建（**手动触发**：Actions → build → Run workflow；私有库的 macOS runner 按 10 倍计费分钟消耗额度，因此不在 push/PR 时自动跑）：
 在 `ubuntu-24.04` / `macos-latest` / `windows-latest` 三个 runner 上分别执行
 `scons platform=<linux|macos|windows> target=template_release` 与 `target=template_debug`
 各一次，并将 `project/bin/<平台>/` 上传为 artifact（`game3d-<平台>`）。
