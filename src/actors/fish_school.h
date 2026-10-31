@@ -41,6 +41,8 @@ private:
 
 	std::vector<Fish> fish;
 	Node3D *player = nullptr;
+	class SkyCycle *sky = nullptr;
+	float ice_mix = 0.0f; // 湖面封冻程度（0..1）：冰下鱼群上浮、游得更慢
 
 	void build();
 	void spawn_fish(int p_index, unsigned p_seed);

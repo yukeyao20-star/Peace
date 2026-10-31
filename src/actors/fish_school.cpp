@@ -1,5 +1,7 @@
 #include "fish_school.h"
 
+#include "../world/sky_cycle.h"
+
 #include <cmath>
 #include <random>
 
@@ -41,6 +43,11 @@ void FishSchool::_notification(int p_what) {
 						|| pp.distance_to(Vector3(-14.0f, water_level, 66.0f)) < 60.0f;
 				set_visible(near);
 			}
+			if (sky == nullptr && get_parent() != nullptr) {
+				sky = Object::cast_to<SkyCycle>(get_parent()->get_node_or_null("SkyCycle"));
+			}
+			const float snow_now = (sky != nullptr) ? sky->get_snow_amount() : 0.0f;
+			ice_mix = Math::lerp(ice_mix, snow_now > 0.82f ? 1.0f : 0.0f, 1.0f - std::exp(-0.8f * delta));
 			for (Fish &f : fish) {
 				if (f.root == nullptr) {
 					continue;
@@ -50,18 +57,18 @@ void FishSchool::_notification(int p_what) {
 				if (player != nullptr) {
 					Vector3 pp = player->get_global_position();
 					Vector3 fish_pos(f.center.x + std::cos(f.angle) * f.radius,
-							water_level - f.depth, f.center.y + std::sin(f.angle) * f.radius);
+							water_level - Math::lerp(f.depth, 0.45f, ice_mix), f.center.y + std::sin(f.angle) * f.radius);
 					if (pp.distance_to(fish_pos) < 3.6f) {
 						near = 1.0f;
 					}
 				}
 				f.urge = Math::min(1.0f, f.urge + (near > 0.5f ? delta * 3.5f : -delta * 0.8f));
 				f.urge = Math::max(0.0f, f.urge);
-				f.angle += f.speed * (1.0f + f.urge * 2.2f) * delta;
+				f.angle += f.speed * (1.0f + f.urge * 2.2f) * (1.0f - 0.45f * ice_mix) * delta;
 				float bob = std::sin(anim_t * f.bob_w + f.bob_phase) * 0.04f
 						+ f.urge * 0.10f;
 				Vector3 pos(f.center.x + std::cos(f.angle) * f.radius,
-						water_level - f.depth + bob,
+						water_level - Math::lerp(f.depth, 0.45f, ice_mix) + bob,
 						f.center.y + std::sin(f.angle) * f.radius);
 				f.root->set_global_position(pos);
 				float sgn = f.speed >= 0.0f ? 1.0f : -1.0f;
