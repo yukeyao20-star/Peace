@@ -105,6 +105,7 @@
 #include "hanging_baskets.h"
 #include "hearth_tools.h"
 #include "garden_gnome.h"
+#include "checkers_table.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
 #include "leaf_drift.h"
@@ -234,6 +235,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(HangingBaskets);
 	GDREGISTER_CLASS(HearthTools);
 	GDREGISTER_CLASS(GardenGnome);
+	GDREGISTER_CLASS(CheckersTable);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
 	GDREGISTER_CLASS(LeafDrift);
