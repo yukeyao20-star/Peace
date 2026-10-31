@@ -901,6 +901,8 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 3.42)
 [node name="MusicBox" type="MusicBox" parent="Homestead"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.15, 0.18, 4.9)
 
+[node name="LeafDrift" type="LeafDrift" parent="."]
+
 [node name="SnailPatch" type="SnailPatch" parent="."]
 
 [node name="RainChain" type="RainChain" parent="Homestead"]

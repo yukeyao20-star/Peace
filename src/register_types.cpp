@@ -63,6 +63,7 @@
 #include "music_box.h"
 #include "rain_chain.h"
 #include "snail_patch.h"
+#include "leaf_drift.h"
 #include "bench.h"
 #include "berry_bush.h"
 #include "farm_plot.h"
@@ -147,6 +148,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(MusicBox);
 	GDREGISTER_CLASS(RainChain);
 	GDREGISTER_CLASS(SnailPatch);
+	GDREGISTER_CLASS(LeafDrift);
 	GDREGISTER_CLASS(Bench);
 	GDREGISTER_CLASS(BerryBush);
 	GDREGISTER_CLASS(FarmPlot);

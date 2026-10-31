@@ -118,7 +118,8 @@
 | 105 | 拍照模式升级（调研 CameraAttributesPractical 后：景深/三分网格/暗角/层级/退出恢复） | 17443ba |
 | 106 | 手柄支持（调研 Godot Input 手柄 API 后：左摇杆径向死区移动/右摇杆视角/ABXY 与十字键映射/插拔提示/落地与互动短震动） | 8bca4fd |
 | 107 | 门廊雨链（调研雨链/悬链线后：十级铜杯随风轻摆/雨珠螺旋下滑/落到石钵泛涟漪/程序化流水声/雪天白霜；顺手修 T 键天气切换与八音盒待办回调） | 7dba046 |
-| 108 | 雨后蜗牛（调研地面痕迹淡出做法后：四只雨后出没/慢爬游走/黏液痕逐片淡出/人靠近缩回壳里/雨停归隐） | 本轮提交 |
+| 108 | 雨后蜗牛（调研地面痕迹淡出做法后：四只雨后出没/慢爬游走/黏液痕逐片淡出/人靠近缩回壳里/雨停归隐） | 519ec38 |
+| 109 | 秋日落叶（调研落叶粒子后：玩家周围 160 片菱形叶随风打转/三堆干叶可踢起/脆响/雨天变深/雪天收叶） | 本轮提交 |
 
 ## 编号对账
 
@@ -164,6 +165,12 @@
 - godotshaders「Decal shader (+Y_Fading +Particle Alpha)」—— 用 alpha 渐变做地面痕迹
 - Wandering Door Games / So Little Slime —— Line2D 尾端更淡更细的黏液痕，整条定时淡出
 - pollen-not-included snail.gd —— 蜗牛移动/进食/睡眠状态划分参考
+- godotshaders「Wind Driven Falling Particles (leaves, petals, feathers)」——
+  风向/风速随阵风变化、叶片三轴自转与阻尼
+- godotshaders「Modular Environmental Particles」—— 落叶边飘边转、落地前减速
+- godotshaders「Falling leaf shader」—— 随机值与矩阵旋转叶片网格
+- Go3DGoGodot/Godot3D_Waving_tree_and_falling_leaves —— 3D 落叶发射范围/密度
+- dante-signal31/SakuraDemo —— 粒子 scale/自转随机与 preprocess 预热
 
 ## 收尾
 
