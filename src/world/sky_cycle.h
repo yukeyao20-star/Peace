@@ -48,6 +48,7 @@ private:
 	NodePath env_path;   // 指向 WorldEnvironment
 	NodePath fireflies_path; // 指向 CPUParticles3D（萤火虫，仅夜间晴天出现）
 	NodePath fireflies_b_path; // 第二簇萤火虫（长椅/码头一带）
+	NodePath fireflies_c_path; // 第三簇萤火虫（秋千/石径一带）
 
 	DirectionalLight3D *sun = nullptr;
 	WorldEnvironment *world_env = nullptr;
@@ -77,6 +78,7 @@ private:
 	CPUParticles3D *snowflakes = nullptr; // 雪花层
 	CPUParticles3D *fireflies = nullptr; // 萤火虫（夜间 + 非雨雪天）
 	CPUParticles3D *fireflies_b = nullptr; // 长椅水湾的第二簇萤火虫
+	CPUParticles3D *fireflies_c = nullptr; // 秋千草地的第三簇萤火虫
 
 	// —— 雨后彩虹 ——
 	Node3D *rainbow = nullptr;
@@ -168,6 +170,8 @@ public:
 	NodePath get_fireflies_path() const { return fireflies_path; }
 	void set_fireflies_b_path(const NodePath &p) { fireflies_b_path = p; }
 	NodePath get_fireflies_b_path() const { return fireflies_b_path; }
+	void set_fireflies_c_path(const NodePath &p) { fireflies_c_path = p; }
+	NodePath get_fireflies_c_path() const { return fireflies_c_path; }
 	void set_time_of_day(float p) { time_of_day = p; }
 	float get_time_of_day() const { return time_of_day; }
 	void set_day_length(float p) { day_length = p; }

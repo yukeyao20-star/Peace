@@ -72,6 +72,8 @@ void SkyCycle::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_fireflies_path"), &SkyCycle::get_fireflies_path);
 	ClassDB::bind_method(D_METHOD("set_fireflies_b_path", "p_path"), &SkyCycle::set_fireflies_b_path);
 	ClassDB::bind_method(D_METHOD("get_fireflies_b_path"), &SkyCycle::get_fireflies_b_path);
+	ClassDB::bind_method(D_METHOD("set_fireflies_c_path", "p_path"), &SkyCycle::set_fireflies_c_path);
+	ClassDB::bind_method(D_METHOD("get_fireflies_c_path"), &SkyCycle::get_fireflies_c_path);
 	ClassDB::bind_method(D_METHOD("set_time_of_day", "p_t"), &SkyCycle::set_time_of_day);
 	ClassDB::bind_method(D_METHOD("get_time_of_day"), &SkyCycle::get_time_of_day);
 	ClassDB::bind_method(D_METHOD("set_day_length", "p_secs"), &SkyCycle::set_day_length);
@@ -105,6 +107,7 @@ void SkyCycle::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "env_path"), "set_env_path", "get_env_path");
 	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "fireflies_path"), "set_fireflies_path", "get_fireflies_path");
 	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "fireflies_b_path"), "set_fireflies_b_path", "get_fireflies_b_path");
+	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "fireflies_c_path"), "set_fireflies_c_path", "get_fireflies_c_path");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "time_of_day"), "set_time_of_day", "get_time_of_day");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "day_length"), "set_day_length", "get_day_length");
 	// day_count 只读（运行时自增，不提供 setter）
@@ -129,6 +132,7 @@ void SkyCycle::_notification(int p_what) {
 			}
 			fireflies = Object::cast_to<CPUParticles3D>(get_node_or_null(fireflies_path));
 			fireflies_b = Object::cast_to<CPUParticles3D>(get_node_or_null(fireflies_b_path));
+			fireflies_c = Object::cast_to<CPUParticles3D>(get_node_or_null(fireflies_c_path));
 			build_rain();
 			build_snow();
 			build_precip_shelter(); // 必须在两份降水材质都建好之后
@@ -621,6 +625,9 @@ void SkyCycle::apply() {
 		}
 		if (fireflies_b != nullptr) {
 			fireflies_b->set_emitting(show);
+		}
+		if (fireflies_c != nullptr) {
+			fireflies_c->set_emitting(show);
 		}
 	}
 }

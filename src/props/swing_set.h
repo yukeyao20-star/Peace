@@ -16,6 +16,9 @@ namespace godot {
 
 class AudioStreamPlayer3D;
 class AudioStreamWAV;
+class MeshInstance3D;
+class SkyCycle;
+class StandardMaterial3D;
 
 class SwingSet : public Interactable {
 	GDCLASS(SwingSet, Interactable)
@@ -31,6 +34,10 @@ private:
 	float creak_t = 1.6f;
 	AudioStreamPlayer3D *voice = nullptr;
 	Ref<AudioStreamWAV> snd_creak;
+	SkyCycle *sky = nullptr;
+	MeshInstance3D *glow[6] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+	Ref<StandardMaterial3D> glow_mat;
+	float glow_t = 0.0f;
 
 	void build();
 	void stand_up();
@@ -52,6 +59,7 @@ public:
 	float get_angle() const { return angle; }
 	bool is_ridden() const { return rider != nullptr; }
 	bool is_creak_ready() const { return snd_creak.is_valid(); }
+	int get_glow_visible_count() const;
 };
 
 } // namespace godot

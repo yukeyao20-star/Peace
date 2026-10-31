@@ -8,11 +8,14 @@
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/input.hpp>
 #include <godot_cpp/classes/shader.hpp>
+#include <godot_cpp/classes/standard_material3d.hpp>
+#include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 
 #include "../actors/player.h"
 #include "../systems/mesh_util.h"
+#include "../world/sky_cycle.h"
 #include "../world/terrain_builder.h"
 
 using namespace godot;
@@ -26,6 +29,17 @@ void SwingSet::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_angle"), &SwingSet::get_angle);
 	ClassDB::bind_method(D_METHOD("is_ridden"), &SwingSet::is_ridden);
 	ClassDB::bind_method(D_METHOD("is_creak_ready"), &SwingSet::is_creak_ready);
+	ClassDB::bind_method(D_METHOD("get_glow_visible_count"), &SwingSet::get_glow_visible_count);
+}
+
+int SwingSet::get_glow_visible_count() const {
+	int n = 0;
+	for (int i = 0; i < 6; i++) {
+		if (glow[i] != nullptr && glow[i]->is_visible()) {
+			n++;
+		}
+	}
+	return n;
 }
 
 void SwingSet::_notification(int p_what) {
@@ -43,6 +57,7 @@ void SwingSet::_notification(int p_what) {
 				p.y = terrain->get_terrain_height(p.x, p.z) + 0.02f;
 				set_global_position(p);
 			}
+			sky = Object::cast_to<SkyCycle>(get_parent()->get_node_or_null("SkyCycle"));
 			add_to_group("interactables");
 			build();
 			make_creak();
@@ -50,6 +65,22 @@ void SwingSet::_notification(int p_what) {
 		} break;
 		case NOTIFICATION_PROCESS: {
 			const float delta = (float)get_process_delta_time();
+			glow_t += delta;
+			if (sky != nullptr) {
+				float night = sky->get_night_factor();
+				float wet = sky->get_rain_amount() + sky->get_snow_amount() * 0.7f;
+				bool show = night > 0.5f && wet < 0.3f;
+				for (int i = 0; i < 6; i++) {
+					if (glow[i] == nullptr) {
+						continue;
+					}
+					glow[i]->set_visible(show);
+					if (show) {
+						float s = 0.7f + 0.5f * (0.5f + 0.5f * std::sin(glow_t * 1.6f + (float)i * 1.7f));
+						glow[i]->set_scale(Vector3(s, s, s));
+					}
+				}
+			}
 			if (rider != nullptr && !rider->get_is_sitting()) {
 				rider = nullptr;
 				amp = 0.0f;
@@ -179,6 +210,31 @@ void SwingSet::build() {
 	meshutil::add_box(pivot, toon, Vector3(0.56f, 0.09f, 0.64f), Vector3(0.0f, -1.53f, 0.0f), bark_light);
 	meshutil::add_box(pivot, toon, Vector3(0.56f, 0.05f, 0.08f), Vector3(0.0f, -1.46f, -0.30f), bark);
 	meshutil::add_box(pivot, toon, Vector3(0.56f, 0.05f, 0.08f), Vector3(0.0f, -1.46f, 0.30f), bark);
+
+	// 夜里停在秋千立柱上的萤火虫
+	Ref<SphereMesh> gs;
+	gs.instantiate();
+	gs->set_radius(0.025f);
+	gs->set_height(0.05f);
+	gs->set_radial_segments(8);
+	gs->set_rings(5);
+	glow_mat.instantiate();
+	glow_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	glow_mat->set_albedo(Color(0.95f, 1.0f, 0.55f));
+	glow_mat->set("emission_enabled", true);
+	glow_mat->set("emission", Color(0.85f, 1.0f, 0.40f));
+	glow_mat->set("emission_energy_multiplier", 2.2f);
+	gs->set_material(Ref<Material>(glow_mat));
+	for (int i = 0; i < 6; i++) {
+		float z = (i % 2 == 0) ? -1.05f : 1.05f;
+		float y = 1.15f + (float)(i / 2) * 0.42f;
+		glow[i] = memnew(MeshInstance3D);
+		glow[i]->set_name(String("SwingGlow") + String::num_int64(i));
+		glow[i]->set_mesh(gs);
+		glow[i]->set_position(Vector3(0.0f, y, z + ((i % 2 == 0) ? -0.03f : 0.03f)));
+		glow[i]->set_visible(false);
+		add_child(glow[i]);
+	}
 }
 
 void SwingSet::make_creak() {
