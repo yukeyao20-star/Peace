@@ -27,6 +27,7 @@
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/time.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/classes/multi_mesh.hpp>
 #include <godot_cpp/classes/multi_mesh_instance3d.hpp>
 #include <godot_cpp/classes/primitive_mesh.hpp>
@@ -86,6 +87,8 @@ void SkyCycle::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_moon_phase"), &SkyCycle::get_moon_phase);
 	ClassDB::bind_method(D_METHOD("get_night_factor"), &SkyCycle::get_night_factor);
 	ClassDB::bind_method(D_METHOD("get_constellation_count"), &SkyCycle::get_constellation_count);
+	ClassDB::bind_method(D_METHOD("get_galaxy_above_horizon"), &SkyCycle::get_galaxy_above_horizon);
+	ClassDB::bind_method(D_METHOD("get_galaxy_tone_count"), &SkyCycle::get_galaxy_tone_count);
 	ClassDB::bind_method(D_METHOD("get_constellation_line_count"), &SkyCycle::get_constellation_line_count);
 	ClassDB::bind_method(D_METHOD("get_meteor_flash"), &SkyCycle::get_meteor_flash);
 	ClassDB::bind_method(D_METHOD("get_meteor_count"), &SkyCycle::get_meteor_count);
@@ -525,6 +528,9 @@ void SkyCycle::apply() {
 		}
 		if (const_line_mat.is_valid()) {
 			const_line_mat->set_albedo(Color(0.62f, 0.76f, 1.0f, 0.50f * ca));
+		}
+		if (galaxy_mat.is_valid()) {
+			galaxy_mat->set_albedo(Color(1.0f, 1.0f, 1.0f, 0.55f * ca));
 		}
 		if (stars != nullptr) {
 			stars->set_visible(alpha > 0.004f); // 白天/浓云整组隐藏，省一次 draw call
@@ -1085,6 +1091,7 @@ void SkyCycle::build_stars() {
 	add_child(shooting_star);
 
 	build_constellations();
+	build_galaxy();
 }
 
 // 三组手摆的星座：北斗七星 / 猎户座 / 仙后座。
@@ -1263,6 +1270,96 @@ void SkyCycle::build_snow_glints() {
 	snow_glints->set_emitting(true);
 	snow_glints->set_visible(false);
 	add_child(snow_glints);
+}
+
+// 银河星尘带：沿一条倾斜大圆撒下细密的小星点，越靠银道面越密，
+// 参考 tiffany352/godot-starlight 的 MultiMesh 星野与常见的
+// 「密集星点沿倾斜大圆分布」银河做法（单次 draw call、随星穹旋转）。
+void SkyCycle::build_galaxy() {
+	if (stars == nullptr) {
+		return;
+	}
+	galaxy_mat.instantiate();
+	galaxy_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	galaxy_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	galaxy_mat->set_billboard_mode(BaseMaterial3D::BILLBOARD_ENABLED);
+	galaxy_mat->set_flag(BaseMaterial3D::FLAG_BILLBOARD_KEEP_SCALE, true);
+	galaxy_mat->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true);
+	galaxy_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	galaxy_mat->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, star_texture);
+	galaxy_mat->set_albedo(Color(1.0f, 1.0f, 1.0f, 0.0f));
+
+	Ref<QuadMesh> quad;
+	quad.instantiate();
+	quad->set_size(Vector2(0.42f, 0.42f));
+	quad->set_material(Ref<Material>(galaxy_mat));
+
+	Ref<MultiMesh> mm;
+	mm.instantiate();
+	mm->set_transform_format(MultiMesh::TRANSFORM_3D);
+	mm->set_use_colors(true);
+	mm->set_mesh(quad);
+
+	static std::mt19937 rng(909090u);
+	std::uniform_real_distribution<float> rnd(0.0f, 1.0f);
+	// 银道面法线：略微倾斜的一条带，横贯天顶
+	const Vector3 band_n = Vector3(0.34f, 0.80f, 0.49f).normalized();
+	const int target = 900;
+	const float R = 258.0f;
+	mm->set_instance_count(target);
+	int placed = 0;
+	while (placed < target) {
+		float x = rnd(rng) * 2.0f - 1.0f;
+		float y = rnd(rng) * 2.0f - 1.0f;
+		float z = rnd(rng) * 2.0f - 1.0f;
+		float len = std::sqrt(x * x + y * y + z * z);
+		if (len < 0.001f) {
+			continue;
+		}
+		Vector3 dir(x / len, y / len, z / len);
+		if (dir.y < 0.03f) {
+			continue; // 只留地平线以上
+		}
+		const float h = std::abs(dir.dot(band_n));
+		if (h > 0.17f) {
+			continue;
+		}
+		// 越靠银道面越密（边缘快速稀疏，形成一条柔和的带子）
+		const float density = 1.0f - std::pow(h / 0.17f, 1.6f);
+		if (rnd(rng) > density * 0.95f) {
+			continue;
+		}
+		Transform3D xf;
+		xf.origin = dir * R;
+		const float s = 0.18f + 0.55f * std::pow(rnd(rng), 2.0f);
+		xf.basis = Basis().scaled(Vector3(s, s, s));
+		mm->set_instance_transform(placed, xf);
+		// 恒星颜色温度：少量暖黄、少量冷蓝，其余近白
+		const float tone = rnd(rng);
+		Color c;
+		if (tone < 0.16f) {
+			c = Color(1.0f, 0.86f, 0.66f);
+		} else if (tone < 0.40f) {
+			c = Color(0.72f, 0.82f, 1.0f);
+		} else {
+			c = Color(0.95f, 0.96f, 1.0f);
+		}
+		const float b = 0.12f + 0.42f * rnd(rng);
+		c = Color(c.r * b, c.g * b, c.b * b);
+		mm->set_instance_color(placed, c);
+		if (dir.y > 0.0f) {
+			galaxy_above++;
+		}
+		if (tone < 0.40f) {
+			galaxy_tones++; // 暖黄/冷蓝的“有温度”恒星数量
+		}
+		placed++;
+	}
+	galaxy = memnew(MultiMeshInstance3D);
+	galaxy->set_name("Galaxy");
+	galaxy->set_multimesh(mm);
+	galaxy->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+	stars->add_child(galaxy);
 }
 
 void SkyCycle::build_moon() {

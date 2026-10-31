@@ -122,6 +122,11 @@ private:
 	Ref<StandardMaterial3D> star_mat;        // 星星材质（每帧只调 albedo 透明度）
 	Ref<ImageTexture> star_texture;          // 圆形星点纹理（星座星点复用）
 	Node3D *constellation_root = nullptr;    // 三组星座（挂在 stars 下，随星穹一起转）
+	MultiMeshInstance3D *galaxy = nullptr;   // 银河星尘带（挂 stars 下）
+	Ref<StandardMaterial3D> galaxy_mat;
+	int galaxy_above = 0;
+	int galaxy_tones = 0;
+	void build_galaxy();
 	Ref<StandardMaterial3D> const_star_mat;  // 星座星点材质
 	Ref<StandardMaterial3D> const_line_mat;  // 星座连线材质
 	std::vector<MeshInstance3D *> const_stars;
@@ -245,6 +250,8 @@ public:
 	float get_night_factor() const;
 
 	int get_constellation_count() const { return (int)const_stars.size(); }
+	int get_galaxy_above_horizon() const { return galaxy_above; }
+	int get_galaxy_tone_count() const { return galaxy_tones; }
 	int get_constellation_line_count() const { return (int)const_lines.size(); }
 	float get_meteor_flash() const { return meteor_flash; }
 	int get_meteor_count() const { return meteor_count; }
