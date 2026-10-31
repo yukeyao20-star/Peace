@@ -20,6 +20,7 @@
 #include "butterfly_swarm.h"
 #include "duck_flock.h"
 #include "lake_jump_fx.h"
+#include "fish_school.h"
 #include "berry_bush.h"
 #include "farm_plot.h"
 #include "game_director.h"
@@ -59,6 +60,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(ButterflySwarm);
 	GDREGISTER_CLASS(DuckFlock);
 	GDREGISTER_CLASS(LakeJumpFx);
+	GDREGISTER_CLASS(FishSchool);
 	GDREGISTER_CLASS(BerryBush);
 	GDREGISTER_CLASS(FarmPlot);
 	GDREGISTER_CLASS(GameDirector);
