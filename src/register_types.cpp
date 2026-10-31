@@ -115,6 +115,7 @@
 #include "turtle_log.h"
 #include "sprinkler.h"
 #include "signpost.h"
+#include "dock_bell.h"
 #include "beach_finds.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
@@ -255,6 +256,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(TurtleLog);
 	GDREGISTER_CLASS(Sprinkler);
 	GDREGISTER_CLASS(Signpost);
+	GDREGISTER_CLASS(DockBell);
 	GDREGISTER_CLASS(BeachFinds);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
