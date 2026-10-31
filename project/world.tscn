@@ -1234,6 +1234,8 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, -0.55, 26)
 
 [node name="Dragonflies" type="DragonflySwarm" parent="."]
 
+[node name="Frogs" type="FrogPond" parent="."]
+
 [node name="GameDirector" type="GameDirector" parent="." unique_id=1818518943]
 
 [node name="Ambience" type="Ambience" parent="." unique_id=564152197]
