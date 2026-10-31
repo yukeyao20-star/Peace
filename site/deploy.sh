@@ -19,7 +19,7 @@ echo "==> 同步网页文件  $DIR  ->  $HOST:$REMOTE"
 ssh "$HOST" "mkdir -p $REMOTE/download"
 rsync -az --delete \
   --exclude 'download/' --exclude 'nginx/' --exclude 'vps-traffic/' \
-  --exclude 'update/' --exclude 'deploy.sh' --exclude '.DS_Store' \
+  --exclude 'update/' --exclude 'agents/' --exclude 'deploy.sh' --exclude '.DS_Store' \
   "$DIR/" "$HOST:$REMOTE/"
 
 echo "==> 同步安装包  $DIR/download/  ->  $HOST:$REMOTE/download/"
