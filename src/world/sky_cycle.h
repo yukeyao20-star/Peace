@@ -114,6 +114,16 @@ private:
 	CPUParticles3D *uw_bubbles = nullptr; // 水下气泡（相机周围上升）
 	CPUParticles3D *uw_specks = nullptr;  // 水下悬浮微粒
 	AudioStreamPlayer *uw_amb = nullptr; // 水下环境音（低频涌动 + 气泡）
+	ColorRect *lightning_flash = nullptr; // 暴雨闪电全屏闪光
+	AudioStreamPlayer *thunder = nullptr;
+	Ref<AudioStreamWAV> snd_thunder;
+	float lightning_t = 10.0f;
+	float flash_t = 0.0f;
+	float flash_dur = 0.45f;
+	float thunder_delay = 0.0f;
+	bool thunder_pending = false;
+	Ref<AudioStreamWAV> make_thunder();
+	void build_storm();
 	Ref<AudioStreamWAV> uw_amb_stream;
 	float uw_amb_db = -60.0f;
 	Ref<AudioStreamWAV> make_underwater_loop();

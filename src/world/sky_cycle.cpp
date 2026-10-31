@@ -130,6 +130,7 @@ void SkyCycle::_notification(int p_what) {
 			build_moon();
 			build_underwater();
 			build_underwater_ambience();
+			build_storm();
 			// 调试：ZCODE_FORCE_METEOR=1 时首次流星提前到 0.4s（探针截图用）
 			if (OS::get_singleton() != nullptr
 					&& OS::get_singleton()->get_environment("ZCODE_FORCE_METEOR") == "1") {
@@ -161,6 +162,52 @@ void SkyCycle::_notification(int p_what) {
 			rain = Math::move_toward(rain, rain_target, (float)delta * 0.18f);
 			snow = Math::move_toward(snow, snow_target, (float)delta * 0.045f); // 积雪与消融过渡放缓3倍，从容自然
 			apply();
+			// —— 暴雨闪电：厚雨云里偶尔一道白光，随后传来雷声 ——
+			{
+				static std::mt19937 storm_rng(20261101u);
+				std::uniform_real_distribution<float> sd01(0.0f, 1.0f);
+				bool force = OS::get_singleton() != nullptr
+						&& OS::get_singleton()->get_environment("ZCODE_FORCE_LIGHTNING") == "1";
+				bool storm = force || (rain > 0.72f && snow < 0.06f);
+				if (storm) {
+					lightning_t -= (float)delta;
+					if (lightning_t <= 0.0f) {
+						flash_t = flash_dur;
+						thunder_pending = true;
+						thunder_delay = 0.55f + sd01(storm_rng) * 1.35f;
+						lightning_t = force ? 2.0f : (8.0f + sd01(storm_rng) * 18.0f);
+					}
+				} else {
+					lightning_t = Math::max(lightning_t, 2.0f);
+				}
+				float flash_a = 0.0f;
+				if (flash_t > 0.0f) {
+					flash_t -= (float)delta;
+					float u = 1.0f - Math::clamp(flash_t / flash_dur, 0.0f, 1.0f);
+					flash_a = std::sin(u * 3.1415926f) * 0.28f;
+					if (sun != nullptr) {
+						sun->set_param(Light3D::PARAM_ENERGY,
+								sun->get_param(Light3D::PARAM_ENERGY) + flash_a * 2.5f);
+					}
+				}
+				if (lightning_flash != nullptr) {
+					Color c = lightning_flash->get_color();
+					c.a = flash_a;
+					lightning_flash->set_color(c);
+				}
+				if (thunder_pending) {
+					thunder_delay -= (float)delta;
+					if (thunder_delay <= 0.0f) {
+						thunder_pending = false;
+						if (thunder != nullptr && snd_thunder.is_valid()) {
+							thunder->set_pitch_scale(0.9f + sd01(storm_rng) * 0.22f);
+							thunder->set_volume_db(-9.0f + sd01(storm_rng) * 3.0f);
+							thunder->play(0.0f);
+						}
+					}
+				}
+			}
+
 			// —— 水下氛围（相机低于水面 0.5m 内淡入青蓝色）——
 			if (uw_tint != nullptr) {
 				float target = 0.0f;
@@ -1093,4 +1140,62 @@ void SkyCycle::build_underwater_ambience() {
 	uw_amb->set_volume_db(-60.0f);
 	add_child(uw_amb);
 	uw_amb->play();
+}
+
+// —— 暴雨雷声：低频滚动噪声 + 几声闷裂 ——
+Ref<AudioStreamWAV> SkyCycle::make_thunder() {
+	const int sr = 22050;
+	const float dur = 2.8f;
+	const int n = (int)(dur * sr);
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+	std::mt19937 rng(119119u);
+	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
+	float lp = 0.0f;
+	float lp2 = 0.0f;
+	for (int i = 0; i < n; i++) {
+		float t = (float)i / sr;
+		lp += 0.012f * ((d01(rng) - 0.5f) - lp);
+		lp2 += 0.06f * ((d01(rng) - 0.5f) - lp2);
+		float env = Math::clamp(t / 0.06f, 0.0f, 1.0f) * Math::exp(-t * 0.9f);
+		float crack = 0.0f;
+		if (t < 0.5f) {
+			crack = std::sin(6.2831853f * 62.0f * t) * Math::exp(-t * 11.0f) * 0.5f;
+		}
+		float samp = (lp * 9.0f + lp2 * 2.2f + crack) * env;
+		int16_t q = (int16_t)Math::clamp(samp * 16000.0f, -32000.0f, 32000.0f);
+		w[i * 2] = (uint8_t)(q & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
+	}
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_data(bytes);
+	return wav;
+}
+
+void SkyCycle::build_storm() {
+	// 调试：ZCODE_FORCE_LIGHTNING=1 时首次闪电提前到 0.6s（探针截图用）
+	if (OS::get_singleton() != nullptr
+			&& OS::get_singleton()->get_environment("ZCODE_FORCE_LIGHTNING") == "1") {
+		lightning_t = 0.6f;
+	}
+	// 闪电全屏白光：叠在水下覆盖层里，平时 alpha 0
+	if (uw_layer != nullptr) {
+		lightning_flash = memnew(ColorRect);
+		lightning_flash->set_name("LightningFlash");
+		lightning_flash->set_anchors_preset(Control::PRESET_FULL_RECT);
+		lightning_flash->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+		lightning_flash->set_color(Color(0.92f, 0.95f, 1.0f, 0.0f));
+		uw_layer->add_child(lightning_flash);
+	}
+	snd_thunder = make_thunder();
+	thunder = memnew(AudioStreamPlayer);
+	thunder->set_name("Thunder");
+	thunder->set_stream(snd_thunder);
+	thunder->set_volume_db(-9.0f);
+	add_child(thunder);
 }
