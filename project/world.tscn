@@ -983,6 +983,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10.5, 0.55, 12.5)
 [node name="PaperBoat" type="PaperBoat" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9, 0, -16)
 
+[node name="EntrywayShelf" type="EntrywayShelf" parent="Homestead"]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -2.95, 1.45, 1.9)
+
 [node name="Signpost" type="Signpost" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11.5, 0, 15.5)
 
