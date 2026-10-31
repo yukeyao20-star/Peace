@@ -7,6 +7,9 @@
 
 #include <godot_cpp/classes/audio_stream.hpp>
 #include <godot_cpp/classes/audio_stream_player.hpp>
+#include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/standard_material3d.hpp>
+#include <godot_cpp/classes/torus_mesh.hpp>
 #include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/canvas_layer.hpp>
@@ -50,6 +53,7 @@ void FishingSystem::_notification(int p_what) {
 				return;
 			}
 			build_ui();
+			build_cast_ring();
 			build_tackle();
 			load_records(); // 图鉴纪录（user://fishing_records.cfg）
 			set_process(true);
@@ -128,6 +132,25 @@ void FishingSystem::_notification(int p_what) {
 						state = 0;
 					}
 				} break;
+			}
+
+			// 浮漂落点涟漪：扩散 + 淡出
+			if (cast_ring_active && cast_ring != nullptr) {
+				cast_ring_t += (float)delta;
+				float u = Math::clamp(cast_ring_t / cast_ring_dur, 0.0f, 1.0f);
+				float sc = 0.55f + 2.1f * u;
+				cast_ring->set_scale(Vector3(sc, 1.0f, sc));
+				Ref<StandardMaterial3D> m = Ref<StandardMaterial3D>(
+						Object::cast_to<StandardMaterial3D>(cast_ring_mat.ptr()));
+				if (m.is_valid()) {
+					Color c = m->get_albedo();
+					c.a = 0.55f * (1.0f - u);
+					m->set_albedo(c);
+				}
+				if (u >= 1.0f) {
+					cast_ring_active = false;
+					cast_ring->hide();
+				}
 			}
 
 			// 鱼竿与鱼线每帧跟随玩家（摆在状态机之后：抛竿那一帧就能看到竿挥出去）
@@ -784,6 +807,7 @@ void FishingSystem::start_cast(float p_charge) {
 	bobber->set_global_position(bobber_pos);
 	bobber->show();
 	fish->show();
+	start_cast_ring(Vector3(bobber_pos.x, water_level + 0.03f, bobber_pos.z));
 	if (hint != nullptr) {
 		hint->set_text(String::utf8("鱼影靠近浮漂中……（再按 F 收竿）"));
 		hint->show();
@@ -1219,4 +1243,38 @@ void FishingSystem::save_records() {
 		cf->set_value("records", "best_" + String::num_int64(sp), rec_best[sp]);
 	}
 	cf->save("user://fishing_records.cfg");
+}
+
+// —— 抛竿落点：一圈向外扩散的水纹 ——
+void FishingSystem::build_cast_ring() {
+	Ref<TorusMesh> torus;
+	torus.instantiate();
+	torus->set_inner_radius(0.10f);
+	torus->set_outer_radius(0.14f);
+	torus->set_rings(6);
+	torus->set_ring_segments(24);
+	Ref<StandardMaterial3D> mat;
+	mat.instantiate();
+	mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	mat->set_albedo(Color(0.93f, 0.98f, 1.0f, 0.5f));
+	mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	torus->set_material(mat);
+	cast_ring_mat = mat;
+	cast_ring = memnew(MeshInstance3D);
+	cast_ring->set_name("CastRipple");
+	cast_ring->set_mesh(torus);
+	cast_ring->hide();
+	add_child(cast_ring);
+}
+
+void FishingSystem::start_cast_ring(const Vector3 &p_pos) {
+	if (cast_ring == nullptr) {
+		return;
+	}
+	cast_ring->set_global_position(p_pos);
+	cast_ring->set_scale(Vector3(0.55f, 1.0f, 0.55f));
+	cast_ring->show();
+	cast_ring_active = true;
+	cast_ring_t = 0.0f;
 }

@@ -142,6 +142,15 @@ protected:
 	ColorRect *charge_fill = nullptr; // 蓄力条填充（张力条上方一行）
 	Label *book_label = nullptr;  // 图鉴正文（多行，refresh_book 刷新）
 
+	// 抛竿落点涟漪
+	class MeshInstance3D *cast_ring = nullptr;
+	Ref<class Material> cast_ring_mat;
+	float cast_ring_t = 0.0f;
+	float cast_ring_dur = 0.75f;
+	bool cast_ring_active = false;
+	void build_cast_ring();
+	void start_cast_ring(const Vector3 &p_pos);
+
 	// 音效
 	class AudioStreamPlayer *audio_player = nullptr;
 	Ref<class AudioStream> snd_cast;    // 抛竿入水 (zen_wood_drop.mp3)

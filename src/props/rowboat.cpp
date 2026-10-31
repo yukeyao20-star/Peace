@@ -9,7 +9,9 @@
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/input.hpp>
+#include <godot_cpp/classes/font.hpp>
 #include <godot_cpp/classes/input_map.hpp>
+#include <godot_cpp/classes/label3d.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/quad_mesh.hpp>
 #include <godot_cpp/classes/shader.hpp>
@@ -82,11 +84,28 @@ void Rowboat::_notification(int p_what) {
 				speed = Math::lerp(speed, f * 2.3f, Math::min(1.0f, delta * 2.2f));
 				yaw += t * delta * 0.85f * (0.45f + Math::min(1.0f, std::fabs(speed) / 2.3f));
 				Vector3 fwd(std::sin(yaw), 0.0f, std::cos(yaw));
-				Vector3 next = get_global_position() + fwd * speed * delta;
-				if (terrain != nullptr && terrain->water_depth_at(next.x, next.z) > 0.65f) {
-					set_global_position(Vector3(next.x, get_global_position().y, next.z));
-				} else {
-					speed = 0.0f;
+				Vector3 pos = get_global_position();
+				Vector3 next = pos + fwd * speed * delta;
+				bool moved = false;
+				if (terrain == nullptr || terrain->water_depth_at(next.x, next.z) > 0.65f) {
+					set_global_position(Vector3(next.x, pos.y, next.z));
+					moved = true;
+				} else if (terrain != nullptr) {
+					// 靠岸时沿着岸线滑：只走能走的那一轴，船不会硬生生卡住
+					Vector3 nx(pos.x + fwd.x * speed * delta, pos.y, pos.z);
+					Vector3 nz(pos.x, pos.y, pos.z + fwd.z * speed * delta);
+					if (terrain->water_depth_at(nx.x, nx.z) > 0.65f) {
+						set_global_position(nx);
+						speed *= 0.86f;
+						moved = true;
+					} else if (terrain->water_depth_at(nz.x, nz.z) > 0.65f) {
+						set_global_position(nz);
+						speed *= 0.86f;
+						moved = true;
+					}
+				}
+				if (!moved) {
+					speed = Math::lerp(speed, 0.0f, Math::min(1.0f, delta * 8.0f));
 				}
 				// 下船：E 边沿（上船时把 e_prev 置真，避免同一次按键立刻下船）
 				bool e = act("interact", KEY_E);
@@ -399,6 +418,24 @@ void Rowboat::build_dock() {
 	lamp->set_param(Light3D::PARAM_RANGE, 9.0f);
 	lamp->set_shadow(false);
 	body->add_child(lamp);
+
+	// 码头小木牌：面向岸边来路
+	meshutil::add_box(body, toon, Vector3(0.10f, 1.25f, 0.10f), Vector3(-6.75f, 0.30f, -11.55f), wood_dark);
+	meshutil::add_box(body, toon, Vector3(0.10f, 1.25f, 0.10f), Vector3(-5.25f, 0.30f, -11.55f), wood_dark);
+	meshutil::add_box(body, toon, Vector3(1.42f, 0.46f, 0.07f), Vector3(-6.0f, 0.82f, -11.55f), wood_light);
+	Ref<Font> cjk = ResourceLoader::get_singleton()->load("res://assets/fonts/NotoSansSC-Regular.ttf");
+	Label3D *sign = memnew(Label3D);
+	sign->set_name("DockSign");
+	sign->set_text(String::utf8("小船码头"));
+	sign->set_font_size(44);
+	sign->set_outline_size(0);
+	sign->set_modulate(Color(0.23f, 0.15f, 0.08f, 1.0f));
+	if (cjk.is_valid()) {
+		sign->set_font(cjk);
+	}
+	sign->set_position(Vector3(-6.0f, 0.82f, -11.50f));
+	sign->set_rotation(Vector3(0.0f, 3.1415926f, 0.0f));
+	body->add_child(sign);
 
 	// 甲板上的缆绳圈
 	Ref<TorusMesh> rope;

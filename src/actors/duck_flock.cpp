@@ -54,6 +54,16 @@ void DuckFlock::_notification(int p_what) {
 			crumb_mat->set_albedo(Color(0.94f, 0.83f, 0.56f));
 			crumb_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
 			crumb_mesh->set_material(crumb_mat);
+			// 小鸭吱吱声源
+			peep_stream = make_peep();
+			if (peep_stream.is_valid()) {
+				voice_peep = memnew(AudioStreamPlayer3D);
+				voice_peep->set_name("DuckPeep");
+				voice_peep->set_stream(peep_stream);
+				voice_peep->set_volume_db(-15.0f);
+				voice_peep->set_max_distance(22.0f);
+				add_child(voice_peep);
+			}
 			// 嘎嘎声源（程序化合成，无外部音频依赖）
 			quack_stream = make_quack();
 			if (quack_stream.is_valid()) {
@@ -94,6 +104,7 @@ void DuckFlock::_notification(int p_what) {
 					if (d.root != nullptr) {
 						voice->set_global_position(d.root->get_global_position() + Vector3(0.0f, 0.15f, 0.0f));
 						voice->play();
+						play_peep();
 					}
 					quack_timer = wait(qrng);
 				} else {
@@ -420,6 +431,7 @@ void DuckFlock::interact(const Vector3 &p_player_pos) {
 	if (voice != nullptr) {
 		voice->set_global_position(feed_point + Vector3(0.0f, 0.2f, 0.0f));
 		voice->play();
+		play_peep();
 	}
 	emit_signal("animal_fed"); // 每日待办"喂动物"计分
 }
@@ -501,6 +513,66 @@ Ref<AudioStreamWAV> DuckFlock::make_quack() {
 			samp += (v * 0.7f + breath) * env;
 		}
 		int16_t q = (int16_t)Math::clamp(samp * 26000.0f, -32000.0f, 32000.0f);
+		w[i * 2] = (uint8_t)(q & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
+	}
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_data(bytes);
+	return wav;
+}
+
+void DuckFlock::play_peep() {
+	if (voice_peep == nullptr || !peep_stream.is_valid()) {
+		return;
+	}
+	int idx = -1;
+	for (int i = duck_count; i < (int)ducks.size(); i++) {
+		if (ducks[i].root != nullptr) {
+			idx = i;
+			break;
+		}
+	}
+	if (idx < 0) {
+		return;
+	}
+	static std::mt19937 rng(737373u);
+	std::uniform_real_distribution<float> d(0.92f, 1.12f);
+	voice_peep->set_global_position(ducks[idx].root->get_global_position() + Vector3(0.0f, 0.12f, 0.0f));
+	voice_peep->set_pitch_scale(d(rng));
+	voice_peep->play();
+}
+
+// 小鸭：「吱—吱」两声，高频短促
+Ref<AudioStreamWAV> DuckFlock::make_peep() {
+	const int sr = 22050;
+	const float dur = 0.28f;
+	const int n = (int)(dur * sr);
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+	std::mt19937 rng(949494u);
+	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
+	for (int i = 0; i < n; i++) {
+		float t = (float)i / sr;
+		float samp = 0.0f;
+		for (int b = 0; b < 2; b++) {
+			float bt = t - b * 0.11f;
+			if (bt < 0.0f || bt > 0.09f) {
+				continue;
+			}
+			float f0 = (b == 0 ? 1080.0f : 1240.0f) * (1.0f + 0.35f * bt / 0.09f);
+			float env = Math::clamp(bt / 0.005f, 0.0f, 1.0f) * Math::exp(-bt * 26.0f);
+			float v = std::sin(6.2831853f * f0 * bt)
+					+ 0.35f * std::sin(6.2831853f * f0 * 2.0f * bt);
+			v *= env;
+			v += (d01(rng) - 0.5f) * 0.06f * env;
+			samp += v;
+		}
+		int16_t q = (int16_t)Math::clamp(samp * 9000.0f, -32000.0f, 32000.0f);
 		w[i * 2] = (uint8_t)(q & 0xFF);
 		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
 	}

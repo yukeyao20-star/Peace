@@ -53,6 +53,8 @@ private:
 	Node *sky_cycle = nullptr; // 夜里放慢巡游
 	Node3D *player = nullptr;
 	AudioStreamPlayer3D *voice = nullptr; // 嘎嘎声源
+	AudioStreamPlayer3D *voice_peep = nullptr; // 小鸭吱吱声源
+	Ref<AudioStreamWAV> peep_stream;
 	Ref<AudioStreamWAV> quack_stream;
 	float quack_timer = 6.0f;
 	float rest_k = 0.0f; // 夜间栖岸权重（0 巡游 → 1 靠岸歇息）
@@ -78,6 +80,8 @@ private:
 	void spawn_duck(int p_index, unsigned p_seed, bool p_duckling = false,
 			int p_follow = -1, float p_side = 0.0f);
 	Ref<AudioStreamWAV> make_quack();
+	Ref<AudioStreamWAV> make_peep();
+	void play_peep();
 
 protected:
 	static void _bind_methods();

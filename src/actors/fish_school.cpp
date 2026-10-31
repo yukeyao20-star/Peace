@@ -35,9 +35,11 @@ void FishSchool::_notification(int p_what) {
 			float delta = (float)get_process_delta_time();
 			anim_t += delta;
 			if (player != nullptr) {
-				// 玩家不在湖边时整组隐藏（鱼在水下，远处看不见也白画）
-				set_visible(player->get_global_position().distance_to(
-						Vector3(lake_center.x, water_level, lake_center.y)) < 60.0f);
+				// 玩家靠近任一片水域才显示
+				Vector3 pp = player->get_global_position();
+				bool near = pp.distance_to(Vector3(lake_center.x, water_level, lake_center.y)) < 60.0f
+						|| pp.distance_to(Vector3(-14.0f, water_level, 66.0f)) < 60.0f;
+				set_visible(near);
 			}
 			for (Fish &f : fish) {
 				if (f.root == nullptr) {
@@ -45,9 +47,9 @@ void FishSchool::_notification(int p_what) {
 				}
 				f.angle += f.speed * delta;
 				float bob = std::sin(anim_t * f.bob_w + f.bob_phase) * 0.04f;
-				Vector3 pos(lake_center.x + std::cos(f.angle) * f.radius,
+				Vector3 pos(f.center.x + std::cos(f.angle) * f.radius,
 						water_level - f.depth + bob,
-						lake_center.y + std::sin(f.angle) * f.radius);
+						f.center.y + std::sin(f.angle) * f.radius);
 				f.root->set_global_position(pos);
 				float sgn = f.speed >= 0.0f ? 1.0f : -1.0f;
 				Vector3 tangent(-std::sin(f.angle) * sgn, 0.0f, std::cos(f.angle) * sgn);
@@ -79,8 +81,9 @@ void FishSchool::spawn_fish(int p_index, unsigned p_seed) {
 	};
 
 	Fish f;
+	f.center = (p_index < 10) ? lake_center : Vector2(-14.0f, 66.0f);
 	f.angle = rnd(0.0f, 6.2831853f);
-	f.radius = rnd(2.8f, 8.0f);
+	f.radius = (p_index < 10) ? rnd(2.8f, 8.0f) : rnd(4.0f, 14.0f);
 	f.speed = rnd(0.05f, 0.13f) * (rnd(0.0f, 1.0f) < 0.5f ? -1.0f : 1.0f);
 	f.depth = rnd(0.8f, 2.3f); // 湖底 -5.2，留足净空
 	f.bob_w = rnd(0.9f, 1.8f);
@@ -130,7 +133,7 @@ void FishSchool::spawn_fish(int p_index, unsigned p_seed) {
 	f.tail->add_child(tmi);
 
 	// 首帧就位（避免建成瞬间堆在原点闪一帧）
-	f.root->set_global_position(Vector3(lake_center.x + std::cos(f.angle) * f.radius,
-			water_level - f.depth, lake_center.y + std::sin(f.angle) * f.radius));
+	f.root->set_global_position(Vector3(f.center.x + std::cos(f.angle) * f.radius,
+			water_level - f.depth, f.center.y + std::sin(f.angle) * f.radius));
 	fish.push_back(f);
 }
