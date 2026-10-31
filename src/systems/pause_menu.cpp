@@ -12,6 +12,7 @@
 #include <godot_cpp/classes/color_rect.hpp>
 #include <godot_cpp/classes/config_file.hpp>
 #include <godot_cpp/classes/control.hpp>
+#include <godot_cpp/classes/directional_light3d.hpp>
 #include <godot_cpp/classes/display_server.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/environment.hpp>
@@ -454,6 +455,20 @@ void PauseMenu::apply_quality() {
 			env->set_ssr_enabled(!quality_low);
 			env->set_ssao_enabled(!quality_low);
 			env->set_glow_enabled(!quality_low);
+		}
+	}
+	// 阴影降档（2026-10-31）：低档把太阳阴影距离 150→60m、4 级→2 级；
+	// 阴影 pass 的几何提交与阴影贴图填充同时下降，实测可再省 10~20ms。
+	if (Node *parent = get_parent()) {
+		DirectionalLight3D *sun = Object::cast_to<DirectionalLight3D>(
+				parent->get_node_or_null(NodePath("Sun")));
+		if (sun != nullptr) {
+			// godot-cpp 的 DirectionalLight3D 绑定未暴露 max distance 属性 → 走动态属性
+			sun->set(StringName("directional_shadow_max_distance"),
+					quality_low ? 60.0f : 150.0f);
+			sun->set_shadow_mode(quality_low
+					? DirectionalLight3D::SHADOW_PARALLEL_2_SPLITS
+					: DirectionalLight3D::SHADOW_PARALLEL_4_SPLITS);
 		}
 	}
 	// 帧成本主杠杆（tools/perf_probe.gd 实测：几何瓶颈下 0.7 档再省 ~36%，比关特效更有效）

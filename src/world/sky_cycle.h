@@ -24,6 +24,8 @@
 namespace godot {
 
 class CPUParticles3D;
+class CanvasLayer;
+class ColorRect;
 class DirectionalLight3D;
 class Environment;
 class CSGBox3D;
@@ -94,6 +96,9 @@ private:
 	Ref<ShaderMaterial> moon_shader_mat;     // 月盘月相材质（moon.gdshader：陨石坑+相位+地照）
 	int moon_phase_day = -1;                 // 已写入相位的 day_count（只在跨天时更新 phase uniform）
 	Node3D *player = nullptr;          // 懒查找的主角
+	CanvasLayer *uw_layer = nullptr;   // 水下氛围覆盖层（相机入水时淡入）
+	ColorRect *uw_tint = nullptr;
+	float uw_alpha = 0.0f;             // 当前不透明度（平滑过渡）
 	Ref<StandardMaterial3D> lamp_glow_mat;   // 桥头石灯灯芯材质（两盏灯共用 LampGlowMat，懒查找，改一次全生效）
 	float lamp_energy = 0.0f;                // 石灯当前自发光强度（apply() 里 move_toward 平滑逼近目标）
 
@@ -101,6 +106,7 @@ private:
 	void build_snow();
 	void build_stars();
 	void build_moon();
+	void build_underwater();
 	void build_precip_shelter(); // 采集木屋屋顶遮蔽体，写进降水着色器
 	void pick_next_weather();
 	void apply(); // 把 time_of_day / cloud / rain 写进灯光与天空

@@ -38,6 +38,8 @@ class Label;
 class SaveSystem;
 class WorldEnvironment;
 
+class DirectionalLight3D;
+
 class PauseMenu : public CanvasLayer {
 	GDCLASS(PauseMenu, CanvasLayer)
 

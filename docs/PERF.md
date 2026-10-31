@@ -126,7 +126,7 @@ env->set_ssao_enabled(false);
 env->set_glow_enabled(false);
 ```
 - **接入点（已交付）**：暂停菜单「画质：高/低（流畅）」按钮（`pause_menu.cpp` on_quality_pressed）——
-  低档关 SSR/SSAO/Glow 三特效 **+ 渲染缩放 `scaling_3d_scale` 0.7 + MSAA 4x 关闭**（高档复位 1.0 / 4x），即时生效；
+  低档关 SSR/SSAO/Glow 三特效 **+ 渲染缩放 `scaling_3d_scale` 0.7 + MSAA 4x 关闭 + 太阳阴影距离 150→60m、4 级→2 级**（高档全部复位），即时生效；
   持久化 `user://settings.cfg` `[video] quality_low`，开机 `apply_quality()` 自动应用；
   环境节点/视口缺失（测试/异常场景）静默跳过功能无损。
 - 验证：-s 自测 18 断言全绿（默认高档/来回切换三特效+缩放/文案/落盘/跨运行恢复/音量段共存）；

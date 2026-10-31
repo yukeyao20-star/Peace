@@ -8,6 +8,11 @@
 #include <godot_cpp/classes/cpu_particles3d.hpp>
 #include <godot_cpp/classes/csg_box3d.hpp>
 #include <godot_cpp/classes/directional_light3d.hpp>
+#include <godot_cpp/classes/camera3d.hpp>
+#include <godot_cpp/classes/canvas_layer.hpp>
+#include <godot_cpp/classes/color_rect.hpp>
+#include <godot_cpp/classes/control.hpp>
+#include <godot_cpp/classes/viewport.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/environment.hpp>
 #include <godot_cpp/classes/gpu_particles3d.hpp>
@@ -116,6 +121,7 @@ void SkyCycle::_notification(int p_what) {
 			build_precip_shelter(); // 必须在两份降水材质都建好之后
 			build_stars();
 			build_moon();
+			build_underwater();
 			// 结冰可行走面（ROADMAP #12）：与雨雪星空同为本节点营造的世界元素。
 			// IceSurface 自己沿祖先链找到本节点读雪量，雪量 ≥0.85 启用湖面碰撞、
 			// ≤0.70 解除（滞回防抖）；场景文件里不出现。
@@ -142,6 +148,19 @@ void SkyCycle::_notification(int p_what) {
 			rain = Math::move_toward(rain, rain_target, (float)delta * 0.18f);
 			snow = Math::move_toward(snow, snow_target, (float)delta * 0.045f); // 积雪与消融过渡放缓3倍，从容自然
 			apply();
+			// —— 水下氛围（相机低于水面 0.5m 内淡入青蓝色）——
+			if (uw_tint != nullptr) {
+				float target = 0.0f;
+				Camera3D *cam = get_viewport() != nullptr
+						? Object::cast_to<Camera3D>(get_viewport()->get_camera_3d()) : nullptr;
+				if (cam != nullptr && cam->get_global_position().y < -0.50f) {
+					target = 0.34f;
+				}
+				uw_alpha = Math::move_toward(uw_alpha, target, (float)delta * 1.8f);
+				Color col = uw_tint->get_color();
+				col.a = uw_alpha;
+				uw_tint->set_color(col);
+			}
 			// —— 星空缓慢漂移（北极星附近的视运动，极简版绕竖轴慢转）——
 			if (stars != nullptr) {
 				stars->rotate_y((float)delta * 0.01f);
@@ -590,6 +609,20 @@ void SkyCycle::build_snow() {
 	} else {
 		add_child(snowflakes);
 	}
+}
+
+void SkyCycle::build_underwater() {
+	// 水下氛围：相机低于水面时，全屏淡入一层青蓝色（配合水面着色器的"水下穹顶"）。
+	// 用 CanvasLayer + ColorRect 覆盖，不改 Environment —— 与天气/昼夜的雾色计算互不干扰。
+	uw_layer = memnew(CanvasLayer);
+	uw_layer->set_name("UnderwaterFx");
+	uw_layer->set_layer(90);
+	add_child(uw_layer);
+	uw_tint = memnew(ColorRect);
+	uw_tint->set_anchors_preset(Control::PRESET_FULL_RECT);
+	uw_tint->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	uw_tint->set_color(Color(0.04f, 0.26f, 0.30f, 0.0f));
+	uw_layer->add_child(uw_tint);
 }
 
 void SkyCycle::build_stars() {
