@@ -204,7 +204,7 @@ void GameDirector::build_ui() {
 	PanelContainer *goal_panel = memnew(PanelContainer);
 	goal_panel->set_name("GoalPanel");
 	goal_panel->set_position(Vector2(12.0f, 10.0f));
-	goal_panel->add_theme_stylebox_override("panel", uistyle::make_glass(14.0f, 0.55f));
+	goal_panel->add_theme_stylebox_override("panel", uistyle::make_wood_textured(12.0f, 0.97f));
 	add_child(goal_panel);
 
 	goal_label = memnew(Label);
@@ -213,9 +213,9 @@ void GameDirector::build_ui() {
 		goal_label->add_theme_font_override("font", font);
 	}
 	goal_label->add_theme_font_size_override("font_size", 21);
-	goal_label->add_theme_color_override("font_color", uistyle::text_cream());
-	goal_label->add_theme_color_override("font_outline_color", uistyle::outline_ink());
-	goal_label->add_theme_constant_override("outline_size", 6);
+	goal_label->add_theme_color_override("font_color", uistyle::wood_text());
+	goal_label->add_theme_color_override("font_outline_color", uistyle::wood_dark());
+	goal_label->add_theme_constant_override("outline_size", 3);
 	goal_panel->add_child(goal_label);
 
 	// —— 底部：操作提示（玻璃药丸，10 秒淡出）——
@@ -223,7 +223,7 @@ void GameDirector::build_ui() {
 	hint_panel->set_name("HintPanel");
 	hint_panel->set_anchors_preset(Control::PRESET_CENTER_BOTTOM);
 	hint_panel->set_offset(Side::SIDE_BOTTOM, -16.0f);
-	hint_panel->add_theme_stylebox_override("panel", uistyle::make_glass(16.0f, 0.45f));
+	hint_panel->add_theme_stylebox_override("panel", uistyle::make_wood_textured(10.0f, 0.92f));
 	add_child(hint_panel);
 
 	hint_label = memnew(Label);
@@ -234,9 +234,9 @@ void GameDirector::build_ui() {
 		hint_label->add_theme_font_override("font", font);
 	}
 	hint_label->add_theme_font_size_override("font_size", 17);
-	hint_label->add_theme_color_override("font_color", uistyle::text_soft());
-	hint_label->add_theme_color_override("font_outline_color", uistyle::outline_ink());
-	hint_label->add_theme_constant_override("outline_size", 5);
+	hint_label->add_theme_color_override("font_color", uistyle::wood_text());
+	hint_label->add_theme_color_override("font_outline_color", uistyle::wood_dark());
+	hint_label->add_theme_constant_override("outline_size", 2);
 	hint_panel->add_child(hint_label);
 
 	// —— 中央：结算大字（达成/新一天时显示，初始隐藏） ——

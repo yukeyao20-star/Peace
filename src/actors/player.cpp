@@ -193,17 +193,8 @@ void Player::_notification(int p_what) {
 			guide_panel->set_offset(SIDE_TOP, 16.0f);
 			guide_panel->set_offset(SIDE_BOTTOM, 168.0f);
 
-			Ref<StyleBoxFlat> guide_sb;
-			guide_sb.instantiate();
-			guide_sb->set_bg_color(Color(0.08f, 0.08f, 0.07f, 0.52f)); // 自然半透明暗色底板
-			guide_sb->set_border_color(Color(0.85f, 0.72f, 0.50f, 0.45f)); // 1px 温润细金边
-			guide_sb->set_border_width_all(1);
-			guide_sb->set_corner_radius_all(10);
-			guide_sb->set_content_margin(SIDE_LEFT, 12.0f);
-			guide_sb->set_content_margin(SIDE_RIGHT, 10.0f);
-			guide_sb->set_content_margin(SIDE_TOP, 8.0f);
-			guide_sb->set_content_margin(SIDE_BOTTOM, 8.0f);
-			guide_panel->add_theme_stylebox_override("panel", guide_sb);
+			// 小黑板：墨绿板面 + 原木边框，粉笔字（与木牌/木屋同一材质语言）
+			guide_panel->add_theme_stylebox_override("panel", uistyle::make_blackboard_textured(0.98f));
 			hud_layer->add_child(guide_panel);
 
 			VBoxContainer *guide_vbox = memnew(VBoxContainer);
@@ -222,13 +213,7 @@ void Player::_notification(int p_what) {
 			for (int hi = 0; hi < 6; ++hi) {
 				Label *hl = memnew(Label);
 				hl->set_text(String::utf8(hints[hi]));
-				hl->add_theme_font_size_override("font_size", 12);
-				hl->add_theme_color_override("font_color", Color(0.96f, 0.94f, 0.88f, 0.95f));
-				hl->add_theme_color_override("font_outline_color", Color(0.08f, 0.06f, 0.04f, 0.8f));
-				hl->add_theme_constant_override("outline_size", 2);
-				if (cjk.is_valid()) {
-					hl->add_theme_font_override("font", cjk);
-				}
+				uistyle::dress_chalk_label(hl, 13, uistyle::chalk_font());
 				guide_vbox->add_child(hl);
 			}
 			firework_hint = nullptr;

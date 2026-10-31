@@ -155,9 +155,9 @@ void FishingSystem::build_ui() {
 		l->add_theme_color_override("font_outline_color", Color(0.08f, 0.06f, 0.04f));
 		l->add_theme_constant_override("outline_size", 7);
 		l->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
-		// 统一「湖畔玻璃」底板：直接用 Label 的 normal stylebox，show/hide 全走原逻辑
-		l->add_theme_stylebox_override("normal", uistyle::make_glass(
-				Math::max(10.0f, p_size * 0.45f), 0.45f));
+		// 统一木质底板（与顶部木牌/木屋同一材质语言）
+		l->add_theme_stylebox_override("normal", uistyle::make_wood_textured(
+				Math::max(10.0f, p_size * 0.45f), 0.90f));
 		if (cjk.is_valid()) {
 			l->add_theme_font_override("font", cjk);
 		}
@@ -185,7 +185,7 @@ void FishingSystem::build_ui() {
 	// 张力条（屏幕中下）：玻璃托槽 + 绿色目标区间 + 黄色张力游标 + 顶部进度细条
 	// 托槽用统一「湖畔玻璃」Panel（圆角+发丝边），绿区/游标仍是叠放的 ColorRect
 	bar_bg = memnew(Panel);
-	bar_bg->add_theme_stylebox_override("panel", uistyle::make_glass(8.0f, 0.75f));
+	bar_bg->add_theme_stylebox_override("panel", uistyle::make_wood_textured(8.0f, 0.90f));
 	bar_bg->set_anchors_preset(Control::PRESET_CENTER_BOTTOM);
 	bar_bg->set_offset(SIDE_LEFT, -180.0f);
 	bar_bg->set_offset(SIDE_RIGHT, 180.0f);
@@ -215,7 +215,7 @@ void FishingSystem::build_ui() {
 	// 蓄力条（张力条上面一行）：按住 F 时从 0 涨到满，松手抛出去。
 	// 用暖黄→橙的填充色，和张力条（绿区/黄游标）区分开。托槽同款玻璃 Panel。
 	charge_bg = memnew(Panel);
-	charge_bg->add_theme_stylebox_override("panel", uistyle::make_glass(8.0f, 0.72f));
+	charge_bg->add_theme_stylebox_override("panel", uistyle::make_wood_textured(8.0f, 0.90f));
 	charge_bg->set_anchors_preset(Control::PRESET_CENTER_BOTTOM);
 	charge_bg->set_offset(SIDE_LEFT, -180.0f);
 	charge_bg->set_offset(SIDE_RIGHT, 180.0f);
@@ -1147,7 +1147,7 @@ void FishingSystem::build_book_ui() {
 	panel->set_name("FishBookPanel");
 	panel->set_anchors_preset(Control::PRESET_CENTER_RIGHT);
 	panel->set_offset(Side::SIDE_RIGHT, -24.0f);
-	panel->add_theme_stylebox_override("panel", uistyle::make_glass(16.0f, 0.62f));
+	panel->add_theme_stylebox_override("panel", uistyle::make_wood_textured(14.0f, 0.96f));
 	book_layer->add_child(panel);
 
 	book_label = memnew(Label);
@@ -1156,6 +1156,9 @@ void FishingSystem::build_book_ui() {
 		book_label->add_theme_font_override("font", cjk);
 	}
 	book_label->add_theme_font_size_override("font_size", 20);
+	book_label->add_theme_color_override("font_color", uistyle::wood_text());
+	book_label->add_theme_color_override("font_outline_color", uistyle::wood_dark());
+	book_label->add_theme_constant_override("outline_size", 2);
 	panel->add_child(book_label);
 	refresh_book();
 }

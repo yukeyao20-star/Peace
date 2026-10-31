@@ -240,7 +240,7 @@ void PauseMenu::build_ui() {
 
 	// —— 面板（湖畔玻璃令牌 ui_style.h；内边距按菜单布局放大） ——
 	PanelContainer *panel = memnew(PanelContainer);
-	Ref<StyleBoxFlat> sb = uistyle::make_wood(16.0f); // 悬浮木牌：与木屋/篱笆同一材质语言
+	Ref<StyleBoxTexture> sb = uistyle::make_wood_textured(0.98f); // 悬浮木牌（程序化木纹）
 	sb->set_content_margin(SIDE_LEFT, 32.0f);
 	sb->set_content_margin(SIDE_RIGHT, 32.0f);
 	sb->set_content_margin(SIDE_TOP, 24.0f);

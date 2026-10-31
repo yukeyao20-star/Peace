@@ -40,7 +40,7 @@ void HUDClock::_notification(int p_what) {
 			pill->set_name("ClockPill");
 			pill->set_anchors_preset(Control::PRESET_CENTER_TOP);
 			pill->set_offset(Side::SIDE_TOP, 10.0f);
-			pill->add_theme_stylebox_override("panel", uistyle::make_glass(20.0f, 0.45f));
+			pill->add_theme_stylebox_override("panel", uistyle::make_wood_textured(16.0f, 0.96f));
 			add_child(pill);
 
 			// 一行水平容器：[月相图标][时钟文字]，整组水平居中——
@@ -67,9 +67,9 @@ void HUDClock::_notification(int p_what) {
 			if (cjk.is_valid()) {
 				label->add_theme_font_override("font", cjk);
 			}
-			label->add_theme_color_override("font_color", Color(1.0f, 1.0f, 1.0f, 1.0f));
-			label->add_theme_color_override("font_outline_color", Color(0.04f, 0.06f, 0.10f, 0.85f));
-			label->add_theme_constant_override("outline_size", 8);
+			label->add_theme_color_override("font_color", uistyle::wood_text());
+			label->add_theme_color_override("font_outline_color", uistyle::wood_dark());
+			label->add_theme_constant_override("outline_size", 4);
 			box->add_child(label);
 			refresh();
 			set_process(true);
