@@ -41,6 +41,9 @@ private:
 	Vector3 last_print;
 	float t = 0.0f;
 	float purr_fade = 0.0f;
+	float curl_mix = 0.0f; // 0 站/趴 / 1 在脚边蜷成一团
+	bool arrived = false;
+	bool sitting_beside = false;
 	bool purring = false;
 	std::mt19937 rng{20261212u};
 
@@ -60,6 +63,9 @@ public:
 	bool get_at_shelter() const;
 	float get_pet_time() const { return pet_t; }
 	bool get_hearts_emitting() const;
+	bool get_is_curled() const { return curl_mix > 0.5f; }
+	float get_curl_mix() const { return curl_mix; }
+	bool get_sitting_beside() const { return sitting_beside; }
 
 	String get_prompt() const override;
 	Vector3 get_interact_pos() const override;

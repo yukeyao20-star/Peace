@@ -18,6 +18,7 @@
 #include "../systems/mesh_util.h"
 #include "../world/sky_cycle.h"
 #include "../world/terrain_builder.h"
+#include "../actors/player.h"
 
 using namespace godot;
 
@@ -71,6 +72,9 @@ void CampCat::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("interact", "player_pos"), &CampCat::interact);
 	ClassDB::bind_method(D_METHOD("get_pet_time"), &CampCat::get_pet_time);
 	ClassDB::bind_method(D_METHOD("get_hearts_emitting"), &CampCat::get_hearts_emitting);
+	ClassDB::bind_method(D_METHOD("get_is_curled"), &CampCat::get_is_curled);
+	ClassDB::bind_method(D_METHOD("get_curl_mix"), &CampCat::get_curl_mix);
+	ClassDB::bind_method(D_METHOD("get_sitting_beside"), &CampCat::get_sitting_beside);
 	ClassDB::bind_method(D_METHOD("get_purr_ready"), &CampCat::get_purr_ready);
 	ClassDB::bind_method(D_METHOD("get_purr_playing"), &CampCat::get_purr_playing);
 	ClassDB::bind_method(D_METHOD("get_at_shelter"), &CampCat::get_at_shelter);
@@ -124,10 +128,43 @@ void CampCat::_notification(int p_what) {
 			const float rain = (sky != nullptr) ? sky->get_rain_amount() : 0.0f;
 			const float snow = (sky != nullptr) ? sky->get_snow_amount() : 0.0f;
 			const bool seek_shelter = rain > 0.42f || snow > 0.7f;
-			Vector3 want = seek_shelter ? shelter : home;
+			// 夜里有人坐在火堆边，猫会慢慢踱过去挨着坐
+			bool sit_near = false;
+			Vector3 sit_want;
+			Player *pl = (player != nullptr) ? Object::cast_to<Player>(player) : nullptr;
+			if (pl != nullptr && pl->get_is_sitting()) {
+				const Vector3 ppos = pl->get_global_position();
+				if (ppos.distance_to(home) < 8.0f) {
+					Vector3 side = get_global_position() - ppos;
+					side.y = 0.0f;
+					if (side.length_squared() < 0.01f) {
+						side = Vector3(1.0f, 0.0f, 0.0f);
+					}
+					side = side.normalized();
+					sit_want = ppos + side * 0.72f;
+					if (terrain != nullptr) {
+						sit_want.y = terrain->get_terrain_height(sit_want.x, sit_want.z) + 0.01f;
+					}
+					sit_near = true;
+				}
+			}
+			sitting_beside = sit_near;
+			Vector3 want = sit_near ? sit_want : (seek_shelter ? shelter : home);
 			Vector3 pos = get_global_position();
-			pos = pos.lerp(want, 1.0f - std::exp(-1.7f * delta));
+			const float follow = sit_near ? 1.1f : 1.7f;
+			pos = pos.lerp(want, 1.0f - std::exp(-follow * delta));
 			set_global_position(pos);
+			const float dxz = Vector2(pos.x - want.x, pos.z - want.z).length();
+			const float want_curl = (sit_near && dxz < 0.38f) ? 1.0f : 0.0f;
+			curl_mix = Math::lerp(curl_mix, want_curl, 1.0f - std::exp(-3.2f * delta));
+			if (want_curl > 0.5f && !arrived) {
+				arrived = true;
+				if (hearts != nullptr) {
+					hearts->restart();
+				}
+			} else if (want_curl < 0.5f) {
+				arrived = false;
+			}
 			{
 				Vector3 pd = pos - last_print;
 				pd.y = 0.0f;
@@ -147,10 +184,12 @@ void CampCat::_notification(int p_what) {
 			const bool alert = near < 3.6f || pet_t > 0.0f;
 			if (body != nullptr) {
 				float breathe = 1.0f + 0.035f * std::sin(t * 1.35f);
-				body->set_scale(Vector3(1.0f, breathe, 1.0f));
+				const float curl_y = 1.0f - 0.26f * curl_mix;
+				body->set_scale(Vector3(1.0f + 0.10f * curl_mix, breathe * curl_y, 1.0f + 0.10f * curl_mix));
 			}
 			if (head != nullptr) {
 				float lift = (pet_t > 0.0f) ? -0.50f : (alert ? -0.38f : 0.0f);
+				lift += 0.32f * curl_mix;
 				head->set_rotation(Vector3(Math::lerp(head->get_rotation().x, lift, 1.0f - std::exp(-5.0f * delta)),
 						std::sin(t * 0.35f) * 0.06f, 0.0f));
 			}
@@ -158,7 +197,7 @@ void CampCat::_notification(int p_what) {
 				tail->set_rotation(Vector3(
 						std::sin(t * 0.8f) * 0.06f,
 						0.0f,
-						std::sin(t * 1.15f) * 0.18f + (alert ? 0.12f : 0.0f)));
+						std::sin(t * 1.15f) * 0.18f + (alert ? 0.12f : 0.0f) + 0.55f * curl_mix));
 			}
 			if (ear_l != nullptr && ear_r != nullptr) {
 				float twitch = alert ? std::sin(t * 9.0f) * 0.10f : 0.0f;
@@ -167,7 +206,7 @@ void CampCat::_notification(int p_what) {
 			}
 
 			// 呼噜：玩家蹲在近处才响，走远渐隐
-			const bool want_purr = (near < 4.2f || pet_t > 0.0f) && rain < 0.5f;
+			const bool want_purr = (near < 4.2f || pet_t > 0.0f || curl_mix > 0.3f) && rain < 0.5f;
 			purr_fade = Math::lerp(purr_fade, want_purr ? 1.0f : 0.0f, 1.0f - std::exp(-2.5f * delta));
 			float boost = (pet_t > 0.0f) ? 1.0f : 0.0f;
 			if (purr != nullptr) {
@@ -175,7 +214,7 @@ void CampCat::_notification(int p_what) {
 					if (!purr->is_playing()) {
 						purr->play(0.0f);
 					}
-					purr->set_volume_db(-30.0f + 10.0f * purr_fade + 4.0f * boost);
+					purr->set_volume_db(-30.0f + 10.0f * purr_fade + 4.0f * boost + 3.0f * curl_mix);
 					purring = true;
 				} else {
 					if (purr->is_playing()) {
