@@ -11,6 +11,7 @@
 //   强调：暖金 (1.0,0.92,0.55)（结算/达成），警示暖红 (0.85,0.40,0.30)
 
 #include <godot_cpp/classes/font.hpp>
+#include <godot_cpp/classes/font_variation.hpp>
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/style_box_texture.hpp>
@@ -33,6 +34,9 @@ inline Color text_cream() { return Color(1.0f, 0.97f, 0.88f); }
 inline Color text_soft() { return Color(0.95f, 0.95f, 0.92f); }
 inline Color outline_ink() { return Color(0.05f, 0.05f, 0.08f); }
 inline Color accent_gold() { return Color(1.0f, 0.92f, 0.55f); }
+inline Color chalk_gold() { return Color(0.95f, 0.87f, 0.58f); }
+inline Color ink_brown() { return Color(0.30f, 0.23f, 0.16f); }
+inline Color paper_cream() { return Color(0.94f, 0.90f, 0.81f); }
 
 // 玻璃底板样式：radius 圆角，alpha 不透明度（0.45 轻 / 0.55 常规 / 0.75 条托槽）
 inline Ref<StyleBoxFlat> make_glass(float p_radius = 14.0f, float p_alpha = 0.55f) {
@@ -194,11 +198,252 @@ inline Ref<ImageTexture> blackboard_texture() {
 	return ImageTexture::create_from_image(img);
 }
 
+
+
+// 暗场晕影：中心透明、四周压暗，替代一整块平铺黑幕
+inline Ref<ImageTexture> vignette_texture() {
+	const int S = 256;
+	Ref<Image> img = Image::create(S, S, false, Image::FORMAT_RGBA8);
+	for (int y = 0; y < S; y++) {
+		for (int x = 0; x < S; x++) {
+			float u = ((float)x + 0.5f) / S * 2.0f - 1.0f;
+			float v = ((float)y + 0.5f) / S * 2.0f - 1.0f;
+			float r = std::sqrt(u * u + v * v) / 1.41421356f;
+			float a = Math::smoothstep(0.35f, 1.0f, r) * 0.72f;
+			img->set_pixel(x, y, Color(0.035f, 0.040f, 0.032f, a));
+		}
+	}
+	return ImageTexture::create_from_image(img);
+}
+
+
+inline Color deep_green() { return Color(0.16f, 0.31f, 0.21f); }
+inline Color deep_green_dark() { return Color(0.08f, 0.17f, 0.11f); }
+
+
+// 手绘墨线：标题下的一笔，粗细与深浅略微起伏
+inline Ref<ImageTexture> ink_underline_texture() {
+	const int W = 192, H = 14;
+	Ref<Image> img = Image::create(W, H, false, Image::FORMAT_RGBA8);
+	for (int y = 0; y < H; y++) {
+		for (int x = 0; x < W; x++) {
+			float t = (float)x / (float)(W - 1);
+			float taper = Math::clamp(Math::min(t * 12.0f, (1.0f - t) * 12.0f), 0.0f, 1.0f);
+			float wave = std::sin(t * 9.0f + 0.7f) * 0.9f + ui_vnoise(t * 18.0f, 0.0f) * 0.8f;
+			float cy = H * 0.5f + wave;
+			float thick = 1.2f + 0.8f * ui_vnoise(t * 9.0f, 4.0f);
+			float a = Math::clamp(thick - std::fabs((float)y + 0.5f - cy), 0.0f, 1.0f) * taper;
+			img->set_pixel(x, y, Color(0.26f, 0.19f, 0.13f, a * 0.85f));
+		}
+	}
+	return ImageTexture::create_from_image(img);
+}
+
+// —— 实体按钮：带倒角的木牌 / 墨绿漆牌，三种状态（normal / hover / pressed）——
+inline Ref<ImageTexture> button_texture(bool p_primary, int p_state) {
+	const int S = 96;
+	Ref<Image> img = Image::create(S, S, false, Image::FORMAT_RGBA8);
+	Color base = p_primary ? deep_green() : Color(0.34f, 0.23f, 0.13f, 1.0f);
+	if (p_state == 1) { // hover 提亮
+		base = base.lightened(0.12f);
+	} else if (p_state == 2) { // pressed 压暗
+		base = base.darkened(0.18f);
+	}
+	const Color outline = p_primary ? deep_green_dark() : Color(0.13f, 0.09f, 0.05f, 1.0f);
+	const Color brass(0.70f, 0.55f, 0.30f, 1.0f);
+	const float r = 7.0f;
+	for (int y = 0; y < S; y++) {
+		for (int x = 0; x < S; x++) {
+			// 圆角遮罩
+			float cx = Math::clamp((float)x, r, (float)S - r);
+			float cy = Math::clamp((float)y, r, (float)S - r);
+			float d = std::sqrt(((float)x - cx) * ((float)x - cx) + ((float)y - cy) * ((float)y - cy));
+			float a = Math::clamp(r - d + 0.5f, 0.0f, 1.0f);
+			if (a <= 0.0f) {
+				img->set_pixel(x, y, Color(0, 0, 0, 0));
+				continue;
+			}
+			// 木纹 / 漆面细微起伏
+			float grain = 0.96f + 0.05f * std::sin((float)y * 0.55f + ui_vnoise((float)x * 0.2f, (float)y * 0.05f) * 4.0f);
+			Color c(base.r * grain, base.g * grain, base.b * grain, 1.0f);
+			// 倒角：正常态左上亮、右下暗；按下态反过来
+			bool pressed = p_state == 2;
+			int edge = std::min(std::min(x, y), std::min(S - 1 - x, S - 1 - y));
+			bool top_left = (x < 7) || (y < 7);
+			bool bottom_right = (x >= S - 7) || (y >= S - 7);
+			if (top_left && !bottom_right) {
+				c = pressed ? c.darkened(0.18f) : c.lightened(0.16f);
+			}
+			if (bottom_right && !top_left) {
+				c = pressed ? c.lightened(0.10f) : c.darkened(0.22f);
+			}
+			if (edge == 0) {
+				c = outline;
+			} else if (p_primary && edge <= 2) {
+				c = c.lerp(brass, 0.55f);
+			}
+			img->set_pixel(x, y, c);
+		}
+	}
+	return ImageTexture::create_from_image(img);
+}
+
+inline Ref<StyleBoxTexture> make_button_style(bool p_primary, int p_state) {
+	Ref<StyleBoxTexture> sb;
+	sb.instantiate();
+	sb->set_texture(button_texture(p_primary, p_state));
+	sb->set_texture_margin_all(18.0f);
+	sb->set_content_margin(SIDE_LEFT, 20.0f);
+	sb->set_content_margin(SIDE_RIGHT, 20.0f);
+	sb->set_content_margin(SIDE_TOP, 9.0f);
+	sb->set_content_margin(SIDE_BOTTOM, 9.0f);
+	return sb;
+}
+
+
+// —— 装饰小图（钉子 / 叶片 / 火漆印），全部程序化，免外部资源 ——
+inline Ref<ImageTexture> pin_texture() {
+	const int S = 32;
+	Ref<Image> img = Image::create(S, S, false, Image::FORMAT_RGBA8);
+	const float cx = 16.0f, cy = 16.0f;
+	for (int y = 0; y < S; y++) {
+		for (int x = 0; x < S; x++) {
+			float dx = (float)x + 0.5f - cx, dy = (float)y + 0.5f - cy;
+			float r = std::sqrt(dx * dx + dy * dy);
+			float a = Math::clamp(12.0f - r, 0.0f, 1.0f);
+			if (a <= 0.0f) {
+				img->set_pixel(x, y, Color(0, 0, 0, 0));
+				continue;
+			}
+			float shade = 0.55f + 0.45f * Math::clamp(1.0f - r / 12.0f, 0.0f, 1.0f);
+			// 左上高光
+			float hl = Math::clamp(1.0f - std::sqrt((dx + 4.0f) * (dx + 4.0f) + (dy + 4.0f) * (dy + 4.0f)) / 6.0f, 0.0f, 1.0f);
+			Color c(0.20f * shade + hl * 0.45f, 0.17f * shade + hl * 0.42f, 0.14f * shade + hl * 0.38f, a);
+			img->set_pixel(x, y, c);
+		}
+	}
+	return ImageTexture::create_from_image(img);
+}
+
+inline Ref<ImageTexture> leaf_icon_texture() {
+	const int S = 72;
+	Ref<Image> img = Image::create(S, S, false, Image::FORMAT_RGBA8);
+	const float cx = S * 0.5f;
+	for (int y = 0; y < S; y++) {
+		float t = (float)y / (float)(S - 1);              // 0 顶尖 → 1 叶柄
+		float half = 0.40f * (float)S * std::pow(std::sin(t * 3.1415926f), 0.72f);
+		for (int x = 0; x < S; x++) {
+			float dx = (float)x + 0.5f - cx;
+			float a = Math::clamp(half - std::fabs(dx), 0.0f, 1.0f);
+			float stem = (t > 0.86f && std::fabs(dx) < 1.6f) ? 1.0f : 0.0f;
+			if (a <= 0.0f && stem <= 0.0f) {
+				img->set_pixel(x, y, Color(0, 0, 0, 0));
+				continue;
+			}
+			float edge = Math::clamp(1.0f - std::fabs(dx) / Math::max(half, 0.001f), 0.0f, 1.0f);
+			float g = 0.55f + 0.45f * edge;
+			Color c(0.18f * g, 0.40f * g, 0.22f * g, Math::max(a, stem));
+			// 主叶脉
+			if (std::fabs(dx) < 1.1f && t < 0.9f) {
+				c = c.lerp(Color(0.12f, 0.28f, 0.15f, 1.0f), 0.7f);
+			}
+			img->set_pixel(x, y, c);
+		}
+	}
+	return ImageTexture::create_from_image(img);
+}
+
+inline Ref<ImageTexture> seal_texture() {
+	const int S = 80;
+	Ref<Image> img = Image::create(S, S, false, Image::FORMAT_RGBA8);
+	const float cx = S * 0.5f, cy = S * 0.5f;
+	for (int y = 0; y < S; y++) {
+		for (int x = 0; x < S; x++) {
+			float dx = (float)x + 0.5f - cx, dy = (float)y + 0.5f - cy;
+			float r = std::sqrt(dx * dx + dy * dy);
+			float wob = 1.0f + 0.055f * std::sin(std::atan2(dy, dx) * 7.0f + 0.8f)
+					+ 0.025f * std::sin(std::atan2(dy, dx) * 13.0f);
+			float a = Math::clamp((29.0f * wob - r), 0.0f, 1.0f);
+			if (a <= 0.0f) {
+				img->set_pixel(x, y, Color(0, 0, 0, 0));
+				continue;
+			}
+			// 蜡面：边缘更深、中心略亮
+			float k = Math::clamp(r / 29.0f, 0.0f, 1.0f);
+			Color c = Color(0.22f, 0.38f, 0.26f, a).lerp(Color(0.12f, 0.24f, 0.16f, a), k * 0.85f);
+			// 压印叶片（左上受光的浅浮雕）
+			float lt = (dy + 20.0f) / 40.0f;
+			if (lt > 0.04f && lt < 0.96f) {
+				float half = 9.5f * std::pow(std::sin(lt * 3.1415926f), 0.72f);
+				float lx = std::fabs(dx);
+				if (lx < half) {
+					float emb = Math::clamp(1.0f - (lx + std::fabs(dy - 1.0f) * 0.25f) / 10.0f, 0.0f, 1.0f);
+					c = c.lerp(Color(0.46f, 0.62f, 0.44f, a), emb * 0.55f);
+					if (lx < 0.9f) {
+						c = c.lerp(Color(0.16f, 0.29f, 0.19f, a), 0.6f);
+					}
+				}
+			}
+			img->set_pixel(x, y, c);
+		}
+	}
+	return ImageTexture::create_from_image(img);
+}
+
+// 大面积木板：平铺木纹而不是把 128px 纹理拉伸成粗条纹
+inline Ref<StyleBoxTexture> make_wood_tiled(float p_alpha = 0.99f) {
+	Ref<StyleBoxTexture> sb;
+	sb.instantiate();
+	sb->set_texture(wood_texture());
+	sb->set_texture_margin_all(12.0f);
+	sb->set_h_axis_stretch_mode(StyleBoxTexture::AXIS_STRETCH_MODE_TILE_FIT);
+	sb->set_v_axis_stretch_mode(StyleBoxTexture::AXIS_STRETCH_MODE_TILE_FIT);
+	sb->set_content_margin_all(24.0f);
+	sb->set_modulate(Color(1.0f, 1.0f, 1.0f, p_alpha));
+	return sb;
+}
+
 inline Ref<StyleBoxTexture> make_wood_textured(float /*p_radius*/ = 14.0f, float p_alpha = 0.97f) {
 	Ref<StyleBoxTexture> sb;
 	sb.instantiate();
 	sb->set_texture(wood_texture());
 	sb->set_texture_margin_all(12.0f);
+	sb->set_content_margin_all(14.0f);
+	sb->set_modulate(Color(1.0f, 1.0f, 1.0f, p_alpha));
+	return sb;
+}
+
+// 羊皮纸/手账纸：暖白底 + 横向纤维 + 细碎纸屑 + 边缘微暗
+inline Ref<ImageTexture> parchment_texture() {
+	const int S = 128;
+	Ref<Image> img = Image::create(S, S, false, Image::FORMAT_RGBA8);
+	const Color base = paper_cream();
+	for (int y = 0; y < S; y++) {
+		for (int x = 0; x < S; x++) {
+			float fiber = ui_vnoise((float)x * 0.04f + 7.0f, (float)y * 0.42f);
+			float grain = 0.955f + 0.035f * fiber + 0.015f * (ui_vnoise((float)x * 0.30f, (float)y * 0.30f) - 0.5f);
+			Color c(base.r * grain, base.g * grain, base.b * grain, 1.0f);
+			// 纸屑：极少量深色小点
+			if (ui_hash01(x * 5 + 3, y * 5 + 9) > 0.994f) {
+				c = c.lerp(Color(0.72f, 0.64f, 0.51f, 1.0f), 0.22f);
+			}
+			// 边缘微暗，像一张被摸旧的纸
+			int edge = std::min(std::min(x, y), std::min(S - 1 - x, S - 1 - y));
+			if (edge < 8) {
+				float k = (1.0f - (float)edge / 8.0f) * 0.12f;
+				c = c.lerp(Color(0.80f, 0.73f, 0.61f, 1.0f), k);
+			}
+			img->set_pixel(x, y, c);
+		}
+	}
+	return ImageTexture::create_from_image(img);
+}
+
+inline Ref<StyleBoxTexture> make_parchment_textured(float p_alpha = 0.98f) {
+	Ref<StyleBoxTexture> sb;
+	sb.instantiate();
+	sb->set_texture(parchment_texture());
+	sb->set_texture_margin_all(10.0f);
 	sb->set_content_margin_all(14.0f);
 	sb->set_modulate(Color(1.0f, 1.0f, 1.0f, p_alpha));
 	return sb;
@@ -215,6 +460,25 @@ inline Ref<StyleBoxTexture> make_blackboard_textured(float p_alpha = 0.98f) {
 }
 
 // 粉笔手写字体：优先系统手写体，缺字形时回退系统 CJK（黑板上写中文也成立）
+
+
+// 粗体中文：NotoSansSC 是可变字体，用 wght 轴 + embolden 叠出"木板刻字"的分量
+inline Ref<Font> heavy_cjk(int p_weight = 900, float p_embolden = 0.25f) {
+	Ref<Resource> res = ResourceLoader::get_singleton()->load("res://assets/fonts/NotoSansSC-Regular.ttf");
+	Ref<Font> base = Ref<Font>(Object::cast_to<Font>(res.ptr()));
+	if (base.is_null()) {
+		return Ref<Font>();
+	}
+	Ref<FontVariation> fv;
+	fv.instantiate();
+	fv->set_base_font(base);
+	Dictionary coords;
+	coords["wght"] = p_weight;
+	fv->set_variation_opentype(coords);
+	fv->set_variation_embolden(p_embolden);
+	return Ref<Font>(fv.ptr());
+}
+
 inline Ref<Font> chalk_font() {
 	Ref<SystemFont> sf;
 	sf.instantiate();

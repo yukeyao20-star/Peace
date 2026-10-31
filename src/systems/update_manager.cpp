@@ -1,5 +1,7 @@
 #include "update_manager.h"
 
+#include "ui_style.h"
+
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
@@ -8,6 +10,7 @@
 #include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/json.hpp>
 #include <godot_cpp/classes/style_box_flat.hpp>
+#include <godot_cpp/classes/texture_rect.hpp>
 #include <godot_cpp/classes/font.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/time.hpp>
@@ -38,6 +41,16 @@ void UpdateManager::_notification(int p_what) {
 			}
 			load_local_version_info();
 			build_ui();
+			if (OS::get_singleton()->get_environment("ZCODE_SHOW_UPDATE") == "1") {
+				update_title = String::utf8("Peace · 版本速递");
+				remote_version = "0.2.1";
+				patch_size_str = "86 MB";
+				changelog_items.push_back(String::utf8("湖盆加深到 4.65m，湖里有了鱼群"));
+				changelog_items.push_back(String::utf8("深水自动游泳：空格上浮 / Ctrl 下潜"));
+				changelog_items.push_back(String::utf8("夜间月光会在水面拖出一条银色光路"));
+				changelog_items.push_back(String::utf8("鸭群多了两只小鸭，青蛙会跳进水里"));
+				show_update_dialog();
+			}
 
 			// 检查并自动预先装载本地现存的补丁包
 			check_and_load_existing_patch();
@@ -353,220 +366,403 @@ void UpdateManager::open_website() {
 // ─────────────────────────────────────────────────────────────────────────────
 void UpdateManager::build_ui() {
 	Ref<Font> font = ResourceLoader::get_singleton()->load("res://assets/fonts/NotoSansSC-Regular.ttf");
+	Ref<Font> chalk = uistyle::chalk_font();
+	Ref<Font> heavy = uistyle::heavy_cjk(900, 0.28f);
+	const Color ink = uistyle::ink_brown();
 
 	root_container = memnew(Control);
 	root_container->set_name("UpdateDialogRoot");
 	root_container->set_anchors_preset(Control::PRESET_FULL_RECT);
 	add_child(root_container);
 
-	// 1. 全屏沉浸式暗场遮罩 (温暖柔和的暗色微光遮罩)
+	// —— 暗场：一层薄暗 + 四周晕影，而不是整块黑幕 ——
 	backdrop = memnew(ColorRect);
 	backdrop->set_anchors_preset(Control::PRESET_FULL_RECT);
-	backdrop->set_color(Color(0.08f, 0.09f, 0.08f, 0.65f));
+	backdrop->set_color(Color(0.035f, 0.040f, 0.033f, 0.52f));
 	root_container->add_child(backdrop);
 
-	// 2. 主卡片容器 (580px 宽，优雅手账卡片)
+	TextureRect *vignette = memnew(TextureRect);
+	vignette->set_anchors_preset(Control::PRESET_FULL_RECT);
+	vignette->set_texture(uistyle::vignette_texture());
+	vignette->set_modulate(Color(1.0f, 1.0f, 1.0f, 0.95f));
+	vignette->set_stretch_mode(TextureRect::STRETCH_SCALE);
+	vignette->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	root_container->add_child(vignette);
+
+	// —— 木板：平铺木纹、方角，上面钉着一张纸 ——
+	// 板子投影：让整块木板从暗场里浮起来
+	PanelContainer *board_shadow = memnew(PanelContainer);
+	board_shadow->set_anchors_preset(Control::PRESET_CENTER);
+	board_shadow->set_offset(SIDE_LEFT, -276.0f);
+	board_shadow->set_offset(SIDE_RIGHT, 276.0f);
+	board_shadow->set_offset(SIDE_TOP, -212.0f);
+	board_shadow->set_offset(SIDE_BOTTOM, 212.0f);
+	Ref<StyleBoxFlat> shadow_style;
+	shadow_style.instantiate();
+	shadow_style->set_bg_color(Color(0, 0, 0, 0));
+	shadow_style->set_corner_radius_all(6);
+	shadow_style->set_shadow_color(Color(0.01f, 0.01f, 0.006f, 0.55f));
+	shadow_style->set_shadow_size(34);
+	shadow_style->set_shadow_offset(Vector2(0, 14));
+	board_shadow->add_theme_stylebox_override("panel", shadow_style);
+	board_shadow->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	root_container->add_child(board_shadow);
+
 	card_panel = memnew(PanelContainer);
 	card_panel->set_name("CardPanel");
 	card_panel->set_anchors_preset(Control::PRESET_CENTER);
-	card_panel->set_offset(SIDE_LEFT, -290.0f);
-	card_panel->set_offset(SIDE_RIGHT, 290.0f);
-	card_panel->set_offset(SIDE_TOP, -225.0f);
-	card_panel->set_offset(SIDE_BOTTOM, 225.0f);
+	card_panel->set_offset(SIDE_LEFT, -270.0f);
+	card_panel->set_offset(SIDE_RIGHT, 270.0f);
+	card_panel->set_offset(SIDE_TOP, -206.0f);
+	card_panel->set_offset(SIDE_BOTTOM, 206.0f);
+	card_panel->add_theme_stylebox_override("panel", uistyle::make_wood_tiled(0.995f));
 	root_container->add_child(card_panel);
 
-	// 暖白素雅手账质感底板：象牙羊皮纸白、胡桃木色温润双描边、柔和自然阴影
-	Ref<StyleBoxFlat> card_style;
-	card_style.instantiate();
-	card_style->set_bg_color(Color(0.96f, 0.94f, 0.90f, 0.98f)); // 暖白羊皮纸
-	card_style->set_border_color(Color(0.72f, 0.64f, 0.54f, 0.85f)); // 浅胡桃木质边框
-	card_style->set_border_width_all(2);
-	card_style->set_corner_radius_all(16);
-	card_style->set_shadow_color(Color(0.12f, 0.10f, 0.08f, 0.28f));
-	card_style->set_shadow_size(20);
-	card_style->set_shadow_offset(Vector2(0, 8));
-	card_style->set_content_margin(SIDE_LEFT, 28.0f);
-	card_style->set_content_margin(SIDE_RIGHT, 28.0f);
-	card_style->set_content_margin(SIDE_TOP, 24.0f);
-	card_style->set_content_margin(SIDE_BOTTOM, 22.0f);
-	card_panel->add_theme_stylebox_override("panel", card_style);
+	// 木框倒角线：左上受光、右下压暗
+	PanelContainer *board_bevel = memnew(PanelContainer);
+	board_bevel->set_anchors_preset(Control::PRESET_CENTER);
+	board_bevel->set_offset(SIDE_LEFT, -263.0f);
+	board_bevel->set_offset(SIDE_RIGHT, 263.0f);
+	board_bevel->set_offset(SIDE_TOP, -199.0f);
+	board_bevel->set_offset(SIDE_BOTTOM, 199.0f);
+	Ref<StyleBoxFlat> bevel_style;
+	bevel_style.instantiate();
+	bevel_style->set_bg_color(Color(0, 0, 0, 0));
+	bevel_style->set_corner_radius_all(5);
+	bevel_style->set_border_width(SIDE_TOP, 2);
+	bevel_style->set_border_width(SIDE_LEFT, 2);
+	bevel_style->set_border_width(SIDE_RIGHT, 1);
+	bevel_style->set_border_width(SIDE_BOTTOM, 1);
+	bevel_style->set_border_color(Color(1.0f, 0.92f, 0.78f, 0.10f));
+	board_bevel->add_theme_stylebox_override("panel", bevel_style);
+	board_bevel->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	root_container->add_child(board_bevel);
+
+	Control *card_layer = memnew(Control);
+	card_layer->set_anchors_preset(Control::PRESET_FULL_RECT);
+	card_layer->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	card_panel->add_child(card_layer);
+
+	// 纸的凹槽底：比纸略大一圈的暗色内陷，让纸像压在木板上
+	PanelContainer *paper_pocket = memnew(PanelContainer);
+	paper_pocket->set_position(Vector2(4.0f, 4.0f));
+	paper_pocket->set_size(Vector2(480.0f, 360.0f));
+	Ref<StyleBoxFlat> pocket_style;
+	pocket_style.instantiate();
+	pocket_style->set_bg_color(Color(0.10f, 0.07f, 0.04f, 0.30f));
+	pocket_style->set_corner_radius_all(4);
+	pocket_style->set_border_color(Color(0.03f, 0.03f, 0.02f, 0.45f));
+	pocket_style->set_border_width_all(1);
+	pocket_style->set_shadow_color(Color(0.02f, 0.015f, 0.01f, 0.45f));
+	pocket_style->set_shadow_size(8);
+	pocket_style->set_shadow_offset(Vector2(0, 3));
+	paper_pocket->add_theme_stylebox_override("panel", pocket_style);
+	paper_pocket->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	card_layer->add_child(paper_pocket);
+
+	// 底层纸：稍微歪一点、偏右下，露出一个纸边
+	PanelContainer *paper_back = memnew(PanelContainer);
+	paper_back->set_position(Vector2(14.0f, 12.0f));
+	paper_back->set_size(Vector2(472.0f, 356.0f));
+	paper_back->add_theme_stylebox_override("panel", uistyle::make_parchment_textured(0.88f));
+	paper_back->set_modulate(Color(0.86f, 0.82f, 0.74f, 0.95f));
+	paper_back->set_rotation(Math::deg_to_rad(1.2f));
+	paper_back->set_pivot_offset(Vector2(236.0f, 178.0f));
+	card_layer->add_child(paper_back);
+
+	// 叶枝：从纸角后面探出来
+	TextureRect *sprig = memnew(TextureRect);
+	sprig->set_texture(uistyle::leaf_icon_texture());
+	sprig->set_size(Vector2(70.0f, 70.0f));
+	sprig->set_position(Vector2(428.0f, 214.0f));
+	sprig->set_pivot_offset(Vector2(35.0f, 35.0f));
+	sprig->set_rotation(Math::deg_to_rad(28.0f));
+	sprig->set_modulate(Color(1.0f, 1.0f, 1.0f, 0.95f));
+	sprig->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	card_layer->add_child(sprig);
+
+	// 主纸：细墨线边框 + 投影，纸面用羊皮纸纹理
+	PanelContainer *paper_outer = memnew(PanelContainer);
+	paper_outer->set_position(Vector2(8.0f, 8.0f));
+	paper_outer->set_size(Vector2(472.0f, 356.0f));
+	Ref<StyleBoxFlat> paper_edge;
+	paper_edge.instantiate();
+	paper_edge->set_bg_color(Color(0, 0, 0, 0));
+	paper_edge->set_border_color(Color(0.34f, 0.26f, 0.18f, 0.55f));
+	paper_edge->set_border_width_all(1);
+	paper_edge->set_corner_radius_all(3);
+	paper_edge->set_shadow_color(Color(0.03f, 0.02f, 0.01f, 0.38f));
+	paper_edge->set_shadow_size(18);
+	paper_edge->set_shadow_offset(Vector2(0, 7));
+	paper_outer->add_theme_stylebox_override("panel", paper_edge);
+	card_layer->add_child(paper_outer);
+
+	PanelContainer *paper = memnew(PanelContainer);
+	Ref<StyleBoxFlat> paper_sheet;
+	paper_sheet.instantiate();
+	paper_sheet->set_bg_color(uistyle::paper_cream());
+	paper_sheet->set_corner_radius_all(2);
+	paper_sheet->set_content_margin(SIDE_LEFT, 26.0f);
+	paper_sheet->set_content_margin(SIDE_RIGHT, 26.0f);
+	paper_sheet->set_content_margin(SIDE_TOP, 20.0f);
+	paper_sheet->set_content_margin(SIDE_BOTTOM, 18.0f);
+	paper->add_theme_stylebox_override("panel", paper_sheet);
+	paper_outer->add_child(paper);
 
 	main_vbox = memnew(VBoxContainer);
-	main_vbox->add_theme_constant_override("separation", 12);
-	card_panel->add_child(main_vbox);
+	main_vbox->add_theme_constant_override("separation", 9);
+	paper->add_child(main_vbox);
 
-	// 顶部头部排版
-	HBoxContainer *header_box = memnew(HBoxContainer);
-	header_box->set_alignment(BoxContainer::ALIGNMENT_BEGIN);
-	main_vbox->add_child(header_box);
+	// 顶部一条深绿色窄带：像手账页边的书签条
+	ColorRect *strip = memnew(ColorRect);
+	strip->set_custom_minimum_size(Vector2(0, 3));
+	strip->set_color(Color(uistyle::deep_green().r, uistyle::deep_green().g, uistyle::deep_green().b, 0.9f));
+	main_vbox->add_child(strip);
 
-	// 田园草木绿胶囊徽标
-	badge_label = memnew(Label);
-	badge_label->set_text(String::utf8(" 🌿 新版本速递 "));
-	badge_label->add_theme_font_size_override("font_size", 12);
-	badge_label->add_theme_color_override("font_color", Color(0.20f, 0.44f, 0.28f)); // 深森林青绿
-	Ref<StyleBoxFlat> badge_style;
-	badge_style.instantiate();
-	badge_style->set_bg_color(Color(0.85f, 0.91f, 0.83f, 0.95f)); // 浅木草芽色
-	badge_style->set_border_color(Color(0.68f, 0.78f, 0.65f, 0.90f));
-	badge_style->set_border_width_all(1);
-	badge_style->set_corner_radius_all(999);
-	badge_style->set_content_margin(SIDE_LEFT, 10.0f);
-	badge_style->set_content_margin(SIDE_RIGHT, 10.0f);
-	badge_style->set_content_margin(SIDE_TOP, 3.0f);
-	badge_style->set_content_margin(SIDE_BOTTOM, 3.0f);
-	badge_label->add_theme_stylebox_override("theme_override_styles/normal", badge_style);
-	if (font.is_valid()) badge_label->add_theme_font_override("font", font);
-	header_box->add_child(badge_label);
+	// 小字眉：PEACE · 更新手记
+	Label *caps = memnew(Label);
+	caps->set_text(String::utf8("P E A C E    ·    U P D A T E    N O T E"));
+	caps->add_theme_font_size_override("font_size", 11);
+	caps->add_theme_color_override("font_color", Color(ink.r, ink.g, ink.b, 0.55f));
+	if (font.is_valid()) caps->add_theme_font_override("font", font);
+	main_vbox->add_child(caps);
 
-	// 标题：典雅沉稳深原木色
+	// 大标题：可被远程标题覆盖
 	title_label = memnew(Label);
-	title_label->set_text(String::utf8("Peace 版本更新"));
-	title_label->add_theme_font_size_override("font_size", 21);
-	title_label->add_theme_color_override("font_color", Color(0.24f, 0.20f, 0.16f)); // 浓郁深木色
-	if (font.is_valid()) title_label->add_theme_font_override("font", font);
+	title_label->set_text(String::utf8("新版本来信"));
+	title_label->add_theme_font_size_override("font_size", 31);
+	title_label->add_theme_color_override("font_color", Color(ink.r * 0.82f, ink.g * 0.82f, ink.b * 0.82f));
+	Ref<Font> title_heavy = uistyle::heavy_cjk(700, 0.12f);
+	if (title_heavy.is_valid()) title_label->add_theme_font_override("font", title_heavy);
 	main_vbox->add_child(title_label);
 
-	// 版本副标题：温和柔灰棕色
+	TextureRect *underline = memnew(TextureRect);
+	underline->set_texture(uistyle::ink_underline_texture());
+	underline->set_expand_mode(TextureRect::EXPAND_IGNORE_SIZE);
+	underline->set_custom_minimum_size(Vector2(188, 8));
+	underline->set_h_size_flags(Control::SIZE_SHRINK_BEGIN);
+	underline->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	main_vbox->add_child(underline);
+
+	// 版本 / 体积 / 无需重装
 	version_sub_label = memnew(Label);
-	version_sub_label->set_text(String::utf8("版本 v0.1.2  ·  无缝热加载无需重装"));
-	version_sub_label->add_theme_font_size_override("font_size", 13);
-	version_sub_label->add_theme_color_override("font_color", Color(0.55f, 0.49f, 0.42f));
+	version_sub_label->set_text(String::utf8("v0.1.2  ·  无缝热加载无需重装"));
+	version_sub_label->add_theme_font_size_override("font_size", 12);
+	version_sub_label->add_theme_color_override("font_color", Color(ink.r, ink.g, ink.b, 0.68f));
 	if (font.is_valid()) version_sub_label->add_theme_font_override("font", font);
-	main_vbox->add_child(version_sub_label);
+	HBoxContainer *meta_row = memnew(HBoxContainer);
+	meta_row->add_theme_constant_override("separation", 8);
+	main_vbox->add_child(meta_row);
+	version_sub_label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	meta_row->add_child(version_sub_label);
 
-	// 纤细素雅木刻分隔线
-	ColorRect *divider = memnew(ColorRect);
-	divider->set_custom_minimum_size(Vector2(0, 1));
-	divider->set_color(Color(0.82f, 0.76f, 0.68f, 0.75f));
-	main_vbox->add_child(divider);
+	btn_website = memnew(Button);
+	btn_website->set_text(String::utf8("官网 ↗"));
+	btn_website->set_flat(true);
+	btn_website->add_theme_font_size_override("font_size", 11);
+	btn_website->add_theme_color_override("font_color", Color(ink.r, ink.g, ink.b, 0.50f));
+	btn_website->add_theme_color_override("font_hover_color", uistyle::deep_green());
+	if (font.is_valid()) btn_website->add_theme_font_override("font", font);
+	btn_website->connect("pressed", Callable(this, "open_website"));
+	meta_row->add_child(btn_website);
 
-	// 更新日志区域（温润的米色内凹浅底槽）
-	PanelContainer *log_panel = memnew(PanelContainer);
-	Ref<StyleBoxFlat> log_style;
-	log_style.instantiate();
-	log_style->set_bg_color(Color(0.91f, 0.88f, 0.83f, 0.85f)); // 浅素砂纸底色
-	log_style->set_border_color(Color(0.80f, 0.75f, 0.68f, 0.60f));
-	log_style->set_border_width_all(1);
-	log_style->set_corner_radius_all(8);
-	log_style->set_content_margin(SIDE_LEFT, 14.0f);
-	log_style->set_content_margin(SIDE_RIGHT, 14.0f);
-	log_style->set_content_margin(SIDE_TOP, 12.0f);
-	log_style->set_content_margin(SIDE_BOTTOM, 12.0f);
-	log_panel->add_theme_stylebox_override("panel", log_style);
-	main_vbox->add_child(log_panel);
+	// 细分隔线
+	ColorRect *rule = memnew(ColorRect);
+	rule->set_custom_minimum_size(Vector2(0, 1));
+	rule->set_color(Color(ink.r, ink.g, ink.b, 0.18f));
+	main_vbox->add_child(rule);
 
+	// “本 次 更 新”：两侧引线的小节标题
+	HBoxContainer *sec = memnew(HBoxContainer);
+	sec->add_theme_constant_override("separation", 10);
+	main_vbox->add_child(sec);
+	ColorRect *sec_l = memnew(ColorRect);
+	sec_l->set_custom_minimum_size(Vector2(0, 1));
+	sec_l->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	sec_l->set_color(Color(ink.r, ink.g, ink.b, 0.16f));
+	sec->add_child(sec_l);
+	Label *sec_t = memnew(Label);
+	sec_t->set_text(String::utf8("本 次 更 新"));
+	sec_t->add_theme_font_size_override("font_size", 10);
+	sec_t->add_theme_color_override("font_color", Color(ink.r, ink.g, ink.b, 0.52f));
+	if (font.is_valid()) sec_t->add_theme_font_override("font", font);
+	sec->add_child(sec_t);
+	ColorRect *sec_r = memnew(ColorRect);
+	sec_r->set_custom_minimum_size(Vector2(0, 1));
+	sec_r->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	sec_r->set_color(Color(ink.r, ink.g, ink.b, 0.16f));
+	sec->add_child(sec_r);
+
+	// 更新条目列表（撑满中段，避免底部留白）
 	changelog_box = memnew(VBoxContainer);
-	changelog_box->add_theme_constant_override("separation", 6);
-	log_panel->add_child(changelog_box);
+	changelog_box->add_theme_constant_override("separation", 7);
+	changelog_box->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	main_vbox->add_child(changelog_box);
 
-	// 进度条区域（初始隐藏）
+	Label *note = memnew(Label);
+	note->set_text(String::utf8("小更新，不影响你的存档与进度。"));
+	note->add_theme_font_size_override("font_size", 11);
+	note->add_theme_color_override("font_color", Color(ink.r, ink.g, ink.b, 0.45f));
+	if (font.is_valid()) note->add_theme_font_override("font", font);
+	main_vbox->add_child(note);
+
+	// 进度（初始隐藏）
 	progress_container = memnew(VBoxContainer);
-	progress_container->add_theme_constant_override("separation", 6);
+	progress_container->add_theme_constant_override("separation", 5);
 	main_vbox->add_child(progress_container);
-
 	progress_bar = memnew(ProgressBar);
-	progress_bar->set_custom_minimum_size(Vector2(0, 8));
+	progress_bar->set_custom_minimum_size(Vector2(0, 6));
 	progress_bar->set_show_percentage(false);
-	Ref<StyleBoxFlat> pbg_style;
-	pbg_style.instantiate();
-	pbg_style->set_bg_color(Color(0.85f, 0.82f, 0.76f, 0.9f));
-	pbg_style->set_corner_radius_all(4);
-	Ref<StyleBoxFlat> pfg_style;
-	pfg_style.instantiate();
-	pfg_style->set_bg_color(Color(0.28f, 0.62f, 0.54f)); // 碧蓝清澈湖水绿
-	pfg_style->set_corner_radius_all(4);
-	progress_bar->add_theme_stylebox_override("background", pbg_style);
-	progress_bar->add_theme_stylebox_override("fill", pfg_style);
+	Ref<StyleBoxFlat> pbg;
+	pbg.instantiate();
+	pbg->set_bg_color(Color(ink.r, ink.g, ink.b, 0.12f));
+	pbg->set_corner_radius_all(3);
+	Ref<StyleBoxFlat> pfg;
+	pfg.instantiate();
+	pfg->set_bg_color(uistyle::deep_green());
+	pfg->set_corner_radius_all(3);
+	progress_bar->add_theme_stylebox_override("background", pbg);
+	progress_bar->add_theme_stylebox_override("fill", pfg);
 	progress_container->add_child(progress_bar);
-
 	progress_stats_label = memnew(Label);
 	progress_stats_label->set_text(String::utf8("准备下载..."));
-	progress_stats_label->add_theme_font_size_override("font_size", 12);
-	progress_stats_label->add_theme_color_override("font_color", Color(0.48f, 0.42f, 0.36f));
+	progress_stats_label->add_theme_font_size_override("font_size", 11);
+	progress_stats_label->add_theme_color_override("font_color", Color(ink.r, ink.g, ink.b, 0.62f));
 	if (font.is_valid()) progress_stats_label->add_theme_font_override("font", font);
 	progress_container->add_child(progress_stats_label);
 	progress_container->hide();
 
-	// 底部操作按钮栏
-	btn_box = memnew(HBoxContainer);
-	btn_box->set_alignment(BoxContainer::ALIGNMENT_END);
-	btn_box->add_theme_constant_override("separation", 10);
-	main_vbox->add_child(btn_box);
+	// 页脚：署名 + 方形按钮（取消在左、确认在右且略“按下去”）
+	HBoxContainer *footer = memnew(HBoxContainer);
+	footer->add_theme_constant_override("separation", 8);
+	main_vbox->add_child(footer);
 
-	// 前往官网按钮 (次级操作)
-	btn_website = memnew(Button);
-	btn_website->set_text(String::utf8("前往官网"));
-	btn_website->set_flat(true);
-	btn_website->add_theme_color_override("font_color", Color(0.50f, 0.44f, 0.38f));
-	btn_website->add_theme_color_override("font_hover_color", Color(0.25f, 0.20f, 0.16f));
-	btn_website->add_theme_font_size_override("font_size", 13);
-	if (font.is_valid()) btn_website->add_theme_font_override("font", font);
-	btn_website->connect("pressed", Callable(this, "open_website"));
-	btn_box->add_child(btn_website);
+	Control *footer_spacer = memnew(Control);
+	footer_spacer->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	footer_spacer->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	footer->add_child(footer_spacer);
 
-	// 稍后再说按钮 (次级操作)
 	btn_skip = memnew(Button);
 	btn_skip->set_text(String::utf8("暂不更新"));
-	btn_skip->set_custom_minimum_size(Vector2(88, 36));
-	Ref<StyleBoxFlat> skip_btn_style;
-	skip_btn_style.instantiate();
-	skip_btn_style->set_bg_color(Color(0.92f, 0.89f, 0.84f, 0.95f));
-	skip_btn_style->set_border_color(Color(0.78f, 0.72f, 0.64f, 0.80f));
-	skip_btn_style->set_border_width_all(1);
-	skip_btn_style->set_corner_radius_all(8);
-	btn_skip->add_theme_stylebox_override("normal", skip_btn_style);
-	btn_skip->add_theme_font_size_override("font_size", 13);
-	btn_skip->add_theme_color_override("font_color", Color(0.42f, 0.36f, 0.30f));
-	if (font.is_valid()) btn_skip->add_theme_font_override("font", font);
+	btn_skip->set_custom_minimum_size(Vector2(112, 46));
+	btn_skip->add_theme_stylebox_override("normal", uistyle::make_button_style(false, 0));
+	btn_skip->add_theme_stylebox_override("hover", uistyle::make_button_style(false, 1));
+	btn_skip->add_theme_stylebox_override("pressed", uistyle::make_button_style(false, 2));
+	btn_skip->add_theme_font_size_override("font_size", 16);
+	btn_skip->add_theme_color_override("font_color", Color(0.97f, 0.93f, 0.84f));
+	btn_skip->add_theme_color_override("font_hover_color", Color(1.0f, 0.97f, 0.89f));
+	btn_skip->add_theme_color_override("font_pressed_color", Color(0.90f, 0.86f, 0.77f));
+	btn_skip->add_theme_color_override("font_outline_color", Color(0.10f, 0.06f, 0.03f, 0.9f));
+	btn_skip->add_theme_constant_override("outline_size", 2);
+	if (heavy.is_valid()) btn_skip->add_theme_font_override("font", heavy);
 	btn_skip->connect("pressed", Callable(this, "dismiss_dialog"));
-	btn_box->add_child(btn_skip);
+	PanelContainer *skip_shadow = memnew(PanelContainer);
+	Ref<StyleBoxFlat> skip_sh;
+	skip_sh.instantiate();
+	skip_sh->set_bg_color(Color(0, 0, 0, 0));
+	skip_sh->set_corner_radius_all(8);
+	skip_sh->set_shadow_color(Color(0.02f, 0.015f, 0.01f, 0.45f));
+	skip_sh->set_shadow_size(6);
+	skip_sh->set_shadow_offset(Vector2(0, 3));
+	skip_shadow->add_theme_stylebox_override("panel", skip_sh);
+	skip_shadow->add_child(btn_skip);
+	footer->add_child(skip_shadow);
 
-	// 立即更新主按钮 (温润森林绿主色)
 	btn_update = memnew(Button);
-	btn_update->set_text(String::utf8("一键热更新"));
-	btn_update->set_custom_minimum_size(Vector2(120, 36));
-	Ref<StyleBoxFlat> update_btn_style;
-	update_btn_style.instantiate();
-	update_btn_style->set_bg_color(Color(0.28f, 0.56f, 0.38f, 0.98f)); // 优雅森林草木绿
-	update_btn_style->set_border_color(Color(0.22f, 0.46f, 0.30f, 0.90f));
-	update_btn_style->set_border_width_all(1);
-	update_btn_style->set_corner_radius_all(8);
-	update_btn_style->set_shadow_color(Color(0.20f, 0.40f, 0.28f, 0.20f));
-	update_btn_style->set_shadow_size(6);
-	btn_update->add_theme_stylebox_override("normal", update_btn_style);
-	btn_update->add_theme_font_size_override("font_size", 13);
-	btn_update->add_theme_color_override("font_color", Color(0.98f, 0.98f, 0.96f));
-	if (font.is_valid()) btn_update->add_theme_font_override("font", font);
+	btn_update->set_text(String::utf8("立即更新"));
+	btn_update->set_custom_minimum_size(Vector2(146, 46));
+	btn_update->add_theme_stylebox_override("normal", uistyle::make_button_style(true, 0));
+	btn_update->add_theme_stylebox_override("hover", uistyle::make_button_style(true, 1));
+	btn_update->add_theme_stylebox_override("pressed", uistyle::make_button_style(true, 2));
+	btn_update->add_theme_font_size_override("font_size", 17);
+	btn_update->add_theme_color_override("font_color", Color(0.98f, 0.96f, 0.89f));
+	btn_update->add_theme_color_override("font_hover_color", Color(1.0f, 0.99f, 0.93f));
+	btn_update->add_theme_color_override("font_pressed_color", Color(0.92f, 0.91f, 0.84f));
+	btn_update->add_theme_color_override("font_disabled_color", Color(0.82f, 0.82f, 0.76f, 0.7f));
+	btn_update->add_theme_color_override("font_outline_color", Color(0.04f, 0.10f, 0.06f, 0.9f));
+	btn_update->add_theme_constant_override("outline_size", 3);
+	if (heavy.is_valid()) btn_update->add_theme_font_override("font", heavy);
 	btn_update->connect("pressed", Callable(this, "start_download"));
-	btn_box->add_child(btn_update);
+	PanelContainer *update_shadow = memnew(PanelContainer);
+	Ref<StyleBoxFlat> up_sh;
+	up_sh.instantiate();
+	up_sh->set_bg_color(Color(0, 0, 0, 0));
+	up_sh->set_corner_radius_all(8);
+	up_sh->set_shadow_color(Color(0.01f, 0.03f, 0.015f, 0.55f));
+	up_sh->set_shadow_size(10);
+	up_sh->set_shadow_offset(Vector2(0, 4));
+	update_shadow->add_theme_stylebox_override("panel", up_sh);
+	update_shadow->add_child(btn_update);
+	footer->add_child(update_shadow);
 
-	// 3. 右上角轻量级提示胶囊 (Toast)
+
+	// 纸角火漆印：代替传统署名
+	TextureRect *seal = memnew(TextureRect);
+	seal->set_texture(uistyle::seal_texture());
+	seal->set_expand_mode(TextureRect::EXPAND_IGNORE_SIZE);
+	seal->set_size(Vector2(56.0f, 56.0f));
+	seal->set_position(Vector2(-4.0f, 314.0f));
+	seal->set_pivot_offset(Vector2(28.0f, 28.0f));
+	seal->set_rotation(Math::deg_to_rad(-9.0f));
+	seal->set_modulate(Color(1.0f, 1.0f, 1.0f, 0.92f));
+	seal->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	card_layer->add_child(seal);
+	Label *seal_cap = memnew(Label);
+	seal_cap->set_text(String::utf8("Peace"));
+	seal_cap->set_position(Vector2(58.0f, 336.0f));
+	seal_cap->add_theme_font_size_override("font_size", 12);
+	seal_cap->add_theme_color_override("font_color", Color(ink.r, ink.g, ink.b, 0.55f));
+	if (font.is_valid()) seal_cap->add_theme_font_override("font", font);
+	card_layer->add_child(seal_cap);
+
+	// 顶部图钉（带一小片投影）
+	TextureRect *pin_shadow = memnew(TextureRect);
+	pin_shadow->set_texture(uistyle::pin_texture());
+	pin_shadow->set_expand_mode(TextureRect::EXPAND_IGNORE_SIZE);
+	pin_shadow->set_size(Vector2(24.0f, 14.0f));
+	pin_shadow->set_position(Vector2(232.0f, 12.0f));
+	pin_shadow->set_modulate(Color(0.0f, 0.0f, 0.0f, 0.35f));
+	pin_shadow->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	card_layer->add_child(pin_shadow);
+
+	TextureRect *pin = memnew(TextureRect);
+	pin->set_texture(uistyle::pin_texture());
+	pin->set_size(Vector2(20.0f, 20.0f));
+	pin->set_position(Vector2(234.0f, -2.0f));
+	pin->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	card_layer->add_child(pin);
+
+	// 四角木钉：把"钉在板子上"的质感补齐
+	const float nail_xy[4][2] = {
+		{ -11.0f, -11.0f }, { 484.0f, -11.0f }, { -11.0f, 376.0f }, { 484.0f, 376.0f }
+	};
+	for (int i = 0; i < 4; i++) {
+		TextureRect *nail = memnew(TextureRect);
+		nail->set_texture(uistyle::pin_texture());
+		nail->set_expand_mode(TextureRect::EXPAND_IGNORE_SIZE);
+		nail->set_size(Vector2(13.0f, 13.0f));
+		nail->set_position(Vector2(nail_xy[i][0], nail_xy[i][1]));
+		nail->set_modulate(Color(0.95f, 0.88f, 0.76f, 0.85f));
+		nail->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+		card_layer->add_child(nail);
+	}
+
+	// 右上角轻提示：一小块黑板
 	toast_panel = memnew(PanelContainer);
 	toast_panel->set_anchors_preset(Control::PRESET_TOP_RIGHT);
-	toast_panel->set_offset(SIDE_LEFT, -240.0f);
+	toast_panel->set_offset(SIDE_LEFT, -260.0f);
 	toast_panel->set_offset(SIDE_RIGHT, -20.0f);
 	toast_panel->set_offset(SIDE_TOP, 16.0f);
-	toast_panel->set_offset(SIDE_BOTTOM, 50.0f);
-	Ref<StyleBoxFlat> toast_style;
-	toast_style.instantiate();
-	toast_style->set_bg_color(Color(0.96f, 0.94f, 0.88f, 0.95f));
-	toast_style->set_border_color(Color(0.72f, 0.64f, 0.54f, 0.80f));
-	toast_style->set_border_width_all(1);
-	toast_style->set_corner_radius_all(16);
-	toast_style->set_content_margin(SIDE_LEFT, 14.0f);
-	toast_style->set_content_margin(SIDE_RIGHT, 14.0f);
-	toast_panel->add_theme_stylebox_override("panel", toast_style);
+	toast_panel->set_offset(SIDE_BOTTOM, 52.0f);
+	toast_panel->add_theme_stylebox_override("panel", uistyle::make_blackboard_textured(0.98f));
 	add_child(toast_panel);
-
 	toast_label = memnew(Label);
-	toast_label->add_theme_font_size_override("font_size", 12);
-	toast_label->add_theme_color_override("font_color", Color(0.30f, 0.26f, 0.20f));
-	if (font.is_valid()) toast_label->add_theme_font_override("font", font);
+	toast_label->add_theme_font_size_override("font_size", 13);
+	toast_label->add_theme_color_override("font_color", uistyle::chalk_white());
+	if (chalk.is_valid()) toast_label->add_theme_font_override("font", chalk);
 	toast_panel->add_child(toast_label);
 	toast_panel->hide();
 
-	// 初始弹窗隐藏
 	root_container->hide();
 }
 
@@ -590,15 +786,16 @@ void UpdateManager::show_update_dialog() {
 		HBoxContainer *item_box = memnew(HBoxContainer);
 		item_box->add_theme_constant_override("separation", 8);
 
-		Label *dot = memnew(Label);
-		dot->set_text(String::utf8("•"));
-		dot->add_theme_color_override("font_color", Color(0.32f, 0.58f, 0.42f)); // 自然草木绿
-		dot->add_theme_font_size_override("font_size", 14);
-		if (font.is_valid()) dot->add_theme_font_override("font", font);
+		TextureRect *dot = memnew(TextureRect);
+		dot->set_texture(uistyle::leaf_icon_texture());
+		dot->set_expand_mode(TextureRect::EXPAND_IGNORE_SIZE);
+		dot->set_custom_minimum_size(Vector2(13, 13));
+		dot->set_stretch_mode(TextureRect::STRETCH_KEEP_ASPECT_CENTERED);
+		dot->set_modulate(Color(0.85f, 0.9f, 0.8f, 0.95f));
 
 		Label *text = memnew(Label);
 		text->set_text(changelog_items[i]);
-		text->add_theme_color_override("font_color", Color(0.32f, 0.28f, 0.22f)); // 温暖深灰棕
+		text->add_theme_color_override("font_color", Color(0.26f, 0.20f, 0.14f)); // 墨水棕
 		text->add_theme_font_size_override("font_size", 13);
 		if (font.is_valid()) text->add_theme_font_override("font", font);
 
