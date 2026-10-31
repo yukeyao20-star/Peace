@@ -41,7 +41,7 @@ void CabinYard::build() {
 	// —— 劈柴墩与斧头 ——
 	Node3D *block = memnew(Node3D);
 	block->set_name("ChoppingBlock");
-	block->set_position(Vector3(3.0f, 0.0f, 4.8f));
+	block->set_position(Vector3(-3.2f, 0.0f, 5.4f));
 	host->add_child(block);
 	Ref<CylinderMesh> stump;
 	stump.instantiate();
@@ -61,7 +61,7 @@ void CabinYard::build() {
 	// —— 柴堆：两排圆木 ——
 	Node3D *pile = memnew(Node3D);
 	pile->set_name("Woodpile");
-	pile->set_position(Vector3(4.15f, 0.0f, 2.1f));
+	pile->set_position(Vector3(-4.15f, 0.0f, 4.1f));
 	host->add_child(pile);
 	Ref<CylinderMesh> log;
 	log.instantiate();
@@ -109,6 +109,38 @@ void CabinYard::build() {
 
 	// —— 门垫 ——
 	meshutil::add_box(host, toon, Vector3(0.82f, 0.025f, 0.52f), Vector3(0.0f, 0.015f, 4.25f), Color(0.62f, 0.52f, 0.36f));
+
+	// —— 门边扫帚 ——
+	Node3D *broom = memnew(Node3D);
+	broom->set_name("Broom");
+	broom->set_position(Vector3(1.28f, 0.0f, 4.32f));
+	host->add_child(broom);
+	meshutil::add_box(broom, toon, Vector3(0.04f, 1.15f, 0.04f), Vector3(0.06f, 0.62f, 0.0f), wood_light, Vector3(0.0f, 0.0f, 0.18f));
+	meshutil::add_box(broom, toon, Vector3(0.18f, 0.28f, 0.10f), Vector3(0.20f, 0.14f, 0.0f), Color(0.78f, 0.66f, 0.38f), Vector3(0.0f, 0.0f, 0.18f));
+
+	// —— 屋檐下挂着的香草束 ——
+	Node3D *herbs = memnew(Node3D);
+	herbs->set_name("HangingHerbs");
+	herbs->set_position(Vector3(-1.35f, 2.58f, 4.28f));
+	host->add_child(herbs);
+	meshutil::add_box(herbs, toon, Vector3(0.46f, 0.02f, 0.02f), Vector3(0.0f, 0.0f, 0.0f), Color(0.62f, 0.53f, 0.36f));
+	for (int i = 0; i < 3; i++) {
+		float x = -0.15f + (float)i * 0.15f;
+		meshutil::add_box(herbs, toon, Vector3(0.015f, 0.16f, 0.015f), Vector3(x, -0.09f, 0.0f), Color(0.72f, 0.62f, 0.40f));
+		meshutil::add_sphere(herbs, toon, 0.065f, Vector3(x, -0.20f, 0.0f), Color(0.28f, 0.42f, 0.22f));
+		meshutil::add_sphere(herbs, toon, 0.04f, Vector3(x + 0.03f, -0.26f, 0.02f), Color(0.34f, 0.48f, 0.24f));
+	}
+
+	// —— 门口的小柴筐 ——
+	Node3D *crate = memnew(Node3D);
+	crate->set_name("KindlingCrate");
+	crate->set_position(Vector3(2.15f, 0.0f, 4.9f));
+	host->add_child(crate);
+	meshutil::add_box(crate, toon, Vector3(0.42f, 0.28f, 0.32f), Vector3(0, 0.14f, 0), Color(0.48f, 0.34f, 0.18f));
+	for (int i = 0; i < 4; i++) {
+		meshutil::add_box(crate, toon, Vector3(0.06f, 0.30f, 0.34f), Vector3(-0.12f + (float)i * 0.08f, 0.30f, 0.0f),
+				wood_light, Vector3(0.3f + (float)(i % 2) * 0.3f, 0.0f, 0.0f));
+	}
 
 	// —— 信箱 ——
 	Node3D *mail = memnew(Node3D);
