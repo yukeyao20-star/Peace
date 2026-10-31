@@ -130,6 +130,7 @@
 #include "bicycle.h"
 #include "porch_lights.h"
 #include "fish_drying_rack.h"
+#include "honey_stand.h"
 #include "beach_finds.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
@@ -285,6 +286,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(Bicycle);
 	GDREGISTER_CLASS(PorchLights);
 	GDREGISTER_CLASS(FishDryingRack);
+	GDREGISTER_CLASS(HoneyStand);
 	GDREGISTER_CLASS(BeachFinds);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
