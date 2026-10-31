@@ -46,6 +46,7 @@
 #include "rocking_chair.h"
 #include "wish_lantern_dock.h"
 #include "photo_frame.h"
+#include "beehive.h"
 #include "dock_moths.h"
 #include "heron_pond.h"
 #include "campfire.h"
@@ -116,6 +117,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(RockingChair);
 	GDREGISTER_CLASS(WishLanternDock);
 	GDREGISTER_CLASS(PhotoFrame);
+	GDREGISTER_CLASS(Beehive);
 	GDREGISTER_CLASS(DockMoths);
 	GDREGISTER_CLASS(HeronPond);
 	GDREGISTER_CLASS(Campfire);
