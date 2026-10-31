@@ -128,6 +128,12 @@ float Kite::get_interact_distance() const {
 void Kite::interact(const Vector3 &p_player_pos) {
 	(void)p_player_pos;
 	flying = !flying;
+	if (flying && get_parent() != nullptr) {
+		Node *gdk = get_parent()->get_node_or_null("GameDirector");
+		if (gdk != nullptr) {
+			gdk->call("on_kite_launched");
+		}
+	}
 	if (get_parent() != nullptr) {
 		Node *gd = get_parent()->get_node_or_null("GameDirector");
 		if (gd != nullptr) {

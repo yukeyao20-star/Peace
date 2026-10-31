@@ -64,6 +64,7 @@ public:
 		TASK_AURORA,    // 仰望极光（aurora_seen）
 		TASK_HAMMOCK,   // 在吊床上躺一会儿（hammock_lay）
 		TASK_WISH,      // 放一盏河灯（wish_lantern）
+		TASK_KITE,      // 放一次风筝（kite_launched）
 		TASK_KIND_COUNT
 	};
 	struct DailyTask {
@@ -155,6 +156,7 @@ public:
 	void on_aurora_seen();
 	void on_hammock_lay();
 	void on_wish_lantern();
+	void on_kite_launched();
 
 	int get_count() const { return count; }
 	int get_target() const { return target; }
