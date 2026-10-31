@@ -111,7 +111,8 @@
 | 98 | 农场动物冬景（背上积雪/牛羊口鼻白气/踩雪走慢/雪化即消） | ddf2b81 |
 | 99 | 存档 v8（许愿次数/信箱已读日/汤碗余数，读写后正确恢复） | 3ab2ba6 |
 | 100 | 第 100 天庆典（中央纪念横幅/夜间三束烟花/第一百封来信/台账收尾） | bdd440d |
-| 101 | 鱼群 AI 升级（调研 boids 开源实现后：分离/对齐/聚合、同种成群异种避让、sqrt 逃逸、浅水回游、邻居表性能） | 本轮提交 |
+| 101 | 鱼群 AI 升级（调研 boids 开源实现后：分离/对齐/聚合、同种成群异种避让、sqrt 逃逸、浅水回游、邻居表性能） | 8ee2e53 |
+| 102 | 门廊八音盒（调研程序化旋律参考后：五声+LCG 游走/最大跳进/拱形轮廓/八音盒音色/摇柄与音符粒子/每日待办） | 本轮提交 |
 
 ## 编号对账
 
@@ -134,6 +135,9 @@
 - sergioabreu-g/boids（Godot 4.3，Flock/Boid 的邻居表与规则权重、捕食者 sqrt 斥力、边界回中）
 - liambeckingham/godot-boids（Codeberg，鱼群版本：同种聚拢、异种避让）
 - viniciusgerevini/godot-boids（GDScript 简版，规则拆解）
+- chicomcastro/procedural-music-generator（五声音阶量化）
+- aleatoric（最大跳进约束 / 拱形轮廓）
+- monome/crow First.lua（五声音阶 + LCG 随机旋律）
 
 ## 收尾
 

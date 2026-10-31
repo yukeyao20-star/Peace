@@ -69,6 +69,7 @@ public:
 		TASK_LETTER,    // 读一封湖畔来信（letter_read）
 		TASK_STARWISH,  // 对着流星许愿（star_wish）
 		TASK_SOUP,      // 喝一碗热汤（soup_drunk）
+		TASK_MUSICBOX,  // 听一首八音盒（music_box_played）
 		TASK_KIND_COUNT
 	};
 	struct DailyTask {
@@ -169,6 +170,7 @@ public:
 	void on_letter_read();
 	void on_star_wish();
 	void on_soup_drunk();
+	void on_music_box_played();
 
 	int get_count() const { return count; }
 	int get_target() const { return target; }
