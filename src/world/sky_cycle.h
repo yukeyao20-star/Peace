@@ -112,6 +112,7 @@ private:
 	float uw_alpha = 0.0f;             // 当前不透明度（平滑过渡）
 	Ref<AudioEffectLowPassFilter> uw_lp; // 水下低通（Master 总线）
 	CPUParticles3D *uw_bubbles = nullptr; // 水下气泡（相机周围上升）
+	CPUParticles3D *uw_specks = nullptr;  // 水下悬浮微粒
 	AudioStreamPlayer *uw_amb = nullptr; // 水下环境音（低频涌动 + 气泡）
 	Ref<AudioStreamWAV> uw_amb_stream;
 	float uw_amb_db = -60.0f;

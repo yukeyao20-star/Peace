@@ -179,6 +179,12 @@ void SkyCycle::_notification(int p_what) {
 						uw_bubbles->set_global_position(cam->get_global_position());
 					}
 				}
+				if (uw_specks != nullptr) {
+					uw_specks->set_emitting(under);
+					if (under && cam != nullptr) {
+						uw_specks->set_global_position(cam->get_global_position());
+					}
+				}
 				uw_alpha = Math::move_toward(uw_alpha, target, (float)delta * 1.8f);
 				Color col = uw_tint->get_color();
 				col.a = uw_alpha;
@@ -809,6 +815,38 @@ void SkyCycle::build_underwater() {
 	uw_bubbles->set_visibility_aabb(AABB(Vector3(-4, -2, -4), Vector3(8, 8, 8)));
 	uw_bubbles->set_emitting(false);
 	add_child(uw_bubbles);
+
+	// 水下悬浮微粒：比气泡更小更慢，让水体里一直有细碎的东西在飘
+	Ref<SphereMesh> speck_mesh;
+	speck_mesh.instantiate();
+	speck_mesh->set_radius(0.006f);
+	speck_mesh->set_height(0.012f);
+	speck_mesh->set_radial_segments(5);
+	speck_mesh->set_rings(3);
+	Ref<StandardMaterial3D> speck_mat;
+	speck_mat.instantiate();
+	speck_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	speck_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	speck_mat->set_albedo(Color(0.83f, 0.93f, 0.95f, 0.32f));
+	speck_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	speck_mesh->set_material(speck_mat);
+	uw_specks = memnew(CPUParticles3D);
+	uw_specks->set_name("UnderwaterSpecks");
+	uw_specks->set_amount(44);
+	uw_specks->set_lifetime(3.6f);
+	uw_specks->set_mesh(speck_mesh);
+	uw_specks->set_direction(Vector3(0.0f, 0.2f, 0.0f));
+	uw_specks->set_spread(180.0f);
+	uw_specks->set_gravity(Vector3(0.0f, 0.008f, 0.0f));
+	uw_specks->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.01f);
+	uw_specks->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.06f);
+	uw_specks->set_param_min(CPUParticles3D::PARAM_SCALE, 0.4f);
+	uw_specks->set_param_max(CPUParticles3D::PARAM_SCALE, 1.2f);
+	uw_specks->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_BOX);
+	uw_specks->set_emission_box_extents(Vector3(2.6f, 1.6f, 2.6f));
+	uw_specks->set_visibility_aabb(AABB(Vector3(-5, -4, -5), Vector3(10, 10, 10)));
+	uw_specks->set_emitting(false);
+	add_child(uw_specks);
 }
 
 void SkyCycle::build_stars() {

@@ -419,6 +419,16 @@ void Rowboat::build_dock() {
 	lamp->set_shadow(false);
 	body->add_child(lamp);
 
+	// 码头尽头的下水木梯
+	for (int side = -1; side <= 1; side += 2) {
+		meshutil::add_box(body, toon, Vector3(0.05f, 1.55f, 0.05f),
+				Vector3(-6.0f + (float)side * 0.22f, -1.05f, -6.58f), wood_dark);
+	}
+	for (int i = 0; i < 5; i++) {
+		meshutil::add_box(body, toon, Vector3(0.46f, 0.04f, 0.05f),
+				Vector3(-6.0f, -0.42f - (float)i * 0.28f, -6.58f), wood_light);
+	}
+
 	// 码头小木牌：面向岸边来路
 	meshutil::add_box(body, toon, Vector3(0.10f, 1.25f, 0.10f), Vector3(-6.75f, 0.30f, -11.55f), wood_dark);
 	meshutil::add_box(body, toon, Vector3(0.10f, 1.25f, 0.10f), Vector3(-5.25f, 0.30f, -11.55f), wood_dark);

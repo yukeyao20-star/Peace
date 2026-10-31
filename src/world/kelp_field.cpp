@@ -4,6 +4,7 @@
 #include <random>
 
 #include <godot_cpp/classes/array_mesh.hpp>
+#include <godot_cpp/classes/cpu_particles3d.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/material.hpp>
 #include <godot_cpp/classes/multi_mesh.hpp>
@@ -11,6 +12,8 @@
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
+#include <godot_cpp/classes/sphere_mesh.hpp>
+#include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
@@ -121,6 +124,91 @@ void KelpField::build() {
 	mmi->set_multimesh(mm);
 	mmi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 	add_child(mmi);
+
+	if (terrain == nullptr) {
+		return;
+	}
+
+	// 湖底气泡泉：三处持续冒泡的小泉眼
+	Ref<SphereMesh> bubble;
+	bubble.instantiate();
+	bubble->set_radius(0.018f);
+	bubble->set_height(0.036f);
+	bubble->set_radial_segments(6);
+	bubble->set_rings(3);
+	Ref<StandardMaterial3D> bmat;
+	bmat.instantiate();
+	bmat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	bmat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	bmat->set_albedo(Color(0.85f, 0.95f, 1.0f, 0.5f));
+	bmat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	bubble->set_material(bmat);
+	const Vector2 vents[3] = { Vector2(-8.0f, 22.0f), Vector2(-16.0f, 62.0f), Vector2(14.0f, 54.0f) };
+	for (int i = 0; i < 3; i++) {
+		float h = terrain->get_terrain_height(vents[i].x, vents[i].y);
+		CPUParticles3D *vent = memnew(CPUParticles3D);
+		vent->set_name("Vent" + String::num_int64(i));
+		vent->set_position(Vector3(vents[i].x, h + 0.15f, vents[i].y));
+		vent->set_amount(18);
+		vent->set_lifetime(2.6f);
+		vent->set_mesh(bubble);
+		vent->set_use_local_coordinates(false);
+		vent->set_direction(Vector3(0.0f, 1.0f, 0.0f));
+		vent->set_spread(10.0f);
+		vent->set_gravity(Vector3(0.0f, 0.28f, 0.0f));
+		vent->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.15f);
+		vent->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.38f);
+		vent->set_param_min(CPUParticles3D::PARAM_SCALE, 0.5f);
+		vent->set_param_max(CPUParticles3D::PARAM_SCALE, 1.3f);
+		vent->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_SPHERE);
+		vent->set_emission_sphere_radius(0.14f);
+		vent->set_emitting(true);
+		add_child(vent);
+	}
+
+	// 湖底贝壳：散落的浅色小贝壳
+	Ref<SphereMesh> shell_mesh;
+	shell_mesh.instantiate();
+	shell_mesh->set_radius(0.07f);
+	shell_mesh->set_height(0.05f);
+	shell_mesh->set_radial_segments(8);
+	shell_mesh->set_rings(4);
+	Ref<StandardMaterial3D> shell_mat;
+	shell_mat.instantiate();
+	shell_mat->set_albedo(Color(0.92f, 0.86f, 0.74f));
+	shell_mat->set_roughness(0.8f);
+	shell_mesh->set_material(shell_mat);
+	Ref<MultiMesh> sm;
+	sm.instantiate();
+	sm->set_transform_format(MultiMesh::TRANSFORM_3D);
+	sm->set_mesh(shell_mesh);
+	sm->set_instance_count(14);
+	int sp = 0;
+	int guard2 = 0;
+	while (sp < 14 && guard2 < 800) {
+		guard2++;
+		float x = -6.0f + (d01(rng) - 0.5f) * 26.0f;
+		float z = 26.0f + (d01(rng) - 0.5f) * 34.0f;
+		float depth = terrain->water_depth_at(x, z);
+		if (depth < 1.5f) {
+			continue;
+		}
+		float h = terrain->get_terrain_height(x, z);
+		Transform3D xf;
+		xf.origin = Vector3(x, h + 0.03f, z);
+		Basis b = Basis(Vector3(0.0f, 1.0f, 0.0f), d01(rng) * 6.2831853f);
+		float s = 0.7f + d01(rng) * 0.8f;
+		b = b.scaled(Vector3(s, 0.55f * s, s));
+		xf.basis = b;
+		sm->set_instance_transform(sp, xf);
+		sp++;
+	}
+	sm->set_instance_count(sp);
+	MultiMeshInstance3D *smm = memnew(MultiMeshInstance3D);
+	smm->set_name("Shells");
+	smm->set_multimesh(sm);
+	smm->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+	add_child(smm);
 }
 
 void KelpField::build_mesh(Ref<ArrayMesh> &r_mesh) {

@@ -31,6 +31,7 @@ private:
 		float bob_w = 1.2f;
 		float bob_phase = 0.0f;
 		float yaw_offset = 0.0f;
+		float urge = 0.0f; // 被玩家靠近时的惊逃强度
 	};
 
 	int fish_count = 16;

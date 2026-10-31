@@ -45,8 +45,21 @@ void FishSchool::_notification(int p_what) {
 				if (f.root == nullptr) {
 					continue;
 				}
-				f.angle += f.speed * delta;
-				float bob = std::sin(anim_t * f.bob_w + f.bob_phase) * 0.04f;
+				// 玩家贴近时鱼会加速窜开
+				float near = 0.0f;
+				if (player != nullptr) {
+					Vector3 pp = player->get_global_position();
+					Vector3 fish_pos(f.center.x + std::cos(f.angle) * f.radius,
+							water_level - f.depth, f.center.y + std::sin(f.angle) * f.radius);
+					if (pp.distance_to(fish_pos) < 3.6f) {
+						near = 1.0f;
+					}
+				}
+				f.urge = Math::min(1.0f, f.urge + (near > 0.5f ? delta * 3.5f : -delta * 0.8f));
+				f.urge = Math::max(0.0f, f.urge);
+				f.angle += f.speed * (1.0f + f.urge * 2.2f) * delta;
+				float bob = std::sin(anim_t * f.bob_w + f.bob_phase) * 0.04f
+						+ f.urge * 0.10f;
 				Vector3 pos(f.center.x + std::cos(f.angle) * f.radius,
 						water_level - f.depth + bob,
 						f.center.y + std::sin(f.angle) * f.radius);
