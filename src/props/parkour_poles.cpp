@@ -69,7 +69,7 @@ void ParkourPoles::build_poles(Ref<Shader> p_shader) {
 		add_child(body);
 
 		float top_y = pd.pos.y;
-		float bottom_y = -3.2f; // 深埋入水底
+		float bottom_y = -5.8f; // 深埋入水底（随 2026-10-31 湖盆加深）
 		float height = top_y - bottom_y;
 		float center_y = (top_y + bottom_y) * 0.5f;
 

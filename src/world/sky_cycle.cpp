@@ -165,7 +165,10 @@ void SkyCycle::_notification(int p_what) {
 						? Object::cast_to<Camera3D>(get_viewport()->get_camera_3d()) : nullptr;
 				bool under = cam != nullptr && cam->get_global_position().y < -0.50f;
 				if (under) {
-					target = 0.34f;
+					// 水越深，水体吸收越明显：覆盖层随相机深度从 0.34 加浓到 0.55，
+					// 否则湖底加深后依然"一眼见底"、看不出水深。
+					float depth_below = Math::max(0.0f, -cam->get_global_position().y - 0.5f);
+					target = Math::clamp(0.34f + depth_below * 0.032f, 0.34f, 0.55f);
 				}
 				if (uw_bubbles != nullptr) {
 					uw_bubbles->set_emitting(under);
@@ -177,10 +180,19 @@ void SkyCycle::_notification(int p_what) {
 				Color col = uw_tint->get_color();
 				col.a = uw_alpha;
 				uw_tint->set_color(col);
+				// 水下距离雾：深度雾把远处湖底/对岸压暗成深青，水体才有"厚度"；
+				// apply() 每帧已按天气重置雾底色与浓度，这里只在其上按水下权重叠加，不会累积。
+				if (env.is_valid() && uw_alpha > 0.001f) {
+					float k = uw_alpha / 0.55f;
+					Color fog_c = env->get_fog_light_color();
+					env->set_fog_light_color(fog_c.lerp(Color(0.045f, 0.27f, 0.31f), k * 0.85f));
+					float d = env->get_fog_density();
+					env->set_fog_density(d + (Math::max(d, 0.075f) - d) * k);
+				}
 				// 光柱/焦散叠加层：强度跟水下浓度走，完全出水时隐藏省一次全屏绘制
 				if (uw_rays != nullptr && uw_rays_mat.is_valid()) {
 					uw_rays->set_visible(uw_alpha > 0.002f);
-					uw_rays_mat->set_shader_parameter("uw_amount", uw_alpha / 0.34f);
+					uw_rays_mat->set_shader_parameter("uw_amount", uw_alpha / 0.55f);
 				}
 				// 音频低通随水下状态平滑过渡（指数逼近，避免线性扫频的"呼呼"声）
 				float cut_target = target > 0.0f ? 700.0f : 20000.0f;

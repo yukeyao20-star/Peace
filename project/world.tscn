@@ -219,7 +219,7 @@ use_collision = true
 
 [node name="ArchBody" type="CSGPolygon3D" parent="StoneBridge" unique_id=1167725244]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2.1)
-polygon = PackedVector2Array(-15, -2.6, -6, -2.6, -5, -1.605, -4, -0.899, -3, -0.398, -2, -0.06, -1, 0.136, 0, 0.2, 1, 0.136, 2, -0.06, 3, -0.398, 4, -0.899, 5, -1.605, 6, -2.6, 15, -2.6, 15, -0.2, 7.5, 0.75, 0, 1.3, -7.5, 0.75, -15, -0.2)
+polygon = PackedVector2Array(-15, -5.8, -6, -5.8, -5, -1.605, -4, -0.899, -3, -0.398, -2, -0.06, -1, 0.136, 0, 0.2, 1, 0.136, 2, -0.06, 3, -0.398, 4, -0.899, 5, -1.605, 6, -5.8, 15, -5.8, 15, -0.2, 7.5, 0.75, 0, 1.3, -7.5, 0.75, -15, -0.2)
 depth = 4.2
 material = SubResource("StoneMat")
 
@@ -1229,6 +1229,8 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, -24)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, -0.55, 26)
 
 [node name="LakeJumps" type="LakeJumpFx" parent="."]
+
+[node name="FishSchool" type="FishSchool" parent="."]
 
 [node name="GameDirector" type="GameDirector" parent="." unique_id=1818518943]
 

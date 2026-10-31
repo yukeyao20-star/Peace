@@ -1402,7 +1402,9 @@ float TerrainBuilder::terrain_height(float x, float z) const {
 		float stream_protect = (1.0f - sstepf(2.4f, 7.5f, s_dist)) * sstepf(-0.55f, 0.20f, s_wy);
 		basin = Math::max(0.0f, basin * (1.0f - stream_protect));
 	}
-	h = lerpf(h, -2.85f, basin);
+	// 2026-10-31 用户反馈"水太浅"：湖底从 -2.85m 加深到 -5.20m（水深 2.3m → 4.65m），
+	// 水下视角不再一眼见底；湖岸线/水面标高保持不变。
+	h = lerpf(h, -5.20f, basin);
 
 	// 2. 峡谷小溪小木桥两岸草地引道贴平 (50.0, 69.4, rot_y=2.73)
 	// 横跨小溪：水面标高 0.43m，天然堤岸标高 0.85m
