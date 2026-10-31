@@ -37,6 +37,7 @@ void Rowboat::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("requires_line_of_sight"), &Rowboat::requires_line_of_sight);
 	ClassDB::bind_method(D_METHOD("interact", "player_pos"), &Rowboat::interact);
 	ClassDB::bind_method(D_METHOD("is_occupied"), &Rowboat::is_occupied);
+	ClassDB::bind_method(D_METHOD("get_speed"), &Rowboat::get_speed);
 }
 
 void Rowboat::_notification(int p_what) {
@@ -93,7 +94,9 @@ void Rowboat::_notification(int p_what) {
 				if (act("move_right", KEY_D)) {
 					t -= 1.0f;
 				}
-				speed = Math::lerp(speed, f * 2.3f, Math::min(1.0f, delta * 2.2f));
+				bool boost = in->is_key_pressed(KEY_SHIFT);
+				float target_speed = (f >= 0.0f) ? f * (boost ? 3.4f : 2.3f) : f * 1.2f;
+				speed = Math::lerp(speed, target_speed, Math::min(1.0f, delta * 2.2f));
 				yaw += t * delta * 0.85f * (0.45f + Math::min(1.0f, std::fabs(speed) / 2.3f));
 				Vector3 fwd(std::sin(yaw), 0.0f, std::cos(yaw));
 				Vector3 pos = get_global_position();
@@ -142,6 +145,14 @@ void Rowboat::_notification(int p_what) {
 			}
 			if (wake != nullptr) {
 				wake->set_emitting(occupied && std::fabs(speed) > 0.2f);
+				wake->set_speed_scale(0.7f + Math::min(1.2f, std::fabs(speed) * 0.35f));
+			}
+			// 灯箱微闪，像真的烛火
+			if (bow_lamp != nullptr) {
+				bow_lamp->set_param(Light3D::PARAM_ENERGY, 1.3f * (0.94f + 0.06f * std::sin(bob_t * 9.3f)));
+			}
+			if (dock_lamp != nullptr) {
+				dock_lamp->set_param(Light3D::PARAM_ENERGY, 1.7f * (0.93f + 0.07f * std::sin(bob_t * 7.7f + 1.3f)));
 			}
 			// 划桨入水声：跟着桨的节奏，左右交替
 			if (occupied && std::fabs(speed) > 0.4f) {
@@ -159,11 +170,11 @@ void Rowboat::_notification(int p_what) {
 				oar_t = 0.0f;
 			}
 
-			// 划桨动画：有速度时前后扫、桨叶入水；停船时收回船舷
+			// 划桨动画：桨频随船速加快；有速度时前后扫、桨叶入水
 			float moving = Math::clamp(std::fabs(speed) / 1.2f, 0.0f, 1.0f);
-			float phase = bob_t * 2.2f;
-			float stroke = std::sin(phase) * 0.42f * moving;
-			float dip = (0.10f + 0.18f * std::cos(phase)) * moving;
+			oar_phase += delta * (2.2f + std::fabs(speed) * 0.9f);
+			float stroke = std::sin(oar_phase) * 0.42f * moving;
+			float dip = (0.10f + 0.18f * std::cos(oar_phase)) * moving;
 			if (oar_r != nullptr) {
 				oar_r->set_rotation(Vector3(0.0f, stroke, -dip));
 			}
@@ -215,7 +226,7 @@ void Rowboat::board(Player *p_rider) {
 	if (get_parent() != nullptr) {
 		Node *gd = get_parent()->get_node_or_null("GameDirector");
 		if (gd != nullptr) {
-			gd->call("flash_hint", String::utf8("W/S 划行 · A/D 转向 · E 下船"), 4.5f);
+			gd->call("flash_hint", String::utf8("W/S 划行（Shift 加速）· A/D 转向 · E 下船"), 4.5f);
 		}
 	}
 }
@@ -314,7 +325,7 @@ void Rowboat::build_hull() {
 	bow_glass_mi->set_mesh(bow_glass);
 	bow_glass_mi->set_position(Vector3(0.0f, 0.86f, 1.22f));
 	hull->add_child(bow_glass_mi);
-	OmniLight3D *bow_lamp = memnew(OmniLight3D);
+	bow_lamp = memnew(OmniLight3D);
 	bow_lamp->set_name("BowLantern");
 	bow_lamp->set_position(Vector3(0.0f, 0.86f, 1.22f));
 	bow_lamp->set_color(Color(1.0f, 0.8f, 0.5f));
@@ -444,8 +455,9 @@ void Rowboat::build_dock() {
 	glass_mi->set_position(lamp_base + Vector3(0.0f, 2.06f, 0.0f));
 	body->add_child(glass_mi);
 
-	OmniLight3D *lamp = memnew(OmniLight3D);
-	lamp->set_name("DockLantern");
+	dock_lamp = memnew(OmniLight3D);
+	dock_lamp->set_name("DockLantern");
+	OmniLight3D *lamp = dock_lamp;
 	lamp->set_position(lamp_base + Vector3(0.0f, 2.06f, 0.0f));
 	lamp->set_color(Color(1.0f, 0.78f, 0.48f));
 	lamp->set_param(Light3D::PARAM_ENERGY, 1.7f);

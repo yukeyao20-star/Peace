@@ -22,6 +22,7 @@ namespace godot {
 
 class AudioStreamPlayer3D;
 class CPUParticles3D;
+class OmniLight3D;
 class TerrainBuilder;
 
 class Rowboat : public Interactable {
@@ -37,6 +38,9 @@ private:
 	Node3D *oar_r = nullptr;
 	CPUParticles3D *wake = nullptr;
 	AudioStreamPlayer3D *oar_voice = nullptr;
+	OmniLight3D *bow_lamp = nullptr;
+	OmniLight3D *dock_lamp = nullptr;
+	float oar_phase = 0.0f;
 	Ref<AudioStreamWAV> snd_oar;
 	float oar_t = 0.0f;
 	int oar_side = 1;
@@ -68,7 +72,7 @@ public:
 
 	bool is_occupied() const { return occupied; }
 	float get_speed() const { return speed; }
-	float get_row_phase() const { return bob_t * 2.2f; }
+	float get_row_phase() const { return oar_phase; }
 };
 
 } // namespace godot
