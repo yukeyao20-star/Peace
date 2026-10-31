@@ -36,6 +36,7 @@
 #include "icicle_field.h"
 #include "camp_cat.h"
 #include "dock_gull.h"
+#include "wind_charms.h"
 #include "dock_moths.h"
 #include "heron_pond.h"
 #include "campfire.h"
@@ -96,6 +97,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(IcicleField);
 	GDREGISTER_CLASS(CampCat);
 	GDREGISTER_CLASS(DockGull);
+	GDREGISTER_CLASS(WindCharms);
 	GDREGISTER_CLASS(DockMoths);
 	GDREGISTER_CLASS(HeronPond);
 	GDREGISTER_CLASS(Campfire);
