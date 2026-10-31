@@ -40,6 +40,10 @@ private:
 	AudioStreamPlayer3D *oar_voice = nullptr;
 	OmniLight3D *bow_lamp = nullptr;
 	OmniLight3D *dock_lamp = nullptr;
+	Node3D *bow_pivot = nullptr;       // 船头灯挂点（随船轻摆）
+	CPUParticles3D *oar_drip = nullptr; // 桨叶带起的水珠
+	AudioStreamPlayer3D *lap_voice = nullptr; // 船边水声
+	Ref<AudioStreamWAV> snd_lap;
 	float oar_phase = 0.0f;
 	CPUParticles3D *dock_splash = nullptr;
 	CPUParticles3D *boat_splash = nullptr;
@@ -64,6 +68,8 @@ private:
 
 	void build_hull();
 	void build_dock();
+	void make_lap();
+	Ref<AudioStreamWAV> synth_lap();
 	void board(Player *p_rider);
 	void exit_boat();
 

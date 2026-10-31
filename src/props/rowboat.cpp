@@ -54,6 +54,7 @@ void Rowboat::_notification(int p_what) {
 			if (get_parent() != nullptr) {
 				sky = get_parent()->get_node_or_null("SkyCycle");
 			}
+			make_lap();
 			snd_oar = make_oar_splash();
 			if (snd_oar.is_valid()) {
 				oar_voice = memnew(AudioStreamPlayer3D);
@@ -154,6 +155,27 @@ void Rowboat::_notification(int p_what) {
 			if (hull != nullptr) {
 				hull->set_rotation(Vector3(std::sin(bob_t * 1.1f) * 0.012f, 0.0f,
 						std::sin(bob_t * 0.85f) * 0.022f));
+			}
+			if (bow_pivot != nullptr) {
+				bow_pivot->set_rotation(Vector3(
+						std::sin(bob_t * 1.7f + 0.4f) * 0.10f,
+						0.0f,
+						std::sin(bob_t * 1.25f) * 0.12f));
+			}
+			if (bow_lamp != nullptr) {
+				float flick = 0.92f + 0.05f * std::sin(bob_t * 7.5f) + 0.03f * std::sin(bob_t * 17.0f + 1.3f);
+				bow_lamp->set_param(Light3D::PARAM_ENERGY, (1.05f + Math::min(0.5f, std::fabs(speed) * 0.14f)) * flick);
+			}
+			if (oar_drip != nullptr) {
+				oar_drip->set_emitting(occupied && std::fabs(speed) > 0.35f);
+			}
+			if (lap_voice != nullptr) {
+				bool near_idle = occupied && std::fabs(speed) < 0.35f;
+				float target_db = near_idle ? -26.0f : -50.0f;
+				lap_voice->set_volume_db(Math::lerp((float)lap_voice->get_volume_db(), target_db, 1.0f - std::exp(-2.0f * delta)));
+				if (near_idle && !lap_voice->is_playing()) {
+					lap_voice->play(0.0f);
+				}
 			}
 			if (wake != nullptr) {
 				wake->set_emitting(occupied && std::fabs(speed) > 0.2f);
@@ -397,18 +419,23 @@ void Rowboat::build_hull() {
 	bow_glass.instantiate();
 	bow_glass->set_size(Vector3(0.14f, 0.16f, 0.14f));
 	bow_glass->set_material(bow_glow);
+	bow_pivot = memnew(Node3D);
+	bow_pivot->set_name("BowLanternPivot");
+	bow_pivot->set_position(Vector3(0.0f, 0.98f, 1.22f));
+	hull->add_child(bow_pivot);
 	MeshInstance3D *bow_glass_mi = memnew(MeshInstance3D);
+	bow_glass_mi->set_name("BowGlass");
 	bow_glass_mi->set_mesh(bow_glass);
-	bow_glass_mi->set_position(Vector3(0.0f, 0.86f, 1.22f));
-	hull->add_child(bow_glass_mi);
+	bow_glass_mi->set_position(Vector3(0.0f, -0.12f, 0.0f));
+	bow_pivot->add_child(bow_glass_mi);
 	bow_lamp = memnew(OmniLight3D);
 	bow_lamp->set_name("BowLantern");
-	bow_lamp->set_position(Vector3(0.0f, 0.86f, 1.22f));
+	bow_lamp->set_position(Vector3(0.0f, -0.12f, 0.0f));
 	bow_lamp->set_color(Color(1.0f, 0.8f, 0.5f));
 	bow_lamp->set_param(Light3D::PARAM_ENERGY, 1.3f);
 	bow_lamp->set_param(Light3D::PARAM_RANGE, 6.5f);
 	bow_lamp->set_shadow(false);
-	hull->add_child(bow_lamp);
+	bow_pivot->add_child(bow_lamp);
 
 	// 船尾水花
 	Ref<SphereMesh> drop;
@@ -442,6 +469,23 @@ void Rowboat::build_hull() {
 	wake->set_position(Vector3(0.0f, 0.06f, -1.12f));
 	wake->set_emitting(false);
 	hull->add_child(wake);
+
+	// 桨叶带起的水珠
+	oar_drip = memnew(CPUParticles3D);
+	oar_drip->set_name("OarDrip");
+	oar_drip->set_amount(16);
+	oar_drip->set_lifetime(0.7f);
+	oar_drip->set_mesh(drop);
+	oar_drip->set_direction(Vector3(0.0f, -1.0f, 0.0f));
+	oar_drip->set_spread(45.0f);
+	oar_drip->set_gravity(Vector3(0.0f, -3.4f, 0.0f));
+	oar_drip->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.1f);
+	oar_drip->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.4f);
+	oar_drip->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_BOX);
+	oar_drip->set_emission_box_extents(Vector3(0.65f, 0.04f, 0.5f));
+	oar_drip->set_position(Vector3(0.0f, 0.30f, 0.0f));
+	oar_drip->set_emitting(false);
+	hull->add_child(oar_drip);
 }
 
 void Rowboat::build_dock() {
@@ -713,5 +757,53 @@ Ref<AudioStreamWAV> Rowboat::make_patter() {
 	wav->set_loop_mode(AudioStreamWAV::LOOP_FORWARD);
 	wav->set_loop_begin(0);
 	wav->set_loop_end(n);
+	return wav;
+}
+
+
+void Rowboat::make_lap() {
+	snd_lap = synth_lap();
+	lap_voice = memnew(AudioStreamPlayer3D);
+	lap_voice->set_name("HullLap");
+	lap_voice->set_stream(snd_lap);
+	lap_voice->set_volume_db(-50.0f);
+	lap_voice->set_max_distance(16.0f);
+	hull->add_child(lap_voice);
+}
+
+// 3 秒可循环的船边水声：轻轻拍打木板的低频水波
+Ref<AudioStreamWAV> Rowboat::synth_lap() {
+	const int sr = 22050;
+	const float dur = 3.0f;
+	const int n = (int)(dur * sr);
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+	float lp = 0.0f;
+	for (int i = 0; i < n; i++) {
+		float t = (float)i / sr;
+		float white = ((float)((i * 1664525 + 1013904223) & 0x7FFF) / 32767.0f - 0.5f);
+		lp += (white - lp) * 0.035f;
+		float wave = 0.55f + 0.45f * std::sin(6.2831853f * 0.55f * t + 0.7f);
+		float samp = lp * wave * 0.9f;
+		float fade = 1.0f;
+		if (i < 1500) {
+			fade = (float)i / 1500.0f;
+		}
+		if (i > n - 1500) {
+			fade = (float)(n - i) / 1500.0f;
+		}
+		int16_t q = (int16_t)Math::clamp(samp * fade * 9000.0f, -32000.0f, 32000.0f);
+		w[i * 2] = (uint8_t)(q & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
+	}
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_loop_mode(AudioStreamWAV::LOOP_FORWARD);
+	wav->set_loop_end(n);
+	wav->set_data(bytes);
 	return wav;
 }
