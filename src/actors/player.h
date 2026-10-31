@@ -117,6 +117,12 @@ public:
 	Vector3 get_last_land_pos() const { return last_land_pos; }
 	Vector3 get_facing() const { return facing; }
 
+	// —— 手柄状态（供探针/调试面板读取） ——
+	bool get_pad_connected() const { return pad_connected; }
+	int get_pad_device() const { return pad_device; }
+	float get_pad_rumble_left() const { return pad_rumble_t; }
+	Vector2 get_pad_left_stick() const { return pad_left_stick(); }
+
 	// —— 外衣换装 / 滚地 / 睡觉 / 地图传送 ——
 	void set_costume(int p_c);
 	int get_costume() const { return costume; }
@@ -369,6 +375,18 @@ private:
 	bool e_prev = false;                       // 上一物理帧 E 键状态（边沿触发）
 	double lean_time = 0.0;                    // 推门动画剩余时间（>0 表示播放中）
 	Vector3 facing = Vector3(0.0, 0.0, -1.0);  // 模型朝向（用于加前倾角度）
+
+	// —— 手柄（左摇杆移动 / 右摇杆视角 / ABXY 映射 / 短震动） ——
+	bool pad_connected = false;
+	int pad_device = -1;
+	float pad_check_t = 0.0f;
+	float pad_rumble_t = 0.0f;
+	Vector2 apply_stick_deadzone(const Vector2 &p_raw) const;
+	Vector2 pad_left_stick() const;
+	Vector2 pad_right_stick() const;
+	bool pad_button(int p_button) const;
+	void update_gamepad(float delta);
+	void rumble(float p_weak, float p_strong, float p_seconds);
 
 	// —— 第三人称鼠标视角状态 ——
 	double cam_yaw = 0.0;    // 环绕角色的偏航角（0 = 相机在 +Z 后方，看 -Z）

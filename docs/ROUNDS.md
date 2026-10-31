@@ -115,7 +115,8 @@
 | 102 | 门廊八音盒（调研程序化旋律参考后：五声+LCG 游走/最大跳进/拱形轮廓/八音盒音色/摇柄与音符粒子/每日待办） | a9feffd |
 | 103 | 窗玻璃雨痕（调研雨窗 shader 后：网格水滴屏幕折射/雨强渐显/四窗共享材质/雪天让位霜花） | 25552a0 |
 | 104 | 银河星尘带（调研星野参考后：倾斜大圆 900 星点/MultiMesh 单 draw call/颜色温度/随星穹旋转/昼夜显隐） | a621ab3 |
-| 105 | 拍照模式升级（调研 CameraAttributesPractical 后：景深/三分网格/暗角/层级/退出恢复） | 本轮提交 |
+| 105 | 拍照模式升级（调研 CameraAttributesPractical 后：景深/三分网格/暗角/层级/退出恢复） | 17443ba |
+| 106 | 手柄支持（调研 Godot Input 手柄 API 后：左摇杆径向死区移动/右摇杆视角/ABXY 与十字键映射/插拔提示/落地与互动短震动） | 本轮提交 |
 
 ## 编号对账
 
@@ -147,6 +148,10 @@
 - tiffany352/godot-starlight（MultiMesh 星野、恒星颜色温度）
 - godotshaders.com「Volumetric Cosmic Dust」（FBM/倾斜大圆星云带思路）
 - Godot 官方文档 CameraAttributesPractical（dof_blur_far_distance/transition/amount）
+- Godot 官方文档 Input（get_connected_joypads / get_joy_axis / is_joy_button_pressed /
+  start_joy_vibration / stop_joy_vibration；震动必须带有限 duration）
+- 社区常见的径向死区 + 线性重映射写法（长度小于死区归零，否则沿原方向按
+  (len-dz)/(1-dz) 重标定），避免方形死区在斜向留下台阶
 
 ## 收尾
 

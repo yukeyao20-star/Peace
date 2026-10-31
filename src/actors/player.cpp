@@ -70,6 +70,7 @@
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
+#include <godot_cpp/variant/typed_array.hpp>
 #include <godot_cpp/variant/vector2.hpp>
 
 #include "footprint_manager.h"
@@ -140,6 +141,11 @@ void Player::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_star_wishes"), &Player::get_star_wishes);
 	ClassDB::bind_method(D_METHOD("set_star_wishes", "n"), &Player::set_star_wishes);
 	ClassDB::bind_method(D_METHOD("get_photo_filter"), &Player::get_photo_filter);
+	ClassDB::bind_method(D_METHOD("get_pad_connected"), &Player::get_pad_connected);
+	ClassDB::bind_method(D_METHOD("get_pad_device"), &Player::get_pad_device);
+	ClassDB::bind_method(D_METHOD("get_pad_rumble_left"), &Player::get_pad_rumble_left);
+	ClassDB::bind_method(D_METHOD("get_pad_left_stick"), &Player::get_pad_left_stick);
+	ClassDB::bind_method(D_METHOD("apply_stick_deadzone", "raw"), &Player::apply_stick_deadzone);
 	ClassDB::bind_method(D_METHOD("_on_map_gui_input", "event"), &Player::_on_map_gui_input);
 	ClassDB::bind_method(D_METHOD("_on_map_bg_gui_input", "event"), &Player::_on_map_bg_gui_input);
 	ClassDB::bind_method(D_METHOD("_on_map_mouse_exited"), &Player::_on_map_mouse_exited);
@@ -661,6 +667,7 @@ void Player::_notification(int p_what) {
 
 		case NOTIFICATION_PROCESS: {
 			float p_delta = get_process_delta_time();
+			update_gamepad(p_delta); // 手柄插拔提示 + 震动计时收尾
 			if (!is_sleeping && !is_map_open && !album_open && !help_open) {
 				_update_look(p_delta); // 睡觉 / 大地图 / 相册打开时鼠标不转动视角
 			}
@@ -919,7 +926,7 @@ void Player::_physics_step() {
 		key1_prev = k1;
 		key2_prev = k2;
 		key3_prev = k3;
-		e_prev = act_pressed("interact", KEY_E);
+		e_prev = act_pressed("interact", KEY_E) || pad_button(JOY_BUTTON_A);
 		return;
 	}
 
@@ -942,7 +949,7 @@ void Player::_physics_step() {
 		if (target_ring != nullptr) {
 			target_ring->hide();
 		}
-		e_prev = act_pressed("interact", KEY_E);
+		e_prev = act_pressed("interact", KEY_E) || pad_button(JOY_BUTTON_A);
 		return;
 	}
 
@@ -965,7 +972,7 @@ void Player::_physics_step() {
 		if (target_ring != nullptr) {
 			target_ring->hide();
 		}
-		e_prev = act_pressed("interact", KEY_E);
+		e_prev = act_pressed("interact", KEY_E) || pad_button(JOY_BUTTON_A);
 		return;
 	}
 
@@ -1000,12 +1007,12 @@ void Player::_physics_step() {
 		}
 		// 船上不处理交互，但要维持 E 的边沿状态：否则下船时同一次按键会被
 		// 交互扫描当成"刚按下"，立刻又把人送回船上。
-		e_prev = act_pressed("interact", KEY_E);
+		e_prev = act_pressed("interact", KEY_E) || pad_button(JOY_BUTTON_A);
 		return;
 	}
 
 	// 3. 躺下滚着移动模式（R 键切换）
-	bool r_down = act_pressed("roll", KEY_R);
+	bool r_down = act_pressed("roll", KEY_R) || pad_button(JOY_BUTTON_X);
 	if (r_down && !r_prev) {
 		is_rolling = !is_rolling;
 		roll_spin = 0.0;
@@ -1014,7 +1021,7 @@ void Player::_physics_step() {
 	r_prev = r_down;
 
 	// 4. 夜晚放烟花功能（G 键触发，与 F 键钓鱼彻底分开，绝不冲突）
-	bool g_down = act_pressed("firework", KEY_G);
+	bool g_down = act_pressed("firework", KEY_G) || pad_button(JOY_BUTTON_Y);
 	if (g_down && !g_prev) {
 		if (!try_star_wish()) {
 			launch_firework();
@@ -1023,13 +1030,32 @@ void Player::_physics_step() {
 	g_prev = g_down;
 
 	// 读移动输入（世界坐标：W 朝 -Z，S 朝 +Z，A 朝 -X，D 朝 +X；动作表在 project.godot [input]）
-	const double ix = (act_pressed("move_right", KEY_D) ? 1.0 : 0.0) - (act_pressed("move_left", KEY_A) ? 1.0 : 0.0);
-	const double iz = (act_pressed("move_back", KEY_S) ? 1.0 : 0.0) - (act_pressed("move_forward", KEY_W) ? 1.0 : 0.0);
+	// 手柄：左摇杆是连续量（轻推慢走），十字键按单轴 ±1 叠加；两者与键盘取并集。
+	const Vector2 pad_move = pad_left_stick();
+	double ix = (act_pressed("move_right", KEY_D) ? 1.0 : 0.0) - (act_pressed("move_left", KEY_A) ? 1.0 : 0.0) + (double)pad_move.x;
+	double iz = (act_pressed("move_back", KEY_S) ? 1.0 : 0.0) - (act_pressed("move_forward", KEY_W) ? 1.0 : 0.0) + (double)pad_move.y;
+	if (pad_button(JOY_BUTTON_DPAD_RIGHT)) {
+		ix += 1.0;
+	}
+	if (pad_button(JOY_BUTTON_DPAD_LEFT)) {
+		ix -= 1.0;
+	}
+	if (pad_button(JOY_BUTTON_DPAD_DOWN)) {
+		iz += 1.0;
+	}
+	if (pad_button(JOY_BUTTON_DPAD_UP)) {
+		iz -= 1.0;
+	}
 
 	Vector3 dir(ix, 0.0, iz);
-	if (dir.length_squared() > 0.0001) {
-		// WASD 按相机偏航角旋转：W 永远朝画面深处
-		dir = Basis(Vector3(0.0, 1.0, 0.0), (float)cam_yaw).xform(dir).normalized();
+	// 长度封顶 1：键盘斜向（√2）与键盘+摇杆叠加都不会超速，
+	// 但摇杆轻推保留 0..1 的连续速度，能慢慢踱步。
+	if (dir.length_squared() > 1.0f) {
+		dir = dir.normalized();
+	}
+	if (dir.length_squared() > 0.0001f) {
+		// WASD/摇杆按相机偏航角旋转：前推永远朝画面深处
+		dir = Basis(Vector3(0.0, 1.0, 0.0), (float)cam_yaw).xform(dir);
 	}
 
 	Vector3 velocity = get_velocity();
@@ -1106,7 +1132,7 @@ void Player::_physics_step() {
 	}
 
 	// 垂直：游泳六向（空格上浮 / Ctrl·C 下潜）vs 走路重力 + 跳跃
-	bool space_down = act_pressed("jump", KEY_SPACE);
+	bool space_down = act_pressed("jump", KEY_SPACE) || pad_button(JOY_BUTTON_B);
 	if (is_swimming) {
 		double up = space_down ? 1.0 : 0.0;
 		double down = (input->is_key_pressed(KEY_CTRL) || input->is_key_pressed(KEY_C)) ? 1.0 : 0.0;
@@ -1522,7 +1548,7 @@ void Player::_update_interaction() {
 	}
 
 	// E 键按下瞬间触发（按住不放只触发一次）
-	bool e_down = act_pressed("interact", KEY_E);
+	bool e_down = act_pressed("interact", KEY_E) || pad_button(JOY_BUTTON_A);
 	if (interact_lock > 0.0f) {
 		interact_lock = Math::max(0.0f, interact_lock - (float)get_physics_process_delta_time());
 		e_prev = e_down;
@@ -1532,6 +1558,7 @@ void Player::_update_interaction() {
 		near_target->interact(get_global_position());
 		lean_time = 0.5; // 播放推门/推窗的前倾动作
 		play_ui(0);
+		rumble(0.18f, 0.22f, 0.09f); // 手柄上给一点"按到了"的实感
 	}
 	e_prev = e_down;
 }
@@ -1553,6 +1580,131 @@ void Player::play_ui(int type) {
 		ui_voice->set_stream(snd);
 		ui_voice->set_volume_db(vol);
 		ui_voice->play();
+	}
+}
+
+// ——————————————————————————————————————————————————————————————
+// 手柄支持（第 106 轮）
+// 参考与取舍：
+//   * Godot 官方 Input 文档：is_joy_button_pressed / get_joy_axis /
+//     get_connected_joypads / start_joy_vibration；
+//   * 摇杆用"径向死区 + 线性重映射"（raw.length() < dz 归零，否则沿原方向
+//     按 (len-dz)/(1-dz) 重标定）。方形死区会在四个斜向留下台阶，径向不会；
+//   * 震动必须带有限 duration，并到点显式 stop —— 部分驱动在 duration=0
+//     或中途断开时会把最后强度一直留住。
+// ——————————————————————————————————————————————————————————————
+Vector2 Player::apply_stick_deadzone(const Vector2 &p_raw) const {
+	const float dz = 0.22f;
+	const float len = p_raw.length();
+	if (len <= dz) {
+		return Vector2();
+	}
+	const float mag = Math::min(1.0f, (len - dz) / (1.0f - dz));
+	return p_raw.normalized() * mag;
+}
+
+Vector2 Player::pad_left_stick() const {
+	Input *in = Input::get_singleton();
+	if (in == nullptr) {
+		return Vector2();
+	}
+	const TypedArray<int> pads = in->get_connected_joypads();
+	Vector2 best;
+	for (int i = 0; i < pads.size(); i++) {
+		const int dev = pads[i];
+		const Vector2 raw(in->get_joy_axis(dev, JOY_AXIS_LEFT_X), in->get_joy_axis(dev, JOY_AXIS_LEFT_Y));
+		const Vector2 v = apply_stick_deadzone(raw);
+		if (v.length_squared() > best.length_squared()) {
+			best = v;
+		}
+	}
+	return best;
+}
+
+Vector2 Player::pad_right_stick() const {
+	Input *in = Input::get_singleton();
+	if (in == nullptr) {
+		return Vector2();
+	}
+	const TypedArray<int> pads = in->get_connected_joypads();
+	Vector2 best;
+	for (int i = 0; i < pads.size(); i++) {
+		const int dev = pads[i];
+		const Vector2 raw(in->get_joy_axis(dev, JOY_AXIS_RIGHT_X), in->get_joy_axis(dev, JOY_AXIS_RIGHT_Y));
+		const Vector2 v = apply_stick_deadzone(raw);
+		if (v.length_squared() > best.length_squared()) {
+			best = v;
+		}
+	}
+	return best;
+}
+
+bool Player::pad_button(int p_button) const {
+	Input *in = Input::get_singleton();
+	if (in == nullptr) {
+		return false;
+	}
+	const TypedArray<int> pads = in->get_connected_joypads();
+	for (int i = 0; i < pads.size(); i++) {
+		if (in->is_joy_button_pressed((int)pads[i], (JoyButton)p_button)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+void Player::rumble(float p_weak, float p_strong, float p_seconds) {
+	Input *in = Input::get_singleton();
+	if (in == nullptr || p_seconds <= 0.0f) {
+		return;
+	}
+	const TypedArray<int> pads = in->get_connected_joypads();
+	for (int i = 0; i < pads.size(); i++) {
+		in->start_joy_vibration((int)pads[i], Math::clamp(p_weak, 0.0f, 1.0f), Math::clamp(p_strong, 0.0f, 1.0f), p_seconds);
+	}
+	if (pads.size() > 0) {
+		pad_rumble_t = Math::max(pad_rumble_t, p_seconds);
+	}
+}
+
+void Player::update_gamepad(float delta) {
+	Input *in = Input::get_singleton();
+	if (in == nullptr) {
+		return;
+	}
+	if (pad_rumble_t > 0.0f) {
+		pad_rumble_t -= delta;
+		if (pad_rumble_t <= 0.0f) {
+			pad_rumble_t = 0.0f;
+			const TypedArray<int> pads = in->get_connected_joypads();
+			for (int i = 0; i < pads.size(); i++) {
+				in->stop_joy_vibration((int)pads[i]);
+			}
+		}
+	}
+	pad_check_t -= delta;
+	if (pad_check_t > 0.0f) {
+		return;
+	}
+	pad_check_t = 0.5f;
+	const TypedArray<int> pads = in->get_connected_joypads();
+	const bool now = pads.size() > 0;
+	pad_device = now ? (int)pads[0] : -1;
+	if (now == pad_connected) {
+		return;
+	}
+	pad_connected = now;
+	if (!now && pad_rumble_t > 0.0f) {
+		// 断开时 timer 还挂着也没意义，直接归零，避免重连后误触一次 stop。
+		pad_rumble_t = 0.0f;
+	}
+	if (get_parent() != nullptr) {
+		Node *gd = get_parent()->get_node_or_null("GameDirector");
+		if (gd != nullptr) {
+			gd->call("flash_hint", now ? String::utf8("手柄已连接 · 左摇杆走 · 右摇杆看 · A 互动 · B 跳 · X 滚 · Y 烟花")
+									  : String::utf8("手柄已断开 · 改用键盘鼠标"),
+					3.4f);
+		}
 	}
 }
 
@@ -1609,6 +1761,14 @@ void Player::_update_look(double delta) {
 	}
 	if (kb_turn != 0.0f) {
 		cam_yaw += (double)kb_turn * 2.4 * delta; // ≈137°/秒，与鼠标微调手感不冲突
+	}
+
+	// 手柄右摇杆：不需要先点击捕获鼠标，插上手柄就能环顾四周。
+	// 与鼠标同向约定：右推 = 向右转（yaw 减小），下推 = 相机抬高向下看。
+	const Vector2 pad_look = pad_right_stick();
+	if (pad_look.length_squared() > 0.0f) {
+		cam_yaw -= (double)pad_look.x * 2.6 * delta;
+		cam_pitch = Math::clamp(cam_pitch + (double)pad_look.y * 1.9 * delta, -0.5, 1.25);
 	}
 
 	bool lmb = input->is_mouse_button_pressed(MOUSE_BUTTON_LEFT);
@@ -1884,6 +2044,7 @@ void Player::build_help_ui() {
 		String::utf8("夜里抬头 · 北斗 / 猎户 / 仙后"),
 		String::utf8("靠近日晷鸟台 · 看山雀啄食"),
 		String::utf8("E · 篝火边坐下，猫会来脚边"),
+		String::utf8("手柄 · 左摇杆走 · 右摇杆看 · A 互动 · B 跳"),
 	});
 
 	Button *close = memnew(Button);
@@ -2268,6 +2429,7 @@ void Player::_update_footsteps(double delta, bool on_floor) {
 		last_land_pos = get_global_position();
 		const int kind = _step_kind();
 		play_land(kind); // 专属跳跃落地音效（草地/雨天踩水/足球场/雪地真实双脚着地冲击）
+		rumble(0.22f, 0.30f, 0.11f); // 落地一记短促轻震（有限时长，不拖尾）
 
 		// 落地留下浅浅的自然压痕（冰面落地留下左右双脚清晰单刀刹停割痕）
 		if (FootprintManager::get_singleton() != nullptr) {
