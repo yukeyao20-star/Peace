@@ -968,6 +968,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.85, 1.75, 1.9)
 [node name="CampGuitar" type="CampGuitar" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.6, 0, -13.2)
 
+[node name="HangingBaskets" type="HangingBaskets" parent="Homestead"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.2, 2.55, 4.3)
+
 [node name="WeatherStation" type="WeatherStation" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 0, 21)
 
