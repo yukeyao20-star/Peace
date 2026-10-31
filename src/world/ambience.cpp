@@ -204,6 +204,27 @@ void Ambience::_notification(int p_what) {
 					cricket_t = Math::max(cricket_t, 1.5f); // 白天不叫，入夜也不立即叫
 				}
 			}
+
+			// —— 夜间远声：潜鸟与猫头鹰，间隔更长、更轻 ——
+			bool night_ok2 = (night_f > 0.55f) && (wet_s < 0.3f);
+			loon_t -= (float)delta;
+			owl_t -= (float)delta;
+			if (loon_t <= 0.0f) {
+				if (night_ok2 && loon != nullptr && !loon->is_playing()) {
+					loon->set_pitch_scale(0.94f + (float)(rng() % 1000u) * 0.00010f);
+					loon->set_volume_db(-19.0f + Math::linear_to_db(Math::max(mg, 0.0001f)));
+					loon->play(0.0f);
+				}
+				loon_t = (night_ok2 ? 26.0f : 5.0f) + (float)(rng() % 1000u) * 0.028f;
+			}
+			if (owl_t <= 0.0f) {
+				if (night_ok2 && owl != nullptr && !owl->is_playing()) {
+					owl->set_pitch_scale(0.92f + (float)(rng() % 1000u) * 0.00012f);
+					owl->set_volume_db(-21.0f + Math::linear_to_db(Math::max(mg, 0.0001f)));
+					owl->play(0.0f);
+				}
+				owl_t = (night_ok2 ? 19.0f : 5.0f) + (float)(rng() % 1000u) * 0.020f;
+			}
 		} break;
 		default:
 			break;
@@ -249,6 +270,8 @@ void Ambience::build() {
 	}
 
 	snd_chirp = make_chirp();
+	snd_loon = make_loon();
+	snd_owl = make_owl();
 	snd_birds = load_looping_mp3("res://assets/audio/birds_morning.mp3");
 	snd_water = load_looping_mp3("res://assets/audio/water_lap.mp3");
 	if (!snd_water.is_valid()) {
@@ -314,13 +337,25 @@ void Ambience::build() {
 	cricket->set_stream(snd_chirp);
 	cricket->set_volume_db(-22.0f);
 	add_child(cricket);
+
+	loon = memnew(AudioStreamPlayer);
+	loon->set_name("Loon");
+	loon->set_stream(snd_loon);
+	loon->set_volume_db(-19.0f);
+	add_child(loon);
+
+	owl = memnew(AudioStreamPlayer);
+	owl->set_name("Owl");
+	owl->set_stream(snd_owl);
+	owl->set_volume_db(-21.0f);
+	add_child(owl);
 }
 
 // 退出收口（NOTIFICATION_EXIT_TREE 触发）：stop 全部播放器并清掉成员上的音频流引用
 void Ambience::shutdown_audio() {
 	set_process(false);
-	AudioStreamPlayer *players[8] = {wind, wind_snow, rain, cricket, birds, water, hearth, bgm};
-	for (int i = 0; i < 8; ++i) {
+	AudioStreamPlayer *players[10] = {wind, wind_snow, rain, cricket, birds, water, hearth, bgm, loon, owl};
+	for (int i = 0; i < 10; ++i) {
 		if (players[i] != nullptr) {
 			players[i]->stop();
 			players[i]->set_stream(Ref<AudioStream>());
@@ -330,6 +365,8 @@ void Ambience::shutdown_audio() {
 	snd_wind_snow = Ref<AudioStreamWAV>();
 	snd_rain = Ref<AudioStream>();
 	snd_chirp = Ref<AudioStreamWAV>();
+	snd_loon = Ref<AudioStreamWAV>();
+	snd_owl = Ref<AudioStreamWAV>();
 	snd_birds = Ref<AudioStream>();
 	snd_water = Ref<AudioStream>();
 	snd_hearth = Ref<AudioStream>();
@@ -634,5 +671,85 @@ Ref<AudioStreamWAV> Ambience::make_water_lap() {
 	wav->set_loop_mode(AudioStreamWAV::LOOP_FORWARD);
 	wav->set_loop_begin(0);
 	wav->set_loop_end(n);
+	return wav;
+}
+
+// 潜鸟远鸣：两声悠长的下滑哨音，带轻微颤音
+Ref<AudioStreamWAV> Ambience::make_loon() {
+	const int sr = 22050;
+	const float dur = 2.0f;
+	const int n = (int)(dur * sr);
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
+	for (int i = 0; i < n; i++) {
+		float t = (float)i / sr;
+		float samp = 0.0f;
+		for (int b = 0; b < 2; b++) {
+			float bt = t - b * 0.85f;
+			if (bt < 0.0f || bt > 0.75f) {
+				continue;
+			}
+			float u = bt / 0.75f;
+			float f0 = (b == 0 ? 470.0f : 430.0f) - 90.0f * u
+					+ std::sin(6.2831853f * 5.2f * bt) * 6.0f;
+			float env = Math::clamp(bt / 0.12f, 0.0f, 1.0f)
+					* Math::clamp((0.75f - bt) / 0.28f, 0.0f, 1.0f);
+			float v = std::sin(6.2831853f * f0 * bt) * 0.8f
+					+ std::sin(6.2831853f * f0 * 2.0f * bt) * 0.12f;
+			samp += v * env * 0.55f;
+		}
+		samp += (d01(rng) - 0.5f) * 0.01f;
+		int16_t q = (int16_t)Math::clamp(samp * 14000.0f, -32000.0f, 32000.0f);
+		w[i * 2] = (uint8_t)(q & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
+	}
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_data(bytes);
+	return wav;
+}
+
+// 猫头鹰：两声低沉圆润的「咕—咕」
+Ref<AudioStreamWAV> Ambience::make_owl() {
+	const int sr = 22050;
+	const float dur = 1.1f;
+	const int n = (int)(dur * sr);
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
+	for (int i = 0; i < n; i++) {
+		float t = (float)i / sr;
+		float samp = 0.0f;
+		for (int b = 0; b < 2; b++) {
+			float bt = t - b * 0.45f;
+			if (bt < 0.0f || bt > 0.32f) {
+				continue;
+			}
+			float u = bt / 0.32f;
+			float f0 = 335.0f - 18.0f * u;
+			float env = Math::clamp(bt / 0.03f, 0.0f, 1.0f)
+					* Math::clamp((0.32f - bt) / 0.12f, 0.0f, 1.0f);
+			float v = std::sin(6.2831853f * f0 * bt)
+					+ 0.35f * std::sin(6.2831853f * f0 * 2.0f * bt)
+					+ 0.12f * std::sin(6.2831853f * f0 * 3.0f * bt);
+			samp += v * env * 0.45f;
+		}
+		samp += (d01(rng) - 0.5f) * 0.008f;
+		int16_t q = (int16_t)Math::clamp(samp * 12000.0f, -32000.0f, 32000.0f);
+		w[i * 2] = (uint8_t)(q & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
+	}
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_data(bytes);
 	return wav;
 }

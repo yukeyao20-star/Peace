@@ -1437,6 +1437,10 @@ int Player::_step_kind() const {
 	if (std::hypot(gp.x - 32.0f, gp.z - 62.0f) < 4.0f && gp.y > -0.2f) {
 		return 4;
 	}
+	// 4b. 南岸小码头：木板声（范围与 Rowboat::build_dock 的甲板一致）
+	if (gp.x > -6.95f && gp.x < -5.05f && gp.z > -11.8f && gp.z < -6.5f && gp.y > -0.5f) {
+		return 4;
+	}
 
 	// 3. 天气覆盖（室外路面受雨雪覆盖）：
 	// 无论处于自然草地、泥土小径还是足球场，雨天踩水或雪天积雪均覆盖为相应天气材质声音

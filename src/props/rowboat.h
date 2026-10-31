@@ -9,6 +9,7 @@
 //   * 划动时船尾拖出细碎水花。
 // 水面海拔 -0.55 与 terrain_builder.h water_level 联动。
 
+#include <godot_cpp/classes/audio_stream_wav.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/variant/vector2.hpp>
 #include <godot_cpp/variant/vector3.hpp>
@@ -19,6 +20,7 @@ class Player; // 全局命名空间（player.h 的定义不在 godot 内）
 
 namespace godot {
 
+class AudioStreamPlayer3D;
 class CPUParticles3D;
 class TerrainBuilder;
 
@@ -34,6 +36,11 @@ private:
 	Node3D *oar_l = nullptr;
 	Node3D *oar_r = nullptr;
 	CPUParticles3D *wake = nullptr;
+	AudioStreamPlayer3D *oar_voice = nullptr;
+	Ref<AudioStreamWAV> snd_oar;
+	float oar_t = 0.0f;
+	int oar_side = 1;
+	Ref<AudioStreamWAV> make_oar_splash();
 	Player *rider = nullptr;
 	bool occupied = false;
 	float yaw = 0.0f;

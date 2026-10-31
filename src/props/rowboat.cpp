@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include <godot_cpp/classes/audio_stream_player3d.hpp>
+#include <godot_cpp/classes/audio_stream_wav.hpp>
 #include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/box_shape3d.hpp>
 #include <godot_cpp/classes/collision_shape3d.hpp>
@@ -19,6 +21,7 @@
 #include <godot_cpp/classes/omni_light3d.hpp>
 #include <godot_cpp/classes/static_body3d.hpp>
 #include <godot_cpp/classes/torus_mesh.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 
 #include "../actors/player.h"
@@ -46,6 +49,15 @@ void Rowboat::_notification(int p_what) {
 			set_global_position(home);
 			build_dock();
 			build_hull();
+			snd_oar = make_oar_splash();
+			if (snd_oar.is_valid()) {
+				oar_voice = memnew(AudioStreamPlayer3D);
+				oar_voice->set_name("OarSplash");
+				oar_voice->set_stream(snd_oar);
+				oar_voice->set_volume_db(-13.0f);
+				oar_voice->set_max_distance(20.0f);
+				hull->add_child(oar_voice);
+			}
 			if (get_parent() != nullptr) {
 				terrain = Object::cast_to<TerrainBuilder>(get_parent()->get_node_or_null("Terrain"));
 				if (terrain == nullptr) {
@@ -131,6 +143,22 @@ void Rowboat::_notification(int p_what) {
 			if (wake != nullptr) {
 				wake->set_emitting(occupied && std::fabs(speed) > 0.2f);
 			}
+			// 划桨入水声：跟着桨的节奏，左右交替
+			if (occupied && std::fabs(speed) > 0.4f) {
+				oar_t -= delta;
+				if (oar_t <= 0.0f && oar_voice != nullptr && snd_oar.is_valid()) {
+					oar_side = -oar_side;
+					static std::mt19937 sound_rng(81818u);
+					std::uniform_real_distribution<float> pd(0.94f, 1.10f);
+					oar_voice->set_position(Vector3((float)oar_side * 0.85f, 0.12f, 0.1f));
+					oar_voice->set_pitch_scale(pd(sound_rng));
+					oar_voice->play();
+					oar_t = 0.55f;
+				}
+			} else {
+				oar_t = 0.0f;
+			}
+
 			// 划桨动画：有速度时前后扫、桨叶入水；停船时收回船舷
 			float moving = Math::clamp(std::fabs(speed) / 1.2f, 0.0f, 1.0f);
 			float phase = bob_t * 2.2f;
@@ -460,4 +488,34 @@ void Rowboat::build_dock() {
 	rope_mi->set_position(Vector3(-6.2f, -0.24f, -7.3f));
 	rope_mi->set_rotation(Vector3(1.5707964f, 0.0f, 0.3f));
 	body->add_child(rope_mi);
+}
+
+// 桨叶入水：短促的低频水花
+Ref<AudioStreamWAV> Rowboat::make_oar_splash() {
+	const int sr = 22050;
+	const float dur = 0.30f;
+	const int n = (int)(dur * sr);
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+	std::mt19937 rng(616161u);
+	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
+	float lp = 0.0f;
+	for (int i = 0; i < n; i++) {
+		float t = (float)i / sr;
+		float env = Math::clamp(t / 0.008f, 0.0f, 1.0f) * Math::exp(-t * 16.0f);
+		lp += 0.20f * ((d01(rng) - 0.5f) - lp);
+		float body = std::sin(6.2831853f * (210.0f - 500.0f * t) * t) * 0.55f;
+		float samp = (body + lp * 2.2f) * env;
+		int16_t q = (int16_t)Math::clamp(samp * 15000.0f, -32000.0f, 32000.0f);
+		w[i * 2] = (uint8_t)(q & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
+	}
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_data(bytes);
+	return wav;
 }
