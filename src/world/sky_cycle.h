@@ -92,6 +92,12 @@ private:
 	bool precip_shelter_ready = false; // 是否已采集并写入遮蔽体
 	MultiMeshInstance3D *stars = nullptr;    // 星空穹顶（夜空晴天可见）
 	Ref<StandardMaterial3D> star_mat;        // 星星材质（每帧只调 albedo 透明度）
+	MeshInstance3D *shooting_star = nullptr; // 流星（晴夜深空偶发）
+	Ref<StandardMaterial3D> star_trail_mat;
+	float star_timer = 16.0f;
+	float star_life = 0.0f;
+	float star_dur = 0.9f;
+	Vector3 star_vel;
 	MeshInstance3D *moon = nullptr;          // 月盘（夜空可见，高度跟随 -sun_h）
 	Ref<StandardMaterial3D> moon_mat;        // 月盘兜底材质（着色器加载失败时用，每帧只调透明度）
 	Ref<ShaderMaterial> moon_shader_mat;     // 月盘月相材质（moon.gdshader：陨石坑+相位+地照）

@@ -9,6 +9,7 @@
 #include <godot_cpp/classes/csg_box3d.hpp>
 #include <godot_cpp/classes/directional_light3d.hpp>
 #include <godot_cpp/classes/audio_server.hpp>
+#include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/canvas_layer.hpp>
 #include <godot_cpp/classes/color_rect.hpp>
@@ -20,6 +21,7 @@
 #include <godot_cpp/classes/material.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/node3d.hpp>
+#include <godot_cpp/classes/os.hpp>
 #include <godot_cpp/classes/multi_mesh.hpp>
 #include <godot_cpp/classes/multi_mesh_instance3d.hpp>
 #include <godot_cpp/classes/primitive_mesh.hpp>
@@ -123,6 +125,11 @@ void SkyCycle::_notification(int p_what) {
 			build_stars();
 			build_moon();
 			build_underwater();
+			// 调试：ZCODE_FORCE_METEOR=1 时首次流星提前到 0.4s（探针截图用）
+			if (OS::get_singleton() != nullptr
+					&& OS::get_singleton()->get_environment("ZCODE_FORCE_METEOR") == "1") {
+				star_timer = 0.4f;
+			}
 			// 结冰可行走面（ROADMAP #12）：与雨雪星空同为本节点营造的世界元素。
 			// IceSurface 自己沿祖先链找到本节点读雪量，雪量 ≥0.85 启用湖面碰撞、
 			// ≤0.70 解除（滞回防抖）；场景文件里不出现。
@@ -183,6 +190,55 @@ void SkyCycle::_notification(int p_what) {
 			// —— 星空缓慢漂移（北极星附近的视运动，极简版绕竖轴慢转）——
 			if (stars != nullptr) {
 				stars->rotate_y((float)delta * 0.01f);
+			}
+			// —— 流星：晴夜深空偶发一颗，从视野前上方斜掠而过 ——
+			if (shooting_star != nullptr) {
+				if (star_life > 0.0f) {
+					star_life -= (float)delta;
+					shooting_star->set_position(shooting_star->get_position() + star_vel * (float)delta);
+					if (star_trail_mat.is_valid()) {
+						float u = 1.0f - Math::clamp(star_life / star_dur, 0.0f, 1.0f);
+						float a = Math::min(u * 6.0f, 1.0f) * (1.0f - u);
+						star_trail_mat->set_albedo(Color(0.82f, 0.92f, 1.0f, a));
+					}
+					if (star_life <= 0.0f) {
+						shooting_star->set_visible(false);
+					}
+				} else {
+					star_timer -= (float)delta;
+					if (star_timer <= 0.0f) {
+						// 调试：ZCODE_FORCE_METEOR=1 时无视夜色/天气、每 0.6s 循环（探针截图用）
+						bool force = OS::get_singleton() != nullptr
+								&& OS::get_singleton()->get_environment("ZCODE_FORCE_METEOR") == "1";
+						bool night_ok = force || (get_night_factor() > 0.72f && cloud < 0.45f
+								&& rain < 0.15f && snow < 0.15f);
+						Camera3D *cam = get_viewport() != nullptr
+								? Object::cast_to<Camera3D>(get_viewport()->get_camera_3d()) : nullptr;
+						if (night_ok && cam != nullptr) {
+							static std::mt19937 srng(313131u);
+							auto rnd = [&](float lo, float hi) {
+								std::uniform_real_distribution<float> d(lo, hi);
+								return d(srng);
+							};
+							Transform3D gt = cam->get_global_transform();
+							Vector3 fwd = -gt.basis.get_column(2);
+							Vector3 right = gt.basis.get_column(0);
+							Vector3 pos = gt.origin + fwd * rnd(30.0f, 44.0f)
+									+ right * rnd(-14.0f, 14.0f)
+									+ Vector3(0.0f, rnd(13.0f, 22.0f), 0.0f);
+							Vector3 dir = (Vector3(rnd(-1.0f, 1.0f), rnd(-0.75f, -0.28f), rnd(-1.0f, 1.0f))).normalized();
+							star_vel = dir * rnd(34.0f, 52.0f);
+							shooting_star->set_position(pos);
+							shooting_star->look_at(pos + dir, Vector3(0.0f, 1.0f, 0.0f));
+							shooting_star->set_visible(true);
+							star_dur = force ? 2.0f : rnd(0.7f, 1.1f);
+							star_life = star_dur;
+							star_timer = force ? 0.6f : rnd(18.0f, 45.0f);
+						} else {
+							star_timer = 4.0f;
+						}
+					}
+				}
 			}
 			// —— 雨粒子跟随主角 ——
 			if (player == nullptr && get_parent() != nullptr) {
@@ -760,6 +816,25 @@ void SkyCycle::build_stars() {
 	stars->set_multimesh(mm);
 	stars->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 	add_child(stars);
+
+	// 流星：一根细长加色光条（拖尾）。平时隐藏，夜间偶发。
+	Ref<BoxMesh> streak;
+	streak.instantiate();
+	streak->set_size(Vector3(0.07f, 0.07f, 5.0f));
+	star_trail_mat.instantiate();
+	star_trail_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	star_trail_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	star_trail_mat->set_blend_mode(BaseMaterial3D::BLEND_MODE_ADD);
+	star_trail_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	star_trail_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_DEPTH_TEST, false);
+	star_trail_mat->set_albedo(Color(0.82f, 0.92f, 1.0f, 1.0f));
+	streak->set_material(star_trail_mat);
+	shooting_star = memnew(MeshInstance3D);
+	shooting_star->set_name("ShootingStar");
+	shooting_star->set_mesh(streak);
+	shooting_star->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+	shooting_star->set_visible(false);
+	add_child(shooting_star);
 }
 
 void SkyCycle::build_moon() {
