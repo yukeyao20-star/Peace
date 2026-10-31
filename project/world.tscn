@@ -974,6 +974,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 0, 23.5)
 [node name="DragonflyDips" type="DragonflyDips" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.2, 0, -8.8)
 
+[node name="TurtleLog" type="TurtleLog" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -11.5, 0, -7.5)
+
 [node name="ButterflyGarden" type="ButterflyGarden" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.6, 0, 18.6)
 
