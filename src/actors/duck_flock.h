@@ -23,6 +23,7 @@ class DuckFlock : public Node3D {
 private:
 	struct Duck {
 		Node3D *root = nullptr;
+		Node3D *wake = nullptr; // 尾迹水圈（扁平圆环）
 		float angle = 0.0f;    // 当前巡游角
 		float radius = 8.0f;   // 巡游半径
 		float speed = 0.04f;   // 角速度 rad/s
