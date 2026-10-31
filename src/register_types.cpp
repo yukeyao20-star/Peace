@@ -62,6 +62,7 @@
 #include "stew_bowl.h"
 #include "music_box.h"
 #include "rain_chain.h"
+#include "clothesline.h"
 #include "snail_patch.h"
 #include "leaf_drift.h"
 #include "bench.h"
@@ -147,6 +148,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(StewBowl);
 	GDREGISTER_CLASS(MusicBox);
 	GDREGISTER_CLASS(RainChain);
+	GDREGISTER_CLASS(Clothesline);
 	GDREGISTER_CLASS(SnailPatch);
 	GDREGISTER_CLASS(LeafDrift);
 	GDREGISTER_CLASS(Bench);
