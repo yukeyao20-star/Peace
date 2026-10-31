@@ -22,7 +22,10 @@ namespace godot {
 class AudioStreamPlayer3D;
 class AudioStreamWAV;
 class MeshInstance3D;
+class MultiMesh;
+class MultiMeshInstance3D;
 class StandardMaterial3D;
+class SkyCycle;
 
 class RainChain : public Node3D {
 	GDCLASS(RainChain, Node3D)
@@ -32,10 +35,18 @@ class RainChain : public Node3D {
 	static const int RIPPLE_COUNT = 3;
 
 	Node3D *chain_root = nullptr;
-	MeshInstance3D *cups[CUP_COUNT] = {};
-	MeshInstance3D *links[CUP_COUNT] = {};
-	MeshInstance3D *beads[BEAD_COUNT] = {};
-	MeshInstance3D *frost_caps[CUP_COUNT] = {};
+	// 优化（第 110 轮）：铜杯/杯孔/链节/霜帽/水珠各自合并成一个 MultiMesh，
+	// 十条链子从约 48 个 draw call 降到 5 个。
+	MultiMeshInstance3D *cups_mm = nullptr;
+	MultiMeshInstance3D *holes_mm = nullptr;
+	MultiMeshInstance3D *links_mm = nullptr;
+	MultiMeshInstance3D *caps_mm = nullptr;
+	MultiMeshInstance3D *beads_mm = nullptr;
+	Ref<MultiMesh> cups_multimesh;
+	Ref<MultiMesh> holes_multimesh;
+	Ref<MultiMesh> links_multimesh;
+	Ref<MultiMesh> caps_multimesh;
+	Ref<MultiMesh> beads_multimesh;
 	MeshInstance3D *ripples[RIPPLE_COUNT] = {};
 
 	Ref<StandardMaterial3D> bead_mat;
@@ -46,11 +57,13 @@ class RainChain : public Node3D {
 
 	AudioStreamPlayer3D *trickle = nullptr;
 	Ref<AudioStreamWAV> snd_trickle;
+	SkyCycle *sky = nullptr;
 
 	float t = 0.0f;
 	float wet = 0.0f;
 	float frost_lvl = 0.0f;
 	float sway_amp = 0.0f;
+	float last_wet_draw = -1.0f;
 	float bead_phase[BEAD_COUNT] = {};
 	float ripple_age[RIPPLE_COUNT] = {};
 	int ripple_next = 0;

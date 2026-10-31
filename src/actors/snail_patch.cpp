@@ -4,6 +4,7 @@
 
 #include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/geometry_instance3d.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/multi_mesh.hpp>
 #include <godot_cpp/classes/multi_mesh_instance3d.hpp>
@@ -51,7 +52,9 @@ void SnailPatch::_notification(int p_what) {
 			if (terrain == nullptr) {
 				terrain = Object::cast_to<TerrainBuilder>(root->find_child("Terrain", true, false));
 			}
-			SkyCycle *sky = Object::cast_to<SkyCycle>(root->find_child("SkyCycle", true, false));
+			if (sky == nullptr) {
+				sky = Object::cast_to<SkyCycle>(root->find_child("SkyCycle", true, false));
+			}
 			const float rain = (sky != nullptr) ? sky->get_rain_amount() : 0.0f;
 			const float snow = (sky != nullptr) ? sky->get_snow_amount() : 0.0f;
 
@@ -227,6 +230,14 @@ void SnailPatch::build() {
 				Color(0.86f, 0.78f, 0.64f), Vector3(0.5f, 0.0f, 0.0f));
 		meshutil::add_sphere(s.body, toon, 0.0050f, Vector3(-0.012f, 0.066f, 0.091f), Color(0.16f, 0.12f, 0.09f));
 		meshutil::add_sphere(s.body, toon, 0.0050f, Vector3(0.012f, 0.066f, 0.091f), Color(0.16f, 0.12f, 0.09f));
+		for (Node3D *grp : { s.root, s.body }) {
+			for (int c = 0; c < grp->get_child_count(); c++) {
+				MeshInstance3D *mi = Object::cast_to<MeshInstance3D>(grp->get_child(c));
+				if (mi != nullptr) {
+					mi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+				}
+			}
+		}
 	}
 
 	// 黏液痕：一片片朝上的薄方片，颜色带 Alpha 逐片淡出。

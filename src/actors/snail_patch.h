@@ -22,6 +22,7 @@ class MeshInstance3D;
 class MultiMeshInstance3D;
 class MultiMesh;
 class TerrainBuilder;
+class SkyCycle;
 
 class SnailPatch : public Node3D {
 	GDCLASS(SnailPatch, Node3D)
@@ -51,6 +52,7 @@ class SnailPatch : public Node3D {
 	int trail_next = 0;
 	TerrainBuilder *terrain = nullptr;
 	Node3D *player = nullptr;
+	SkyCycle *sky = nullptr;
 
 	float t = 0.0f;
 	bool active = false;

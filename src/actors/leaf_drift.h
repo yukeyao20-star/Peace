@@ -29,6 +29,7 @@ class Mesh;
 class MultiMesh;
 class MultiMeshInstance3D;
 class StandardMaterial3D;
+class SkyCycle;
 
 class LeafDrift : public Node3D {
 	GDCLASS(LeafDrift, Node3D)
@@ -51,10 +52,12 @@ class LeafDrift : public Node3D {
 	int kick_count = 0;
 	float t = 0.0f;
 	float wet = 0.0f;
+	float last_wet_draw = -1.0f;
 	float snow_sm = 0.0f;
 	bool piles_hidden = false;
 
 	Node3D *player = nullptr;
+	SkyCycle *sky = nullptr;
 
 	void build();
 	void build_leaf_mesh();

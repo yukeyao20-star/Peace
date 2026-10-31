@@ -9,6 +9,7 @@
 #include <godot_cpp/classes/character_body3d.hpp>
 #include <godot_cpp/classes/cpu_particles3d.hpp>
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/geometry_instance3d.hpp>
 #include <godot_cpp/classes/gradient.hpp>
 #include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/classes/multi_mesh.hpp>
@@ -65,7 +66,9 @@ void LeafDrift::_notification(int p_what) {
 			if (player == nullptr) {
 				player = Object::cast_to<Node3D>(root->find_child("Player", true, false));
 			}
-			SkyCycle *sky = Object::cast_to<SkyCycle>(root->find_child("SkyCycle", true, false));
+			if (sky == nullptr) {
+				sky = Object::cast_to<SkyCycle>(root->find_child("SkyCycle", true, false));
+			}
 			const float rain = (sky != nullptr) ? sky->get_rain_amount() : 0.0f;
 			const float snow = (sky != nullptr) ? sky->get_snow_amount() : 0.0f;
 			wet = Math::move_toward(wet, Math::clamp(rain, 0.0f, 1.0f), delta * 0.4f);
@@ -92,7 +95,8 @@ void LeafDrift::_notification(int p_what) {
 			if (pile_mm != nullptr) {
 				pile_mm->set_visible(!piles_hidden);
 			}
-			if (pile_mat.is_valid()) {
+			if (pile_mat.is_valid() && std::fabs(wet - last_wet_draw) > 0.004f) {
+				last_wet_draw = wet;
 				pile_mat->set_albedo(Color(1.0f, 1.0f, 1.0f).lerp(Color(0.58f, 0.56f, 0.52f), wet));
 			}
 
@@ -221,6 +225,7 @@ void LeafDrift::build() {
 	fall_fx->set_param_max(CPUParticles3D::PARAM_ANGULAR_VELOCITY, 160.0f);
 	fall_fx->set_particle_flag(CPUParticles3D::PARTICLE_FLAG_ROTATE_Y, true);
 	fall_fx->set_color_ramp(ramp);
+	fall_fx->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 	add_child(fall_fx);
 
 	// 踢叶堆时的一蓬叶子
@@ -245,6 +250,7 @@ void LeafDrift::build() {
 	kick_fx->set_param_min(CPUParticles3D::PARAM_SCALE, 0.6f);
 	kick_fx->set_param_max(CPUParticles3D::PARAM_SCALE, 1.1f);
 	kick_fx->set_color_ramp(ramp);
+	kick_fx->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 	kick_fx->set_emitting(false);
 	add_child(kick_fx);
 
@@ -303,6 +309,7 @@ void LeafDrift::build() {
 	pile_mm = memnew(MultiMeshInstance3D);
 	pile_mm->set_name("LeafPiles");
 	pile_mm->set_multimesh(pile_mesh);
+	pile_mm->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 	add_child(pile_mm);
 
 	snd_rustle = make_crunch();

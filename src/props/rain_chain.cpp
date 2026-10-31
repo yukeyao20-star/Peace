@@ -8,7 +8,10 @@
 #include <godot_cpp/classes/audio_stream_wav.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/geometry_instance3d.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/multi_mesh.hpp>
+#include <godot_cpp/classes/multi_mesh_instance3d.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/window.hpp>
 #include <godot_cpp/classes/shader.hpp>
@@ -49,8 +52,7 @@ void RainChain::_notification(int p_what) {
 			const float delta = (float)get_process_delta_time();
 			t += delta;
 
-			SkyCycle *sky = nullptr;
-			if (get_tree() != nullptr) {
+			if (sky == nullptr && get_tree() != nullptr) {
 				sky = Object::cast_to<SkyCycle>(get_tree()->get_root()->find_child("SkyCycle", true, false));
 			}
 			const float rain = (sky != nullptr) ? sky->get_rain_amount() : 0.0f;
@@ -71,14 +73,10 @@ void RainChain::_notification(int p_what) {
 			// 水珠：雨强决定同时可见的数量；每颗沿杯沿螺旋下滑，到底落进石钵。
 			bead_visible = (wet > 0.12f) ? Math::min(BEAD_COUNT, 2 + (int)(wet * 7.0f)) : 0;
 			const float bead_speed = 0.22f + 0.18f * wet;
-			for (int i = 0; i < BEAD_COUNT; i++) {
-				const bool vis = i < bead_visible;
-				if (beads[i] != nullptr) {
-					beads[i]->set_visible(vis);
-				}
-				if (!vis) {
-					continue;
-				}
+			if (beads_multimesh.is_valid()) {
+				beads_multimesh->set_visible_instance_count(bead_visible);
+			}
+			for (int i = 0; i < bead_visible; i++) {
 				bead_phase[i] += delta * bead_speed;
 				if (bead_phase[i] >= 1.0f) {
 					bead_phase[i] -= 1.0f;
@@ -87,10 +85,10 @@ void RainChain::_notification(int p_what) {
 				const float p = bead_phase[i];
 				const float a = p * 14.0f + (float)i * 0.9f;
 				const float r = 0.052f + 0.012f * std::sin(p * 9.0f + (float)i);
-				beads[i]->set_position(Vector3(
-						std::cos(a) * r,
-						-0.13f - 2.23f * p,
-						std::sin(a) * r));
+				if (beads_multimesh.is_valid()) {
+					beads_multimesh->set_instance_transform(i, Transform3D(Basis(),
+							Vector3(std::cos(a) * r, -0.13f - 2.23f * p, std::sin(a) * r)));
+				}
 			}
 
 			// 石钵涟漪：三圈轮换，从落点向外扩、渐隐。
@@ -120,12 +118,11 @@ void RainChain::_notification(int p_what) {
 
 			// 雪天：杯口浅浅一层白霜；化雪后慢慢退掉。
 			const bool frost_on = frost_lvl > 0.32f;
-			for (int i = 0; i < CUP_COUNT; i++) {
-				if (frost_caps[i] != nullptr) {
-					frost_caps[i]->set_visible(frost_on);
-				}
+			if (caps_multimesh.is_valid()) {
+				caps_multimesh->set_visible_instance_count(frost_on ? CUP_COUNT : 0);
 			}
-			if (copper_mat.is_valid()) {
+			if (copper_mat.is_valid() && std::fabs(wet - last_wet_draw) > 0.004f) {
+				last_wet_draw = wet;
 				const Color dry(0.55f, 0.34f, 0.18f);
 				const Color soaked(0.34f, 0.21f, 0.12f);
 				copper_mat->set_albedo(dry.lerp(soaked, wet));
@@ -180,77 +177,85 @@ void RainChain::build() {
 	tmi->set_position(Vector3(0.0f, -0.06f, 0.0f));
 	chain_root->add_child(tmi);
 
-	// 铜杯：上宽下窄，十个一级级挂下去
+	// 优化（第 110 轮）：铜杯/杯孔/链节/霜帽/水珠各合成一个 MultiMesh，
+	// 原来 48 个 MeshInstance3D 变成 5 次 draw call，也不再参与阴影 pass。
+	Ref<CylinderMesh> cup_mesh;
+	cup_mesh.instantiate();
+	cup_mesh->set_top_radius(0.085f);
+	cup_mesh->set_bottom_radius(0.045f);
+	cup_mesh->set_height(0.075f);
+	cup_mesh->set_radial_segments(12);
+	cup_mesh->set_rings(1);
+	cup_mesh->set_material(copper_mat);
+
+	Ref<CylinderMesh> hole_mesh;
+	hole_mesh.instantiate();
+	hole_mesh->set_top_radius(0.030f);
+	hole_mesh->set_bottom_radius(0.030f);
+	hole_mesh->set_height(0.006f);
+	hole_mesh->set_radial_segments(8);
+	hole_mesh->set_rings(1);
+	Ref<StandardMaterial3D> hole_mat;
+	hole_mat.instantiate();
+	hole_mat->set_albedo(Color(0.12f, 0.10f, 0.08f));
+	hole_mat->set_roughness(0.7f);
+	hole_mesh->set_material(hole_mat);
+
+	frost_mat.instantiate();
+	frost_mat->set_albedo(Color(0.90f, 0.95f, 1.0f));
+	frost_mat->set_roughness(0.55f);
+	Ref<CylinderMesh> cap_mesh;
+	cap_mesh.instantiate();
+	cap_mesh->set_top_radius(0.090f);
+	cap_mesh->set_bottom_radius(0.086f);
+	cap_mesh->set_height(0.018f);
+	cap_mesh->set_radial_segments(12);
+	cap_mesh->set_rings(1);
+	cap_mesh->set_material(frost_mat);
+
+	Ref<CylinderMesh> link_mesh;
+	link_mesh.instantiate();
+	link_mesh->set_top_radius(0.007f);
+	link_mesh->set_bottom_radius(0.007f);
+	link_mesh->set_height(0.16f);
+	link_mesh->set_radial_segments(6);
+	link_mesh->set_rings(1);
+	link_mesh->set_material(copper_mat);
+
+	std::vector<Transform3D> cup_xf(CUP_COUNT);
+	std::vector<Transform3D> hole_xf(CUP_COUNT);
+	std::vector<Transform3D> cap_xf(CUP_COUNT);
+	std::vector<Transform3D> link_xf(CUP_COUNT);
 	for (int i = 0; i < CUP_COUNT; i++) {
 		const float y = -0.20f - 0.24f * (float)i;
-
-		Ref<CylinderMesh> cup;
-		cup.instantiate();
-		cup->set_top_radius(0.085f);
-		cup->set_bottom_radius(0.045f);
-		cup->set_height(0.075f);
-		cup->set_radial_segments(12);
-		cup->set_rings(1);
-		cup->set_material(copper_mat);
-		MeshInstance3D *cmi = memnew(MeshInstance3D);
-		cmi->set_mesh(cup);
-		cmi->set_position(Vector3(0.0f, y, 0.0f));
-		cmi->set_rotation(Vector3(0.0f, (float)i * 0.47f, 0.0f));
-		chain_root->add_child(cmi);
-		cups[i] = cmi;
-
-		// 杯心的一点暗色，看起来像有孔的杯底
-		Ref<CylinderMesh> hole;
-		hole.instantiate();
-		hole->set_top_radius(0.030f);
-		hole->set_bottom_radius(0.030f);
-		hole->set_height(0.006f);
-		hole->set_radial_segments(8);
-		hole->set_rings(1);
-		Ref<StandardMaterial3D> hole_mat;
-		hole_mat.instantiate();
-		hole_mat->set_albedo(Color(0.12f, 0.10f, 0.08f));
-		hole_mat->set_roughness(0.7f);
-		hole->set_material(hole_mat);
-		MeshInstance3D *hmi = memnew(MeshInstance3D);
-		hmi->set_mesh(hole);
-		hmi->set_position(Vector3(0.0f, y + 0.030f, 0.0f));
-		chain_root->add_child(hmi);
-
-		// 杯口白霜（雪天显形）
-		Ref<CylinderMesh> cap;
-		cap.instantiate();
-		cap->set_top_radius(0.090f);
-		cap->set_bottom_radius(0.086f);
-		cap->set_height(0.018f);
-		cap->set_radial_segments(12);
-		cap->set_rings(1);
-		frost_mat.instantiate();
-		frost_mat->set_albedo(Color(0.90f, 0.95f, 1.0f));
-		frost_mat->set_roughness(0.55f);
-		cap->set_material(frost_mat);
-		MeshInstance3D *fmi = memnew(MeshInstance3D);
-		fmi->set_mesh(cap);
-		fmi->set_position(Vector3(0.0f, y + 0.040f, 0.0f));
-		fmi->set_visible(false);
-		chain_root->add_child(fmi);
-		frost_caps[i] = fmi;
-
-		// 杯与杯之间的细链
-		Ref<CylinderMesh> link;
-		link.instantiate();
-		link->set_top_radius(0.007f);
-		link->set_bottom_radius(0.007f);
-		link->set_height(0.16f);
-		link->set_radial_segments(6);
-		link->set_rings(1);
-		link->set_material(copper_mat);
-		MeshInstance3D *lmi = memnew(MeshInstance3D);
-		lmi->set_mesh(link);
-		lmi->set_position(Vector3(0.0f, y - 0.12f, 0.0f));
-		chain_root->add_child(lmi);
-		links[i] = lmi;
+		cup_xf[i] = Transform3D(Basis(Vector3(0.0f, 1.0f, 0.0f), (float)i * 0.47f), Vector3(0.0f, y, 0.0f));
+		hole_xf[i] = Transform3D(Basis(), Vector3(0.0f, y + 0.030f, 0.0f));
+		cap_xf[i] = Transform3D(Basis(), Vector3(0.0f, y + 0.040f, 0.0f));
+		link_xf[i] = Transform3D(Basis(), Vector3(0.0f, y - 0.12f, 0.0f));
 	}
+
+	auto make_group = [&](const String &name, const Ref<Mesh> &mesh, const std::vector<Transform3D> &xfs,
+							 Ref<MultiMesh> &out) -> MultiMeshInstance3D * {
+		out.instantiate();
+		out->set_transform_format(MultiMesh::TRANSFORM_3D);
+		out->set_mesh(mesh);
+		out->set_instance_count((int)xfs.size());
+		for (size_t k = 0; k < xfs.size(); k++) {
+			out->set_instance_transform((int)k, xfs[k]);
+		}
+		MultiMeshInstance3D *mmi = memnew(MultiMeshInstance3D);
+		mmi->set_name(name);
+		mmi->set_multimesh(out);
+		mmi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+		chain_root->add_child(mmi);
+		return mmi;
+	};
+
+	cups_mm = make_group("Cups", cup_mesh, cup_xf, cups_multimesh);
+	holes_mm = make_group("CupHoles", hole_mesh, hole_xf, holes_multimesh);
+	caps_mm = make_group("FrostCaps", cap_mesh, cap_xf, caps_multimesh);
+	links_mm = make_group("Links", link_mesh, link_xf, links_multimesh);
+	caps_multimesh->set_visible_instance_count(0);
 
 	// 水珠：小小的、微微发亮，沿杯沿下滑
 	Ref<SphereMesh> drop;
@@ -265,14 +270,13 @@ void RainChain::build() {
 	bead_mat->set_albedo(Color(0.74f, 0.88f, 0.98f, 0.88f));
 	bead_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
 	drop->set_material(bead_mat);
+	std::vector<Transform3D> bead_xf(BEAD_COUNT);
 	for (int i = 0; i < BEAD_COUNT; i++) {
-		MeshInstance3D *b = memnew(MeshInstance3D);
-		b->set_mesh(drop);
-		b->set_visible(false);
-		chain_root->add_child(b);
-		beads[i] = b;
 		bead_phase[i] = (float)i / (float)BEAD_COUNT;
+		bead_xf[i] = Transform3D(Basis(), Vector3(0.0f, -0.13f - 2.23f * bead_phase[i], 0.0f));
 	}
+	beads_mm = make_group("Beads", drop, bead_xf, beads_multimesh);
+	beads_multimesh->set_visible_instance_count(0);
 
 	// 接水的石钵
 	Ref<CylinderMesh> basin;
