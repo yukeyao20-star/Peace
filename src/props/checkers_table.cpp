@@ -30,12 +30,9 @@ void CheckersTable::interact(const Vector3 &p_player_pos) {
 	(void)p_player_pos;
 	moves++;
 	const int idx = (moves * 5 + 3) % PIECE_COUNT;
-	if (pieces[idx] != nullptr) {
-		Vector3 p = pieces[idx]->get_position();
-		p.z += (idx % 2 == 0) ? 0.07f : -0.07f;
-		p.x += (idx % 3 == 0) ? 0.04f : 0.0f;
-		pieces[idx]->set_position(p);
-	}
+	piece_pos[idx].z += (idx % 2 == 0) ? 0.07f : -0.07f;
+	piece_pos[idx].x += (idx % 3 == 0) ? 0.04f : 0.0f;
+	update_piece(idx);
 	if (get_tree() != nullptr) {
 		Node *gd = get_tree()->get_root()->find_child("GameDirector", true, false);
 		if (gd != nullptr) gd->call("flash_hint", String::utf8("棋子挪了一步 · 你想接着下吗"), 2.4f);
@@ -98,28 +95,58 @@ void CheckersTable::build() {
 	lmi->set_name("LightSquares");
 	lmi->set_multimesh(light_mm);
 	add_child(lmi);
-	// 12 颗棋子
+	// 优化（第 170 轮）：12 颗棋子按颜色合成两个 MultiMesh。
+	Ref<CylinderMesh> unit_piece;
+	unit_piece.instantiate();
+	unit_piece->set_top_radius(1.0f);
+	unit_piece->set_bottom_radius(1.05f);
+	unit_piece->set_height(1.0f);
+	unit_piece->set_radial_segments(8);
+	unit_piece->set_rings(1);
+	red_mm.instantiate();
+	red_mm->set_transform_format(MultiMesh::TRANSFORM_3D);
+	red_mm->set_mesh(unit_piece);
+	red_mm->set_instance_count(6);
+	Ref<CylinderMesh> black_mesh = unit_piece->duplicate();
+	Ref<StandardMaterial3D> bm;
+	bm.instantiate();
+	bm->set_albedo(Color(0.20f, 0.20f, 0.22f));
+	black_mesh->set_material(bm);
+	black_mm.instantiate();
+	black_mm->set_transform_format(MultiMesh::TRANSFORM_3D);
+	black_mm->set_mesh(black_mesh);
+	black_mm->set_instance_count(6);
+	Ref<StandardMaterial3D> rm;
+	rm.instantiate();
+	rm->set_albedo(Color(0.78f, 0.24f, 0.20f));
+	unit_piece->set_material(rm);
+	const Basis pb = Basis().scaled(Vector3(0.030f, 0.018f, 0.030f));
 	for (int i = 0; i < PIECE_COUNT; i++) {
 		const bool red = i < 6;
-		Node3D *p = memnew(Node3D);
-		p->set_name(String("Piece") + String::num_int64(i));
 		const int row = i / 4;
 		const int col = i % 4;
 		const float z = red ? -0.21f + 0.14f * (float)row : 0.21f - 0.14f * (float)row;
 		const float x = -0.21f + 0.14f * (float)col;
-		p->set_position(Vector3(x, 0.56f, z));
-		add_child(p);
-		pieces[i] = p;
-		Ref<CylinderMesh> piece;
-		piece.instantiate();
-		piece->set_top_radius(0.030f);
-		piece->set_bottom_radius(0.032f);
-		piece->set_height(0.018f);
-		piece->set_radial_segments(8);
-		piece->set_rings(1);
-		piece->set_material(meshutil::toon_material(toon, red ? Color(0.78f, 0.24f, 0.20f) : Color(0.20f, 0.20f, 0.22f), 0.2f));
-		MeshInstance3D *mi = memnew(MeshInstance3D);
-		mi->set_mesh(piece);
-		p->add_child(mi);
+		piece_pos[i] = Vector3(x, 0.56f, z);
+		Ref<MultiMesh> mm = red ? red_mm : black_mm;
+		mm->set_instance_transform(red ? i : i - 6, Transform3D(pb, piece_pos[i]));
 	}
+	MeshInstance3D *rmi = nullptr;
+	(void)rmi;
+	MultiMeshInstance3D *red_mi = memnew(MultiMeshInstance3D);
+	red_mi->set_name("RedPieces");
+	red_mi->set_multimesh(red_mm);
+	add_child(red_mi);
+	MultiMeshInstance3D *black_mi = memnew(MultiMeshInstance3D);
+	black_mi->set_name("BlackPieces");
+	black_mi->set_multimesh(black_mm);
+	add_child(black_mi);
+}
+
+void CheckersTable::update_piece(int p_index) {
+	const bool red = p_index < 6;
+	Ref<MultiMesh> mm = red ? red_mm : black_mm;
+	if (!mm.is_valid()) return;
+	const Basis pb = Basis().scaled(Vector3(0.030f, 0.018f, 0.030f));
+	mm->set_instance_transform(red ? p_index : p_index - 6, Transform3D(pb, piece_pos[p_index]));
 }

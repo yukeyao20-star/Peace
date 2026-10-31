@@ -9,11 +9,15 @@
 #include "../interact/interactable.h"
 namespace godot {
 class MeshInstance3D;
+class MultiMesh;
 class Node3D;
 class CheckersTable : public Interactable {
 	GDCLASS(CheckersTable, Interactable)
 	static const int PIECE_COUNT = 12;
-	Node3D *pieces[PIECE_COUNT] = {};
+	Ref<MultiMesh> red_mm;
+	Ref<MultiMesh> black_mm;
+	Vector3 piece_pos[PIECE_COUNT];
+	void update_piece(int p_index);
 	int moves = 0;
 	void build();
 protected:
