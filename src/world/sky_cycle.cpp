@@ -17,6 +17,8 @@
 #include <godot_cpp/classes/viewport.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/environment.hpp>
+#include <godot_cpp/classes/image.hpp>
+#include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/gpu_particles3d.hpp>
 #include <godot_cpp/classes/material.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
@@ -351,6 +353,11 @@ void SkyCycle::apply() {
 
 	// —— 太阳 / 月亮 ——
 	if (sun != nullptr) {
+		// 夜间方向光改用"月亮"方向，天空盒会把光源当太阳画成一颗亮盘 → 关掉天空侧太阳，
+		// 夜里只留 DirectionalLight 照明（月盘由 Moon 网格单独呈现）。
+		sun->set_sky_mode(sun_h >= 0.0f
+				? DirectionalLight3D::SKY_MODE_LIGHT_AND_SKY
+				: DirectionalLight3D::SKY_MODE_LIGHT_ONLY);
 		if (sun_h >= 0.0f) {
 			sun->set_rotation(Vector3(-sun_h * 1.15f, 0.35f, 0.0f));
 			Color c = Color(1.0f, 0.62f, 0.35f).lerp(Color(1.0f, 0.96f, 0.87f), day); // 低角度偏橙
@@ -409,7 +416,10 @@ void SkyCycle::apply() {
 					std::sin(az) * std::cos(elev));
 			Vector3 mpos = dir * 240.0f;
 			moon->set_position(mpos); // 星穹 260m 之内，确保挡在星星前面
-			moon->look_at(Vector3(0.0f, 0.0f, 0.0f), Vector3(0.0f, 1.0f, 0.0f)); // 始终正面朝向世界中心与地面观察者
+			moon->look_at(Vector3(0.0f, 0.0f, 0.0f), Vector3(0.0f, 1.0f, 0.0f));
+			// look_at 让 -Z 指向地心，而 moon.gdshader 以局部 +Z 为可见面（n.z>0 才是被照亮的一半），
+			// 不补这个 180° 翻转，看到的永远是暗面（旧截图里月盘呈灰盘）。
+			moon->rotate_object_local(Vector3(0.0f, 1.0f, 0.0f), Math::PI);
 		}
 		const float alpha = night * (1.0f - cloud * 0.92f);
 		if (moon_shader_mat.is_valid()) {
@@ -773,6 +783,20 @@ void SkyCycle::build_stars() {
 	star_mat->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true); // 实例色当亮度
 	star_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true); // 别让雾把星星洗白
 	star_mat->set_albedo(Color(1.0f, 1.0f, 1.0f, 0.0f)); // 初始全透明，apply() 每帧接管
+	// 程序化圆形光斑纹理：不贴纹理时 0.9m 方片在夜空里会显成小方块
+	Ref<Image> star_img = Image::create(32, 32, false, Image::FORMAT_RGBA8);
+	for (int y = 0; y < 32; y++) {
+		for (int x = 0; x < 32; x++) {
+			float dx = ((float)x + 0.5f) / 16.0f - 1.0f;
+			float dy = ((float)y + 0.5f) / 16.0f - 1.0f;
+			float d = std::sqrt(dx * dx + dy * dy);
+			float a = Math::clamp(1.0f - d, 0.0f, 1.0f);
+			a = std::pow(a, 0.75f); // 柔边但保住中心亮度
+			star_img->set_pixel(x, y, Color(1.0f, 1.0f, 1.0f, a));
+		}
+	}
+	Ref<ImageTexture> star_tex = ImageTexture::create_from_image(star_img);
+	star_mat->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, star_tex);
 
 	Ref<QuadMesh> quad;
 	quad.instantiate();
@@ -804,7 +828,7 @@ void SkyCycle::build_stars() {
 		}
 		Transform3D xf;
 		xf.origin = Vector3(x, y, z) * (R / len);
-		const float s = lerpf(0.45f, 1.6f, rnd(rng)); // 大小错落
+		const float s = lerpf(0.7f, 2.2f, rnd(rng)); // 大小错落（圆形纹理边缘透明，实际亮点略小）
 		xf.basis = Basis().scaled(Vector3(s, s, s));
 		const float b = lerpf(0.35f, 1.0f, rnd(rng)); // 亮度错落，微偏冷白
 		mm->set_instance_transform(placed, xf); // 此前只算 xf 未写入 → 220 颗星全堆在原点
