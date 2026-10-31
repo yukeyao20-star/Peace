@@ -455,8 +455,18 @@ void SkyCycle::apply() {
 		if (sky_mat.is_valid()) {
 			env->set_fog_light_color(sky_mat->get_sky_horizon_color());
 		}
+		// 清晨湖面薄雾：日出后一小段时间雾最重，太阳升高后散掉
+		float dawn_in = clampf((day - 0.02f) / 0.16f, 0.0f, 1.0f);
+		dawn_in = dawn_in * dawn_in * (3.0f - 2.0f * dawn_in);
+		float dawn_out = clampf((day - 0.30f) / 0.25f, 0.0f, 1.0f);
+		dawn_out = dawn_out * dawn_out * (3.0f - 2.0f * dawn_out);
+		const float dawn_mist = dawn_in * (1.0f - dawn_out);
 		// 晴日雾量减半：原 0.006 让 8 点的世界泡牛奶（远景全白、树干巨石洗成色块）
-		env->set_fog_density(0.0032f + rain * 0.014f + snow * 0.012f + (1.0f - day) * 0.005f);
+		env->set_fog_density(0.0032f + rain * 0.014f + snow * 0.012f + (1.0f - day) * 0.005f + dawn_mist * 0.010f);
+		if (sky_mat.is_valid()) {
+			Color fc = sky_mat->get_sky_horizon_color();
+			env->set_fog_light_color(fc.lerp(Color(0.82f, 0.84f, 0.86f), dawn_mist * 0.45f));
+		}
 	}
 
 	// —— 雨 ——

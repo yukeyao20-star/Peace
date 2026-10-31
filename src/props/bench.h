@@ -12,6 +12,7 @@ class Player;
 
 namespace godot {
 
+class Node3D;
 class OmniLight3D;
 class SkyCycle;
 class StandardMaterial3D;
@@ -24,6 +25,7 @@ private:
 	Vector3 seat_pos;
 	float seat_yaw = 0.0f;
 	bool e_prev = false;
+	Node3D *lantern_pivot = nullptr;
 	OmniLight3D *lantern_light = nullptr;
 	StandardMaterial3D *lantern_glass = nullptr;
 	SkyCycle *sky = nullptr;

@@ -15,6 +15,7 @@
 #include <godot_cpp/variant/transform3d.hpp>
 
 #include "../systems/mesh_util.h"
+#include "sky_cycle.h"
 #include "terrain_builder.h"
 
 using namespace godot;
@@ -22,6 +23,7 @@ using namespace godot;
 void LilyPond::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_pad_count"), &LilyPond::get_pad_count);
 	ClassDB::bind_method(D_METHOD("get_koi_count"), &LilyPond::get_koi_count);
+	ClassDB::bind_method(D_METHOD("get_active_jumps"), &LilyPond::get_active_jumps);
 }
 
 void LilyPond::_notification(int p_what) {
@@ -36,6 +38,9 @@ void LilyPond::_notification(int p_what) {
 			if (terrain != nullptr) {
 				water_level = terrain->get_water_level();
 			}
+			if (get_parent() != nullptr) {
+				sky = Object::cast_to<SkyCycle>(get_parent()->get_node_or_null("SkyCycle"));
+			}
 			build_pads();
 			build_flowers();
 			build_koi();
@@ -48,9 +53,31 @@ void LilyPond::_notification(int p_what) {
 			const float dt = (float)get_process_delta_time();
 			t += dt;
 
-			// 锦鲤绕着自己的水草窝慢慢打转，鱼头朝行进方向
+			const float rain = (sky != nullptr) ? sky->get_rain_amount() : 0.0f;
+			wet = Math::lerp(wet, Math::clamp(rain, 0.0f, 1.0f), 1.0f - std::exp(-2.0f * dt));
+
+			// 锦鲤绕着自己的水草窝慢慢打转，鱼头朝行进方向；偶尔整条跃出水面
 			for (Koi &k : koi) {
 				if (k.root == nullptr) {
+					continue;
+				}
+				if (k.jumping) {
+					k.jump_t += dt;
+					float u = Math::clamp(k.jump_t / k.jump_dur, 0.0f, 1.0f);
+					Vector3 p = k.jump_from.lerp(k.jump_to, u);
+					p.y = water_level + 0.02f + std::sin(u * 3.1415926f) * 0.52f;
+					k.root->set_position(p);
+					k.root->set_rotation(Vector3(-std::sin(u * 3.1415926f) * 0.85f, k.root->get_rotation().y, 0.0f));
+					if (u >= 1.0f) {
+						k.jumping = false;
+						spawn_ring(k.jump_to + Vector3(0.0f, water_level + 0.015f - k.jump_to.y, 0.0f));
+						if (plop != nullptr) {
+							plop->set_position(Vector3(k.jump_to.x, water_level + 0.05f, k.jump_to.z));
+							plop->set_pitch_scale(1.12f);
+							plop->set_volume_db(-15.0f);
+							plop->play(0.0f);
+						}
+					}
 					continue;
 				}
 				k.phase += k.speed * dt;
@@ -61,16 +88,41 @@ void LilyPond::_notification(int p_what) {
 				k.root->set_rotation(Vector3(0.0f, -k.phase, 0.0f));
 			}
 
-			// 鱼碰水面：定时在一个随机锦鲤位置冒一圈涟漪
+			// 定时挑一条鱼跃水（雨天鱼更活跃）
+			jump_t -= dt;
+			if (jump_t <= 0.0f && !koi.empty()) {
+				Koi &k = koi[rng() % koi.size()];
+				if (!k.jumping && k.root != nullptr) {
+					Vector3 from = k.root->get_position();
+					Vector3 dir(std::cos(k.phase + 1.2f), 0.0f, std::sin(k.phase + 1.2f));
+					k.jumping = true;
+					k.jump_t = 0.0f;
+					k.jump_dur = 0.62f + (float)(rng() % 100u) * 0.0015f;
+					k.jump_from = from;
+					k.jump_to = from + dir * (0.55f + (float)(rng() % 100u) * 0.0035f);
+					k.jump_to.y = water_level - 0.20f;
+				}
+				jump_t = 18.0f + (float)(rng() % 1000u) * 0.017f - wet * 8.0f;
+			}
+
+			// 涟漪：晴天是鱼碰水，雨天则是雨点密密麻麻打在荷叶/水面上
 			ring_t -= dt;
 			if (ring_t <= 0.0f) {
-				if (!koi.empty()) {
-					const Koi &k = koi[rng() % koi.size()];
-					spawn_ring(Vector3(k.home.x + (float)(rng() % 100) * 0.01f - 0.5f,
-							water_level + 0.015f,
-							k.home.z + (float)(rng() % 100) * 0.008f - 0.4f));
+				if (wet > 0.25f) {
+					if (!pad_spots.empty()) {
+						const Vector3 &p = pad_spots[rng() % pad_spots.size()];
+						spawn_ring(Vector3(p.x, water_level + 0.02f, p.z));
+					}
+					ring_t = 0.30f + (float)(rng() % 1000u) * 0.0009f;
+				} else {
+					if (!koi.empty()) {
+						const Koi &k = koi[rng() % koi.size()];
+						spawn_ring(Vector3(k.home.x + (float)(rng() % 100) * 0.01f - 0.5f,
+								water_level + 0.015f,
+								k.home.z + (float)(rng() % 100) * 0.008f - 0.4f));
+					}
+					ring_t = 1.8f + (float)(rng() % 1000u) * 0.0022f;
 				}
-				ring_t = 1.8f + (float)(rng() % 1000u) * 0.0022f;
 			}
 			for (Ring &r : rings) {
 				if (!r.active || r.mi == nullptr) {

@@ -17,6 +17,7 @@ class AudioStreamPlayer3D;
 class AudioStreamWAV;
 class MeshInstance3D;
 class StandardMaterial3D;
+class SkyCycle;
 class TerrainBuilder;
 
 class LilyPond : public Node3D {
@@ -30,6 +31,11 @@ private:
 		float phase = 0.0f;
 		float speed = 0.4f;
 		float bob_phase = 0.0f;
+		bool jumping = false;
+		float jump_t = 0.0f;
+		float jump_dur = 0.75f;
+		Vector3 jump_from;
+		Vector3 jump_to;
 	};
 
 	struct Ring {
@@ -54,10 +60,13 @@ private:
 	std::vector<Leaf> leaves;
 
 	TerrainBuilder *terrain = nullptr;
+	SkyCycle *sky = nullptr;
 	float water_level = -0.55f;
+	float wet = 0.0f;
 	float t = 0.0f;
 	float ring_t = 1.5f;
 	float plop_t = 5.0f;
+	float jump_t = 10.0f;
 	std::mt19937 rng{20261214u};
 
 	AudioStreamPlayer3D *plop = nullptr;
@@ -80,6 +89,15 @@ public:
 
 	int get_pad_count() const { return (int)pad_spots.size(); }
 	int get_koi_count() const { return (int)koi.size(); }
+	int get_active_jumps() const {
+		int n = 0;
+		for (const Koi &k : koi) {
+			if (k.jumping) {
+				n++;
+			}
+		}
+		return n;
+	}
 };
 
 } // namespace godot

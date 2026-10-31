@@ -51,6 +51,13 @@ void Bench::_notification(int p_what) {
 		case NOTIFICATION_PROCESS: {
 			// 长椅旁小灯：入夜亮起，火光/风里轻微跳动
 			lamp_t += (float)get_process_delta_time();
+			if (lantern_pivot != nullptr) {
+				// 夜风穿过长椅：小灯绕着挂点轻轻摆
+				lantern_pivot->set_rotation(Vector3(
+						std::sin(lamp_t * 0.83f + 0.4f) * 0.018f,
+						0.0f,
+						std::sin(lamp_t * 1.15f) * 0.045f + std::sin(lamp_t * 2.7f) * 0.012f));
+			}
 			if (lantern_light != nullptr) {
 				float night = (sky != nullptr) ? sky->get_night_factor() : 0.0f;
 				float on = Math::clamp((night - 0.25f) / 0.45f, 0.0f, 1.0f);
@@ -147,8 +154,12 @@ void Bench::build() {
 	// 长椅旁的立杆小灯（傍晚自动亮，白天熄灭）
 	meshutil::add_box(this, toon, Vector3(0.08f, 1.16f, 0.08f), Vector3(0.62f, 0.58f, 1.02f), wood_dark);
 	meshutil::add_box(this, toon, Vector3(0.40f, 0.06f, 0.06f), Vector3(0.46f, 1.14f, 1.02f), wood_dark);
-	meshutil::add_box(this, toon, Vector3(0.24f, 0.05f, 0.24f), Vector3(0.30f, 1.17f, 1.02f), wood_dark);
-	meshutil::add_box(this, toon, Vector3(0.24f, 0.04f, 0.24f), Vector3(0.30f, 0.89f, 1.02f), wood_dark);
+	lantern_pivot = memnew(Node3D);
+	lantern_pivot->set_name("LanternPivot");
+	lantern_pivot->set_position(Vector3(0.30f, 1.17f, 1.02f));
+	add_child(lantern_pivot);
+	meshutil::add_box(lantern_pivot, toon, Vector3(0.24f, 0.05f, 0.24f), Vector3(0.0f, 0.0f, 0.0f), wood_dark);
+	meshutil::add_box(lantern_pivot, toon, Vector3(0.24f, 0.04f, 0.24f), Vector3(0.0f, -0.28f, 0.0f), wood_dark);
 
 	Ref<BoxMesh> glass_mesh;
 	glass_mesh.instantiate();
@@ -162,15 +173,15 @@ void Bench::build() {
 	MeshInstance3D *glass = memnew(MeshInstance3D);
 	glass->set_name("BenchLantern");
 	glass->set_mesh(glass_mesh);
-	glass->set_position(Vector3(0.30f, 1.03f, 1.02f));
-	add_child(glass);
+	glass->set_position(Vector3(0.0f, -0.14f, 0.0f));
+	lantern_pivot->add_child(glass);
 
 	lantern_light = memnew(OmniLight3D);
 	lantern_light->set_name("LanternLight");
-	lantern_light->set_position(Vector3(0.30f, 1.05f, 1.02f));
+	lantern_light->set_position(Vector3(0.0f, -0.12f, 0.0f));
 	lantern_light->set_color(Color(1.0f, 0.68f, 0.34f));
 	lantern_light->set_param(Light3D::PARAM_RANGE, 5.5f);
 	lantern_light->set_param(Light3D::PARAM_ENERGY, 0.0f);
 	lantern_light->set_visible(false);
-	add_child(lantern_light);
+	lantern_pivot->add_child(lantern_light);
 }

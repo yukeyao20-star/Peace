@@ -18,6 +18,7 @@
 #include <godot_cpp/variant/transform3d.hpp>
 
 #include "mesh_util.h"
+#include "../world/sky_cycle.h"
 #include "../world/terrain_builder.h"
 
 using namespace godot;
@@ -74,29 +75,47 @@ void Campfire::_notification(int p_what) {
 				p.y = terrain->get_terrain_height(p.x, p.z) + 0.03f;
 				set_global_position(p);
 			}
+			if (get_parent() != nullptr) {
+				sky = Object::cast_to<SkyCycle>(get_parent()->get_node_or_null("SkyCycle"));
+			}
 			add_to_group("interactables");
 			build();
 			set_process(true);
 		} break;
 		case NOTIFICATION_PROCESS: {
 			t += (float)get_process_delta_time();
+			const float dt = (float)get_process_delta_time();
 			if (boost > 0.0f) {
-				boost = Math::max(0.0f, boost - (float)get_process_delta_time());
+				boost = Math::max(0.0f, boost - dt);
 			}
+			float rain = (sky != nullptr) ? sky->get_rain_amount() : 0.0f;
+			wet = Math::lerp(wet, Math::clamp(rain, 0.0f, 1.0f), 1.0f - std::exp(-2.2f * dt));
+			float rain_k = wet * 0.55f; // 雨越大，火越小
 			// 添柴后 0.9s 内火势冲高再回落（前段猛、后段缓）
 			float b = boost / 0.9f;
 			float surge = 1.0f + 1.15f * b * b;
 			if (light != nullptr) {
 				float flicker = 0.92f + 0.06f * std::sin(t * 7.3f) + 0.02f * std::sin(t * 19.1f + 1.7f);
-				light->set_param(Light3D::PARAM_ENERGY, 1.55f * flicker * surge);
+				light->set_param(Light3D::PARAM_ENERGY, 1.55f * flicker * surge * (1.0f - 0.42f * rain_k));
 			}
 			if (flame != nullptr) {
 				float s = 1.0f + 0.06f * std::sin(t * 9.1f) + 0.03f * std::sin(t * 15.7f + 0.8f);
-				flame->set_scale(Vector3(s * (1.0f + 0.55f * b), (1.0f + 0.10f * std::sin(t * 6.4f)) * (1.0f + 0.8f * b), s * (1.0f + 0.55f * b)));
+				float shrink = 1.0f - 0.45f * rain_k;
+				flame->set_scale(Vector3(s * (1.0f + 0.55f * b) * shrink, (1.0f + 0.10f * std::sin(t * 6.4f)) * (1.0f + 0.8f * b) * shrink, s * (1.0f + 0.55f * b) * shrink));
+			}
+			if (steam != nullptr) {
+				steam->set_emitting(wet > 0.28f);
 			}
 			if (crackle != nullptr) {
-				float target_db = (boost > 0.0f) ? -8.0f : -20.0f;
-				crackle->set_volume_db(Math::lerp((float)crackle->get_volume_db(), target_db, 1.0f - std::exp(-6.0f * (float)get_process_delta_time())));
+				float target_db = (boost > 0.0f) ? -8.0f - 7.0f * rain_k : -20.0f + 7.0f * rain_k;
+				crackle->set_volume_db(Math::lerp((float)crackle->get_volume_db(), target_db, 1.0f - std::exp(-6.0f * dt)));
+			}
+			if (hiss != nullptr) {
+				float target_db = (wet > 0.12f) ? (-17.0f + 8.0f * wet) : -60.0f;
+				hiss->set_volume_db(Math::lerp((float)hiss->get_volume_db(), target_db, 1.0f - std::exp(-4.0f * dt)));
+				if (wet > 0.12f && !hiss->is_playing()) {
+					hiss->play(0.0f);
+				}
 			}
 		} break;
 		default:
@@ -281,6 +300,40 @@ void Campfire::build() {
 	light->set_shadow(false);
 	add_child(light);
 
+	// 雨中白汽：一小股被雨点蒸起来的水汽
+	{
+		Ref<SphereMesh> steam_mesh;
+		steam_mesh.instantiate();
+		steam_mesh->set_radius(0.11f);
+		steam_mesh->set_height(0.22f);
+		steam_mesh->set_radial_segments(7);
+		steam_mesh->set_rings(4);
+		Ref<StandardMaterial3D> steam_mat;
+		steam_mat.instantiate();
+		steam_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+		steam_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+		steam_mat->set_albedo(Color(0.86f, 0.90f, 0.90f, 0.10f));
+		steam_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+		steam_mesh->set_material(steam_mat);
+		steam = memnew(CPUParticles3D);
+		steam->set_name("Steam");
+		steam->set_amount(16);
+		steam->set_lifetime(1.5f);
+		steam->set_mesh(steam_mesh);
+		steam->set_direction(Vector3(0.0f, 1.0f, 0.0f));
+		steam->set_spread(22.0f);
+		steam->set_gravity(Vector3(0.06f, 0.32f, 0.03f));
+		steam->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.25f);
+		steam->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.55f);
+		steam->set_param_min(CPUParticles3D::PARAM_SCALE, 0.6f);
+		steam->set_param_max(CPUParticles3D::PARAM_SCALE, 1.8f);
+		steam->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_SPHERE);
+		steam->set_emission_sphere_radius(0.22f);
+		steam->set_position(Vector3(0.0f, 0.30f, 0.0f));
+		steam->set_emitting(false);
+		add_child(steam);
+	}
+
 	// 噼啪声
 	snd_crackle = make_crackle();
 	crackle = memnew(AudioStreamPlayer3D);
@@ -290,6 +343,63 @@ void Campfire::build() {
 	crackle->set_max_distance(24.0f);
 	add_child(crackle);
 	crackle->play();
+
+	// 雨落火堆：嗞嗞的白噪声循环
+	snd_hiss = make_hiss();
+	hiss = memnew(AudioStreamPlayer3D);
+	hiss->set_name("Hiss");
+	hiss->set_stream(snd_hiss);
+	hiss->set_volume_db(-60.0f);
+	hiss->set_max_distance(14.0f);
+	add_child(hiss);
+}
+
+// 2 秒可循环的嗞声：高通白噪声 + 稀疏爆点，像雨滴砸在炭上
+Ref<AudioStreamWAV> Campfire::make_hiss() {
+	const int sr = 22050;
+	const float dur = 2.0f;
+	const int n = (int)(dur * sr);
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+	std::mt19937 rng(373737u);
+	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
+	float lp = 0.0f;
+	std::vector<float> ring(n, 0.0f);
+	for (int i = 0; i < 12; i++) {
+		int at = (int)(d01(rng) * (float)n);
+		for (int j = 0; j < 120; j++) {
+			ring[(at + j) % n] += (d01(rng) - 0.5f) * std::exp(-j / 30.0f) * 0.5f;
+		}
+	}
+	for (int i = 0; i < n; i++) {
+		float white = d01(rng) - 0.5f;
+		lp += (white - lp) * 0.25f;
+		float hp = white - lp;
+		float samp = hp * 0.22f + ring[i] + lp * 0.12f;
+		// 首尾交叉淡化，避免循环爆点
+		int tail = n - i;
+		if (tail < 2205) {
+			float k = (float)tail / 2205.0f;
+			samp *= k;
+		}
+		if (i < 2205) {
+			float k = (float)i / 2205.0f;
+			samp *= k;
+		}
+		int16_t q = (int16_t)Math::clamp(samp * 9000.0f, -32000.0f, 32000.0f);
+		w[i * 2] = (uint8_t)(q & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
+	}
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_loop_mode(AudioStreamWAV::LOOP_FORWARD);
+	wav->set_loop_end(n);
+	wav->set_data(bytes);
+	return wav;
 }
 
 // 柴火噼啪：4 秒可循环，稀疏短爆 + 低频底噪

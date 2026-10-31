@@ -16,6 +16,7 @@ class AudioStreamPlayer3D;
 class AudioStreamWAV;
 class CPUParticles3D;
 class OmniLight3D;
+class SkyCycle;
 class TerrainBuilder;
 
 class Campfire : public Interactable {
@@ -26,12 +27,18 @@ private:
 	CPUParticles3D *flame = nullptr;
 	CPUParticles3D *embers = nullptr;
 	AudioStreamPlayer3D *crackle = nullptr;
+	AudioStreamPlayer3D *hiss = nullptr; // 雨点落进火堆的嗞声
+	CPUParticles3D *steam = nullptr;     // 雨中被蒸起的白汽
 	Ref<AudioStreamWAV> snd_crackle;
+	Ref<AudioStreamWAV> snd_hiss;
+	SkyCycle *sky = nullptr;
 	float t = 0.0f;
 	float boost = 0.0f; // 添柴后的火势余韵（秒）
+	float wet = 0.0f;   // 雨强平滑值
 
 	void build();
 	Ref<AudioStreamWAV> make_crackle();
+	Ref<AudioStreamWAV> make_hiss();
 
 protected:
 	static void _bind_methods();
