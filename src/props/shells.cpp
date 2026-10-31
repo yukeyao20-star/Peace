@@ -10,6 +10,7 @@
 #include <godot_cpp/classes/font.hpp>
 #include <godot_cpp/classes/label.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/panel_container.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/shader.hpp>
@@ -73,6 +74,7 @@ void ShellField::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("apply_collected_mask", "mask"), &ShellField::apply_collected_mask);
 	ClassDB::bind_method(D_METHOD("get_collected_count"), &ShellField::get_collected_count);
 	ClassDB::bind_method(D_METHOD("get_total"), &ShellField::get_total);
+	ClassDB::bind_method(D_METHOD("get_has_reward"), &ShellField::get_has_reward);
 }
 
 void ShellField::_notification(int p_what) {
@@ -95,6 +97,35 @@ void ShellField::_notification(int p_what) {
 			chime->set_max_distance(22.0f);
 			add_child(chime);
 			build();
+			set_process(true);
+		} break;
+		case NOTIFICATION_PROCESS: {
+			const float delta = (float)get_process_delta_time();
+			t += delta;
+			if (reward != nullptr) {
+				reward->set_rotation(Vector3(
+						std::sin(t * 1.05f + 0.5f) * 0.035f,
+						0.0f,
+						std::sin(t * 0.87f) * 0.06f + std::sin(t * 2.3f) * 0.015f));
+				reward_t -= delta;
+				if (reward_t <= 0.0f) {
+					Vector3 pos = reward->get_global_position();
+					bool near = true;
+					if (get_parent() != nullptr) {
+						Node3D *p = Object::cast_to<Node3D>(get_parent()->get_node_or_null("Player"));
+						if (p != nullptr) {
+							near = p->get_global_position().distance_to(pos) < 16.0f;
+						}
+					}
+					if (near && reward_voice != nullptr && !reward_voice->is_playing()) {
+						reward_voice->set_global_position(pos);
+						reward_voice->set_pitch_scale(0.86f + (float)(rng() % 100u) * 0.0014f);
+						reward_voice->set_volume_db(-17.0f);
+						reward_voice->play(0.0f);
+					}
+					reward_t = 8.0f + (float)(rng() % 900u) * 0.009f;
+				}
+			}
 		} break;
 		default:
 			break;
@@ -208,7 +239,8 @@ void ShellField::collect(int p_index, const Vector3 &p_player_pos) {
 		Node *gd = get_parent()->get_node_or_null("GameDirector");
 		if (gd != nullptr) {
 			if (got >= total) {
-				gd->call("flash_hint", String::utf8("十枚贝壳集齐了 · 风里有细小的铃声"), 5.0f);
+				build_reward();
+				gd->call("flash_hint", String::utf8("十枚贝壳集齐了 · 长椅旁挂起一串贝壳风铃"), 5.0f);
 			} else {
 				gd->call("flash_hint", String::utf8("拾到一枚贝壳（") + String::num_int64(got) + String::utf8(" / ")
 						+ String::num_int64(total) + String::utf8("）"), 2.4f);
@@ -274,6 +306,59 @@ void ShellField::apply_collected_mask(const String &p_mask) {
 	}
 	restored_mask = true;
 	update_counter();
+	if (get_collected_count() == (int)collected.size()) {
+		build_reward();
+	}
+}
+
+// 集齐奖励：长椅灯柱旁挂一串贝壳风铃（重复调用只建一次）
+void ShellField::build_reward() {
+	if (reward != nullptr || get_parent() == nullptr) {
+		return;
+	}
+	Node3D *bench = Object::cast_to<Node3D>(get_parent()->get_node_or_null("Bench"));
+	if (bench == nullptr) {
+		return;
+	}
+	Ref<Shader> toon = meshutil::load_toon_shader();
+	reward = memnew(Node3D);
+	reward->set_name("ShellChime");
+	bench->add_child(reward);
+	reward->set_position(Vector3(0.55f, 1.12f, 1.02f));
+
+	const Color wood(0.38f, 0.26f, 0.14f);
+	meshutil::add_box(reward, toon, Vector3(0.36f, 0.035f, 0.035f), Vector3(0, 0, 0), wood);
+	const Color tints[5] = {
+		Color(0.96f, 0.88f, 0.76f),
+		Color(0.98f, 0.78f, 0.72f),
+		Color(0.90f, 0.82f, 0.92f),
+		Color(0.98f, 0.93f, 0.80f),
+		Color(0.86f, 0.90f, 0.86f),
+	};
+	for (int i = 0; i < 5; i++) {
+		float x = -0.14f + (float)i * 0.07f;
+		float len = 0.22f + (float)((i * 7) % 5) * 0.028f;
+		meshutil::add_box(reward, toon, Vector3(0.008f, len, 0.008f), Vector3(x, -len * 0.5f - 0.02f, 0), Color(0.72f, 0.66f, 0.52f));
+		Ref<SphereMesh> shell_mesh;
+		shell_mesh.instantiate();
+		shell_mesh->set_radius(0.052f);
+		shell_mesh->set_height(0.104f);
+		shell_mesh->set_radial_segments(10);
+		shell_mesh->set_rings(5);
+		shell_mesh->set_material(meshutil::toon_material(toon, tints[i], 0.5f));
+		MeshInstance3D *sm = memnew(MeshInstance3D);
+		sm->set_name(String("ChimeShell") + String::num_int64(i));
+		sm->set_mesh(shell_mesh);
+		sm->set_position(Vector3(x, -len - 0.05f, 0));
+		sm->set_scale(Vector3(1.0f, 0.5f, 0.9f));
+		reward->add_child(sm);
+	}
+	reward_voice = memnew(AudioStreamPlayer3D);
+	reward_voice->set_name("ShellChimeVoice");
+	reward_voice->set_stream(snd_chime);
+	reward_voice->set_volume_db(-17.0f);
+	reward_voice->set_max_distance(22.0f);
+	reward->add_child(reward_voice);
 }
 
 // 0.55 秒的小风铃：两个纯音先后亮起，尾音叠在一起

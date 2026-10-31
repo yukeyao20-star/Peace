@@ -8,6 +8,7 @@
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/ref.hpp>
 
+#include <random>
 #include <vector>
 
 #include "../interact/interactable.h"
@@ -62,9 +63,15 @@ private:
 	CanvasLayer *hud = nullptr;
 	Label *counter = nullptr;
 	bool restored_mask = false;
+	Node3D *reward = nullptr;
+	AudioStreamPlayer3D *reward_voice = nullptr;
+	float reward_t = 9.0f;
+	float t = 0.0f;
+	std::mt19937 rng{20260910u};
 
 	void build();
 	void update_counter();
+	void build_reward();
 	Ref<AudioStreamWAV> make_chime();
 
 protected:
@@ -78,6 +85,7 @@ public:
 	void apply_collected_mask(const String &p_mask);
 	int get_collected_count() const;
 	int get_total() const { return (int)collected.size(); }
+	bool get_has_reward() const { return reward != nullptr; }
 };
 
 } // namespace godot

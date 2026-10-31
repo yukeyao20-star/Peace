@@ -312,6 +312,49 @@ void Rowboat::build_hull() {
 	meshutil::add_box(hull, toon, Vector3(0.84f, 0.06f, 0.26f), Vector3(0.0f, 0.36f, 0.42f), trim);
 	meshutil::add_box(hull, toon, Vector3(0.84f, 0.06f, 0.26f), Vector3(0.0f, 0.36f, -0.36f), trim);
 
+	// 座垫与靠背：坐在船里更像在休息
+	MeshInstance3D *cushion = meshutil::add_box(hull, toon, Vector3(0.70f, 0.07f, 0.24f), Vector3(0.0f, 0.42f, 0.42f), Color(0.82f, 0.72f, 0.55f));
+	cushion->set_name("Cushion");
+	MeshInstance3D *backrest = meshutil::add_box(hull, toon, Vector3(0.70f, 0.26f, 0.06f), Vector3(0.0f, 0.55f, 0.55f), Color(0.74f, 0.63f, 0.46f), Vector3(-0.22f, 0.0f, 0.0f));
+	backrest->set_name("Backrest");
+	MeshInstance3D *cushion_b = meshutil::add_box(hull, toon, Vector3(0.70f, 0.07f, 0.24f), Vector3(0.0f, 0.42f, -0.36f), Color(0.82f, 0.72f, 0.55f));
+	cushion_b->set_name("CushionB");
+
+	// 鱼竿架：右舷两只小木叉
+	MeshInstance3D *rod1 = meshutil::add_box(hull, toon, Vector3(0.05f, 0.16f, 0.05f), Vector3(0.42f, 0.48f, -0.18f), wood_dark, Vector3(0.0f, 0.0f, -0.18f));
+	rod1->set_name("RodHolder1");
+	MeshInstance3D *rod2 = meshutil::add_box(hull, toon, Vector3(0.05f, 0.16f, 0.05f), Vector3(0.42f, 0.48f, -0.48f), wood_dark, Vector3(0.0f, 0.0f, -0.18f));
+	rod2->set_name("RodHolder2");
+
+	// 船头的藤篮与缆绳圈
+	MeshInstance3D *basket = meshutil::add_box(hull, toon, Vector3(0.28f, 0.20f, 0.24f), Vector3(0.0f, 0.25f, 1.02f), Color(0.66f, 0.51f, 0.30f));
+	basket->set_name("Basket");
+	meshutil::add_box(hull, toon, Vector3(0.30f, 0.03f, 0.26f), Vector3(0.0f, 0.36f, 1.02f), Color(0.52f, 0.38f, 0.20f));
+	Ref<TorusMesh> coil;
+	coil.instantiate();
+	coil->set_inner_radius(0.10f);
+	coil->set_outer_radius(0.15f);
+	coil->set_rings(8);
+	coil->set_ring_segments(18);
+	coil->set_material(meshutil::toon_material(toon, Color(0.72f, 0.63f, 0.45f)));
+	MeshInstance3D *coil_mi = memnew(MeshInstance3D);
+	coil_mi->set_name("RopeCoil");
+	coil_mi->set_mesh(coil);
+	coil_mi->set_position(Vector3(-0.22f, 0.16f, -0.88f));
+	coil_mi->set_rotation(Vector3(1.5707964f, 0.0f, 0.25f));
+	hull->add_child(coil_mi);
+
+	// 船名小牌
+	Label3D *name_plate = memnew(Label3D);
+	name_plate->set_name("NamePlate");
+	name_plate->set_text(String::utf8("Peace"));
+	name_plate->set_font_size(42);
+	name_plate->set_pixel_size(0.004f);
+	name_plate->set_modulate(Color(0.70f, 0.52f, 0.30f, 1.0f));
+	name_plate->set_position(Vector3(0.0f, 0.53f, 1.43f));
+	name_plate->set_rotation(Vector3(0.0f, 0.0f, 0.0f));
+	hull->add_child(name_plate);
+
 	// 两支可动的桨：枢轴在船舷内侧，桨身沿 ±X 伸出
 	for (int i = 0; i < 2; i++) {
 		float side = (i == 0) ? 1.0f : -1.0f;
