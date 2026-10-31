@@ -41,6 +41,7 @@
 #include "woodpecker.h"
 #include "deer_meadow.h"
 #include "hammock.h"
+#include "floating_lanterns.h"
 #include "dock_moths.h"
 #include "heron_pond.h"
 #include "campfire.h"
@@ -106,6 +107,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(Woodpecker);
 	GDREGISTER_CLASS(DeerMeadow);
 	GDREGISTER_CLASS(Hammock);
+	GDREGISTER_CLASS(FloatingLanterns);
 	GDREGISTER_CLASS(DockMoths);
 	GDREGISTER_CLASS(HeronPond);
 	GDREGISTER_CLASS(Campfire);
