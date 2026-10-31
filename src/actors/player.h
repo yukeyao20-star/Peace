@@ -123,7 +123,13 @@ public:
 		if (propeller != nullptr) propeller->set_visible(false);
 		set_velocity(Vector3(0, 0, 0));
 	}
-	void leave_boat() { is_boating = false; boat = nullptr; }
+	void leave_boat() {
+		is_boating = false;
+		boat = nullptr;
+		if (model != nullptr) {
+			model->set_scale(Vector3(1.0f, 1.0f, 1.0f));
+		}
+	}
 	bool get_is_boating() const { return is_boating; }
 	void play_ui(int type = 0);
 	void _on_map_gui_input(const Ref<InputEvent> &p_event);

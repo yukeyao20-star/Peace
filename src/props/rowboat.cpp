@@ -100,7 +100,7 @@ void Rowboat::_notification(int p_what) {
 			// 贴水浮动 + 轻微摇晃
 			float bob = std::sin(bob_t * 1.35f) * 0.03f;
 			Vector3 p = get_global_position();
-			p.y = water_level + 0.035f + bob;
+			p.y = water_level + 0.085f + bob;
 			set_global_position(p);
 			set_rotation(Vector3(0.0f, yaw, 0.0f));
 			if (hull != nullptr) {
@@ -162,7 +162,7 @@ void Rowboat::board(Player *p_rider) {
 	occupied = true;
 	e_prev = true;
 	p_rider->board_boat(this);
-	p_rider->set_global_position(get_global_position() + Vector3(0.0f, 0.45f, 0.0f));
+	p_rider->set_global_position(get_global_position() + Vector3(0.0f, 0.34f, -0.30f));
 }
 
 void Rowboat::exit_boat() {
@@ -191,30 +191,34 @@ void Rowboat::build_hull() {
 	hull->set_name("Hull");
 	add_child(hull);
 
-	// 船底 + 两侧船舷 + 船尾
+	// 船底 + 两侧船舷 + 船尾（侧板加高，坐下时下身被挡住）
 	meshutil::add_box(hull, toon, Vector3(0.92f, 0.08f, 2.15f), Vector3(0.0f, 0.02f, 0.0f), wood_dark);
-	meshutil::add_box(hull, toon, Vector3(0.08f, 0.30f, 2.15f), Vector3(0.46f, 0.18f, 0.0f), wood);
-	meshutil::add_box(hull, toon, Vector3(0.08f, 0.30f, 2.15f), Vector3(-0.46f, 0.18f, 0.0f), wood);
-	meshutil::add_box(hull, toon, Vector3(0.92f, 0.30f, 0.08f), Vector3(0.0f, 0.18f, -1.04f), wood);
+	meshutil::add_box(hull, toon, Vector3(0.08f, 0.40f, 2.15f), Vector3(0.46f, 0.24f, 0.0f), wood);
+	meshutil::add_box(hull, toon, Vector3(0.08f, 0.40f, 2.15f), Vector3(-0.46f, 0.24f, 0.0f), wood);
+	meshutil::add_box(hull, toon, Vector3(0.92f, 0.40f, 0.08f), Vector3(0.0f, 0.24f, -1.04f), wood);
 
-	// 船头：两块内收的斜板
-	meshutil::add_box(hull, toon, Vector3(0.08f, 0.30f, 0.72f), Vector3(0.29f, 0.18f, 1.10f), wood,
+	// 船头：两块内收的斜板 + 前甲板（封住船头，别让水从缺口灌进来）
+	meshutil::add_box(hull, toon, Vector3(0.08f, 0.40f, 0.72f), Vector3(0.29f, 0.24f, 1.10f), wood,
 			Vector3(0.0f, 0.55f, 0.0f));
-	meshutil::add_box(hull, toon, Vector3(0.08f, 0.30f, 0.72f), Vector3(-0.29f, 0.18f, 1.10f), wood,
+	meshutil::add_box(hull, toon, Vector3(0.08f, 0.40f, 0.72f), Vector3(-0.29f, 0.24f, 1.10f), wood,
 			Vector3(0.0f, -0.55f, 0.0f));
-	meshutil::add_box(hull, toon, Vector3(0.20f, 0.10f, 0.20f), Vector3(0.0f, 0.30f, 1.42f), trim);
+	meshutil::add_box(hull, toon, Vector3(0.20f, 0.10f, 0.20f), Vector3(0.0f, 0.38f, 1.42f), trim);
 	meshutil::add_box(hull, toon, Vector3(0.64f, 0.08f, 0.62f), Vector3(0.0f, 0.02f, 1.30f), wood_dark);
 
+	// 船舱内底板：抬高到吃水线以上，坐在里面看不到水
+	meshutil::add_box(hull, toon, Vector3(0.80f, 0.06f, 1.68f), Vector3(0.0f, 0.12f, -0.06f), trim);
+	meshutil::add_box(hull, toon, Vector3(0.54f, 0.06f, 0.78f), Vector3(0.0f, 0.12f, 1.08f), trim);
+
 	// 两道横座板
-	meshutil::add_box(hull, toon, Vector3(0.84f, 0.06f, 0.26f), Vector3(0.0f, 0.30f, 0.42f), trim);
-	meshutil::add_box(hull, toon, Vector3(0.84f, 0.06f, 0.26f), Vector3(0.0f, 0.30f, -0.36f), trim);
+	meshutil::add_box(hull, toon, Vector3(0.84f, 0.06f, 0.26f), Vector3(0.0f, 0.36f, 0.42f), trim);
+	meshutil::add_box(hull, toon, Vector3(0.84f, 0.06f, 0.26f), Vector3(0.0f, 0.36f, -0.36f), trim);
 
 	// 两支可动的桨：枢轴在船舷内侧，桨身沿 ±X 伸出
 	for (int i = 0; i < 2; i++) {
 		float side = (i == 0) ? 1.0f : -1.0f;
 		Node3D *pivot = memnew(Node3D);
 		pivot->set_name(i == 0 ? "OarR" : "OarL");
-		pivot->set_position(Vector3(side * 0.40f, 0.34f, 0.05f));
+		pivot->set_position(Vector3(side * 0.40f, 0.40f, 0.05f));
 		hull->add_child(pivot);
 		Ref<CylinderMesh> oar;
 		oar.instantiate();

@@ -590,7 +590,7 @@ void Player::_physics_step() {
 	// 2.5 划船：位置跟着船走，自身物理与交互全部暂停（上下船由 Rowboat 处理）
 	if (is_boating) {
 		if (boat != nullptr) {
-			set_global_position(boat->get_global_position() + Vector3(0.0f, 0.45f, 0.0f));
+			set_global_position(boat->get_global_position() + Vector3(0.0f, 0.34f, -0.30f));
 			if (model != nullptr) {
 				float yaw = boat->get_global_rotation().y;
 				float lean = 0.0f;
@@ -598,9 +598,11 @@ void Player::_physics_step() {
 				if (rb != nullptr && std::fabs(rb->get_speed()) > 0.1f) {
 					lean = std::sin(rb->get_row_phase()) * 0.10f;
 				}
+				// 坐在船舱里：整体下沉、纵向压扁并稍向后靠，下身被船舷挡住
+				model->set_scale(Vector3(1.0f, 0.65f, 1.0f));
 				model->set_basis(Basis(Vector3(0.0f, 1.0f, 0.0f), yaw)
-						* Basis(Vector3(1.0f, 0.0f, 0.0f), lean));
-				model->set_position(Vector3(0.0f, 0.0f, 0.0f));
+						* Basis(Vector3(1.0f, 0.0f, 0.0f), -0.12f + lean));
+				model->set_position(Vector3(0.0f, -0.28f, 0.0f));
 			}
 		}
 		set_velocity(Vector3(0.0f, 0.0f, 0.0f));
