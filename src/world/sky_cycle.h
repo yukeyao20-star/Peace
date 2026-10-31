@@ -101,6 +101,7 @@ private:
 	ColorRect *uw_tint = nullptr;
 	float uw_alpha = 0.0f;             // 当前不透明度（平滑过渡）
 	Ref<AudioEffectLowPassFilter> uw_lp; // 水下低通（Master 总线）
+	CPUParticles3D *uw_bubbles = nullptr; // 水下气泡（相机周围上升）
 	int uw_lp_idx = -1;
 	float uw_cutoff = 20000.0f;
 	Ref<StandardMaterial3D> lamp_glow_mat;   // 桥头石灯灯芯材质（两盏灯共用 LampGlowMat，懒查找，改一次全生效）

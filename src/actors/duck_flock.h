@@ -38,6 +38,7 @@ private:
 
 	std::vector<Duck> ducks;
 	float anim_t = 0.0f;
+	Node *sky_cycle = nullptr; // 夜里放慢巡游
 	bool first_frame = true;
 	std::vector<Vector3> last_pos;
 

@@ -154,8 +154,15 @@ void SkyCycle::_notification(int p_what) {
 				float target = 0.0f;
 				Camera3D *cam = get_viewport() != nullptr
 						? Object::cast_to<Camera3D>(get_viewport()->get_camera_3d()) : nullptr;
-				if (cam != nullptr && cam->get_global_position().y < -0.50f) {
+				bool under = cam != nullptr && cam->get_global_position().y < -0.50f;
+				if (under) {
 					target = 0.34f;
+				}
+				if (uw_bubbles != nullptr) {
+					uw_bubbles->set_emitting(under);
+					if (under && cam != nullptr) {
+						uw_bubbles->set_global_position(cam->get_global_position());
+					}
 				}
 				uw_alpha = Math::move_toward(uw_alpha, target, (float)delta * 1.8f);
 				Color col = uw_tint->get_color();
@@ -641,6 +648,38 @@ void SkyCycle::build_underwater() {
 		as->add_bus_effect(0, uw_lp);
 		uw_lp_idx = as->get_bus_effect_count(0) - 1;
 	}
+
+	// 水下气泡：相机周围缓慢上升的细小气泡（只在入水时发射）
+	Ref<SphereMesh> bubble_mesh;
+	bubble_mesh.instantiate();
+	bubble_mesh->set_radius(0.014f);
+	bubble_mesh->set_height(0.028f);
+	bubble_mesh->set_radial_segments(8);
+	bubble_mesh->set_rings(4);
+	Ref<StandardMaterial3D> bubble_mat;
+	bubble_mat.instantiate();
+	bubble_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	bubble_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	bubble_mat->set_albedo(Color(0.85f, 0.94f, 1.0f, 0.55f));
+	bubble_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	bubble_mesh->set_material(bubble_mat);
+	uw_bubbles = memnew(CPUParticles3D);
+	uw_bubbles->set_name("UnderwaterBubbles");
+	uw_bubbles->set_amount(36);
+	uw_bubbles->set_lifetime(2.6f);
+	uw_bubbles->set_mesh(bubble_mesh);
+	uw_bubbles->set_direction(Vector3(0.0f, 1.0f, 0.0f));
+	uw_bubbles->set_spread(28.0f);
+	uw_bubbles->set_gravity(Vector3(0.0f, 1.6f, 0.0f));
+	uw_bubbles->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.10f);
+	uw_bubbles->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.35f);
+	uw_bubbles->set_param_min(CPUParticles3D::PARAM_SCALE, 0.6f);
+	uw_bubbles->set_param_max(CPUParticles3D::PARAM_SCALE, 1.4f);
+	uw_bubbles->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_BOX);
+	uw_bubbles->set_emission_box_extents(Vector3(1.6f, 0.6f, 1.6f));
+	uw_bubbles->set_visibility_aabb(AABB(Vector3(-4, -2, -4), Vector3(8, 8, 8)));
+	uw_bubbles->set_emitting(false);
+	add_child(uw_bubbles);
 }
 
 void SkyCycle::build_stars() {

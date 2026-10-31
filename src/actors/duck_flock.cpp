@@ -14,6 +14,7 @@
 #include <godot_cpp/variant/transform3d.hpp>
 
 #include "mesh_util.h"
+#include "../world/sky_cycle.h"
 
 using namespace godot;
 
@@ -27,16 +28,29 @@ void DuckFlock::_notification(int p_what) {
 				break;
 			}
 			build();
+			if (get_parent() != nullptr) {
+				sky_cycle = get_parent()->get_node_or_null("SkyCycle");
+			}
 			set_process(true);
 		} break;
 		case NOTIFICATION_PROCESS: {
 			double delta = get_process_delta_time();
 			anim_t += (float)delta;
+			// 夜晚鸭子放慢巡游（贴着水面歇着漂），白天正常速度
+			float night_mul = 1.0f;
+			if (sky_cycle != nullptr) {
+				SkyCycle *sky = Object::cast_to<SkyCycle>(sky_cycle);
+				if (sky != nullptr) {
+					float td = sky->get_time_of_day();
+					bool night = td < 0.22f || td > 0.78f;
+					night_mul = night ? 0.35f : 1.0f;
+				}
+			}
 			for (Duck &d : ducks) {
 				if (d.root == nullptr) {
 					continue;
 				}
-				d.angle += d.speed * (float)delta;
+				d.angle += d.speed * night_mul * (float)delta;
 				float bob = std::sin(anim_t * d.bob_w + d.bob_phase) * 0.012f;
 				Vector3 pos(lake_center.x + std::cos(d.angle) * d.radius,
 						water_level + 0.02f + bob,
