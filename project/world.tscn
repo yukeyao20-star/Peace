@@ -1292,6 +1292,14 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.2, 0, -8.8)
 
 [node name="Shells" type="ShellField" parent="."]
 
+[node name="Owls" type="OwlPerch" parent="."]
+
+[node name="StonePath" type="StonePath" parent="."]
+
+[node name="CabinLife" type="CabinLife" parent="."]
+
+[node name="Dandelions" type="DandelionField" parent="."]
+
 [node name="Bench" type="Bench" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10.4, 0, -13.2)
 

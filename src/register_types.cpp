@@ -28,6 +28,10 @@
 #include "lily_pond.h"
 #include "squirrel_field.h"
 #include "shells.h"
+#include "owl_perch.h"
+#include "stone_path.h"
+#include "cabin_life.h"
+#include "dandelion_field.h"
 #include "dock_moths.h"
 #include "heron_pond.h"
 #include "campfire.h"
@@ -80,6 +84,10 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(SquirrelField);
 	GDREGISTER_CLASS(BeachShell);
 	GDREGISTER_CLASS(ShellField);
+	GDREGISTER_CLASS(OwlPerch);
+	GDREGISTER_CLASS(StonePath);
+	GDREGISTER_CLASS(CabinLife);
+	GDREGISTER_CLASS(DandelionField);
 	GDREGISTER_CLASS(DockMoths);
 	GDREGISTER_CLASS(HeronPond);
 	GDREGISTER_CLASS(Campfire);
