@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include <godot_cpp/classes/array_mesh.hpp>
 #include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
@@ -14,6 +15,7 @@
 #include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
+#include <godot_cpp/classes/surface_tool.hpp>
 #include <godot_cpp/classes/window.hpp>
 
 #include "../systems/mesh_util.h"
@@ -239,6 +241,10 @@ void MorningGlory::build() {
 		add_child(f);
 		flowers[i] = f;
 
+		// 优化（第 180 轮）：喇叭 + 五片花瓣合并成一张烘焙网格，每朵花少 6 个节点。
+		Ref<SurfaceTool> bake;
+		bake.instantiate();
+		bake->begin(Mesh::PRIMITIVE_TRIANGLES);
 		Ref<CylinderMesh> trumpet;
 		trumpet.instantiate();
 		trumpet->set_top_radius(0.050f);
@@ -246,25 +252,20 @@ void MorningGlory::build() {
 		trumpet->set_height(0.075f);
 		trumpet->set_radial_segments(9);
 		trumpet->set_rings(1);
-		trumpet->set_material(flower_mats[i]);
-		MeshInstance3D *tm = memnew(MeshInstance3D);
-		tm->set_mesh(trumpet);
-		tm->set_position(Vector3(0.0f, 0.0f, 0.035f));
-		tm->set_rotation(Vector3(1.5707964f, 0.0f, 0.0f));
-		f->add_child(tm);
-
+		bake->append_from(trumpet, 0, Transform3D(Basis(Vector3(1.0f, 0.0f, 0.0f), 1.5707964f), Vector3(0.0f, 0.0f, 0.035f)));
+		Ref<BoxMesh> petal;
+		petal.instantiate();
+		petal->set_size(Vector3(0.055f, 0.022f, 0.008f));
 		for (int p = 0; p < 5; p++) {
 			const float a = (float)p * 1.2566f;
-			Ref<BoxMesh> petal;
-			petal.instantiate();
-			petal->set_size(Vector3(0.055f, 0.022f, 0.008f));
-			petal->set_material(flower_mats[i]);
-			MeshInstance3D *pm = memnew(MeshInstance3D);
-			pm->set_mesh(petal);
 			const Basis b(Vector3(0.0f, 0.0f, 1.0f), a);
-			pm->set_transform(Transform3D(b, Vector3(std::cos(a) * 0.048f, std::sin(a) * 0.048f, 0.070f)));
-			f->add_child(pm);
+			bake->append_from(petal, 0, Transform3D(b, Vector3(std::cos(a) * 0.048f, std::sin(a) * 0.048f, 0.070f)));
 		}
+		Ref<ArrayMesh> bloom = bake->commit();
+		bloom->surface_set_material(0, flower_mats[i]);
+		MeshInstance3D *bm = memnew(MeshInstance3D);
+		bm->set_mesh(bloom);
+		f->add_child(bm);
 		Ref<SphereMesh> core;
 		core.instantiate();
 		core->set_radius(0.012f);
