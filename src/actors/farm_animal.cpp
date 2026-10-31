@@ -152,8 +152,23 @@ void FarmAnimal::_notification(int p_what) {
 			if (sky != nullptr) {
 				night = sky->get_night_factor();
 				wet = Math::clamp(sky->get_rain_amount() + sky->get_snow_amount(), 0.0f, 1.0f);
+				snow_now = sky->get_snow_amount();
 			}
 			const float dt = (float)get_process_delta_time();
+			if (snow_cap != nullptr) {
+				snow_cap->set_visible(snow_now > 0.15f);
+				snow_cap->set_scale(snow_cap_base * (0.55f + 0.45f * Math::clamp(snow_now, 0.0f, 1.0f)));
+			}
+			if (breath != nullptr) {
+				const bool cold = snow_now > 0.2f || night > 0.65f;
+				if (cold) {
+					breath_t -= dt;
+					if (breath_t <= 0.0f) {
+						breath->restart();
+						breath_t = 2.4f + 0.4f * std::sin(anim_time * 1.7f + (float)kind);
+					}
+				}
+			}
 			tick_behavior(dt, night, wet);
 			// —— 喂食反馈：开心跳一下（身体根做抛物线小跳）——
 			if (hop_t > 0.0f) {
@@ -318,6 +333,62 @@ void FarmAnimal::build_model() {
 		}
 		tail = part(body, stick(0.022f, 0.30f), fur, Vector3(0.0, body_y + 0.10f, -0.30),
 				Vector3(1, 1, 1), cat ? -0.9f : -0.6f); // 猫尾高翘、狗尾斜举
+	}
+
+	// —— 冬日：背上的积雪与冷天呼出的白气 ——
+	float cap_y = 1.21f;
+	Vector3 cap_scale(0.52f, 0.11f, 0.85f);
+	float breath_y = 0.95f;
+	float breath_z = 1.00f;
+	if (kind == 3) {
+		cap_y = 1.24f;
+		breath_y = 0.78f;
+		breath_z = 0.95f;
+	} else if (kind == 2) {
+		cap_y = 1.21f;
+		breath_y = 0.95f;
+		breath_z = 1.05f;
+	} else if (kind == 0) {
+		cap_y = 0.63f;
+		cap_scale = Vector3(0.30f, 0.07f, 0.45f);
+	} else {
+		cap_y = 0.71f;
+		cap_scale = Vector3(0.34f, 0.07f, 0.50f);
+	}
+	snow_cap = part(body, ball(0.42f, 0.16f), mat_of(Color(0.93f, 0.96f, 1.0f)), Vector3(0.0f, cap_y, 0.02f), cap_scale);
+	snow_cap->set_name("SnowCap");
+	snow_cap->set_visible(false);
+	snow_cap_base = cap_scale;
+	if (kind >= 2) {
+		Ref<SphereMesh> puff;
+		puff.instantiate();
+		puff->set_radius(0.07f);
+		puff->set_height(0.14f);
+		puff->set_radial_segments(6);
+		puff->set_rings(3);
+		Ref<StandardMaterial3D> pm;
+		pm.instantiate();
+		pm->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+		pm->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+		pm->set_albedo(Color(0.90f, 0.93f, 0.95f, 0.15f));
+		pm->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+		puff->set_material(pm);
+		breath = memnew(CPUParticles3D);
+		breath->set_name("ColdBreath");
+		breath->set_amount(10);
+		breath->set_lifetime(1.5f);
+		breath->set_one_shot(true);
+		breath->set_mesh(puff);
+		breath->set_direction(Vector3(0.0f, 0.18f, 1.0f));
+		breath->set_spread(18.0f);
+		breath->set_gravity(Vector3(0.0f, 0.05f, 0.0f));
+		breath->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.18f);
+		breath->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.36f);
+		breath->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_SPHERE);
+		breath->set_emission_sphere_radius(0.07f);
+		breath->set_position(Vector3(0.0f, breath_y, breath_z));
+		breath->set_emitting(false);
+		body->add_child(breath);
 	}
 
 	if (tail != nullptr) {
@@ -625,7 +696,7 @@ void FarmAnimal::tick_behavior(float p_delta, float p_night, float p_wet) {
 				state_t = 0.8f;
 				break;
 			}
-			float cur_speed = speed * (is_night ? 0.78f : 1.0f);
+			float cur_speed = speed * (is_night ? 0.78f : 1.0f) * (1.0f - 0.35f * Math::clamp(snow_now, 0.0f, 1.0f));
 			gp.x += dir.x * cur_speed * p_delta;
 			gp.z += dir.y * cur_speed * p_delta;
 			set_global_position(gp);

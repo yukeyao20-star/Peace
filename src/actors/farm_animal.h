@@ -53,6 +53,11 @@ class FarmAnimal : public Interactable {
 	float lie_down_weight = 0.0f;              // 卧倒过渡权重 (0.0 站立 ~ 1.0 完全卧倒)
 
 	SkyCycle *sky = nullptr; // 懒查找一次
+	Node3D *snow_cap = nullptr;      // 背上的积雪
+	CPUParticles3D *breath = nullptr; // 冷天呼出的白气
+	float breath_t = 0.0f;
+	float snow_now = 0.0f;
+	Vector3 snow_cap_base = Vector3(0.5f, 0.1f, 0.8f);
 	std::mt19937 rng;
 
 	// 状态机：0 发呆 / 1 走向目标 / 2 吃草
