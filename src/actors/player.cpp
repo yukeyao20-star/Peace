@@ -315,6 +315,7 @@ void Player::_notification(int p_what) {
 			build_skate_shoes();
 			build_propeller();
 			build_swim_bubbles();
+			build_breath();
 
 			// 脚步声：真实雪地踩雪声优先读取外部音频资源（用户下载的踩雪声录音），其余程序化合成
 			steps_voice = memnew(AudioStreamPlayer);
@@ -1252,6 +1253,32 @@ void Player::_physics_step() {
 		swim_bubbles->set_emitting(emit_b);
 		if (emit_b && propeller != nullptr) {
 			swim_bubbles->set_global_position(propeller->get_global_position());
+		}
+	}
+
+	// —— 冷天白气：下雪或寒夜里，隔两秒呼出一小团白雾 ——
+	if (sky_breath == nullptr && get_parent() != nullptr) {
+		sky_breath = Object::cast_to<SkyCycle>(get_parent()->get_node_or_null("SkyCycle"));
+	}
+	if (breath != nullptr) {
+		float snow = (sky_breath != nullptr) ? sky_breath->get_snow_amount() : 0.0f;
+		float night = (sky_breath != nullptr) ? sky_breath->get_night_factor() : 0.0f;
+		bool cold = (snow > 0.15f) || (night > 0.65f && snow < 0.8f);
+		bool allowed = cold && !is_sleeping && !is_swimming && !photo_mode && !is_lying && !is_map_open && !album_open && !help_open;
+		if (allowed) {
+			breath_t -= (float)delta;
+			if (breath_t <= 0.0f) {
+				Vector3 f = facing.length_squared() > 0.001f ? facing.normalized() : Vector3(0, 0, -1);
+				breath->set_global_position(get_global_position() + Vector3(0.0, 1.42, 0.0) + f * 0.18f);
+				breath->set_direction((f + Vector3(0.0, 0.16, 0.0)).normalized());
+				breath->restart();
+				breath_t = 2.1f + std::sin((float)delta * 0.0f) * 0.0f + 0.25f * std::sin((float)Time::get_singleton()->get_ticks_msec() * 0.001f);
+			}
+		} else {
+			breath_t = 0.0f;
+			if (breath->is_emitting()) {
+				breath->set_emitting(false);
+			}
 		}
 	}
 
@@ -4523,4 +4550,36 @@ void Player::build_swim_bubbles() {
 	swim_bubbles->set_visibility_aabb(AABB(Vector3(-3.0f, -3.0f, -3.0f), Vector3(6.0f, 6.0f, 6.0f)));
 	swim_bubbles->set_emitting(false);
 	add_child(swim_bubbles);
+}
+
+
+void Player::build_breath() {
+	Ref<SphereMesh> puff;
+	puff.instantiate();
+	puff->set_radius(0.045f);
+	puff->set_height(0.09f);
+	puff->set_radial_segments(6);
+	puff->set_rings(4);
+	Ref<StandardMaterial3D> mat;
+	mat.instantiate();
+	mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	mat->set_albedo(Color(0.96f, 0.98f, 1.0f, 0.28f));
+	mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	puff->set_material(mat);
+	breath = memnew(CPUParticles3D);
+	breath->set_name("Breath");
+	breath->set_amount(8);
+	breath->set_lifetime(1.25f);
+	breath->set_one_shot(true);
+	breath->set("explosiveness", 0.25f);
+	breath->set_mesh(puff);
+	breath->set_spread(14.0f);
+	breath->set_gravity(Vector3(0.0f, 0.10f, 0.0f));
+	breath->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.16f);
+	breath->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.32f);
+	breath->set_param_min(CPUParticles3D::PARAM_SCALE, 0.6f);
+	breath->set_param_max(CPUParticles3D::PARAM_SCALE, 1.4f);
+	breath->set_emitting(false);
+	add_child(breath);
 }

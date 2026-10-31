@@ -31,6 +31,7 @@ class Label;
 class OmniLight3D;
 class MeshInstance3D;
 class StandardMaterial3D;
+class SkyCycle;
 class TextureRect;
 class GridContainer;
 class HBoxContainer;
@@ -281,6 +282,10 @@ private:
 	Node3D *boat = nullptr;
 	Node3D *propeller = nullptr;
 	CPUParticles3D *swim_bubbles = nullptr; // 螺旋桨气泡尾迹
+	CPUParticles3D *breath = nullptr;      // 冷天呼出的白气
+	float breath_t = 0.0f;
+	SkyCycle *sky_breath = nullptr;
+	void build_breath();
 	Node3D *propeller_blades = nullptr;
 	double swim_t = 0.0;
 	float swim_roll = 0.0f;
