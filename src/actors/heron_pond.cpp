@@ -59,10 +59,10 @@ void HeronPond::_notification(int p_what) {
 						h.root->set_global_position(h.home);
 						h.root->set_visible(true);
 						if (h.wing_l) {
-							h.wing_l->set_rotation(Vector3(0.0f, 0.0f, 1.20f));
+							h.wing_l->set_rotation(Vector3(0.16f, 0.0f, 1.42f));
 						}
 						if (h.wing_r) {
-							h.wing_r->set_rotation(Vector3(0.0f, 0.0f, -1.20f));
+							h.wing_r->set_rotation(Vector3(0.16f, 0.0f, -1.42f));
 						}
 					}
 					continue;
@@ -214,6 +214,20 @@ void HeronPond::spawn_heron(int p_index, const Vector3 &p_home, unsigned p_seed)
 	// 腿
 	cylinder(Vector3(0.06f, 0.42f, 0.0f), 0.014f, 0.80f, leg_c, 0.0f);
 	cylinder(Vector3(-0.06f, 0.42f, 0.0f), 0.014f, 0.80f, leg_c, 0.0f);
+	// 脚爪：三趾小三角
+	for (int side = -1; side <= 1; side += 2) {
+		for (int toe = -1; toe <= 1; toe++) {
+			Ref<BoxMesh> foot;
+			foot.instantiate();
+			foot->set_size(Vector3(0.012f, 0.012f, 0.09f));
+			foot->set_material(meshutil::toon_material(toon, leg_c));
+			MeshInstance3D *fmi = memnew(MeshInstance3D);
+			fmi->set_mesh(foot);
+			fmi->set_position(Vector3((float)side * 0.06f + (float)toe * 0.022f, 0.025f, -0.03f));
+			fmi->set_rotation(Vector3(0.0f, (float)toe * 0.35f, 0.0f));
+			h.root->add_child(fmi);
+		}
+	}
 	// 脖子（枢轴节点，便于低头）
 	h.neck = memnew(Node3D);
 	h.neck->set_name("Neck");
@@ -268,9 +282,9 @@ void HeronPond::spawn_heron(int p_index, const Vector3 &p_home, unsigned p_seed)
 		h.root->add_child(node);
 		MeshInstance3D *wmi = memnew(MeshInstance3D);
 		wmi->set_mesh(wing);
-		wmi->set_position(Vector3(p_left ? -0.18f : 0.18f, 0.0f, 0.0f));
+		wmi->set_position(Vector3(p_left ? -0.15f : 0.15f, 0.02f, -0.03f));
 		node->add_child(wmi);
-		node->set_rotation(Vector3(0.0f, 0.0f, p_left ? 1.20f : -1.20f)); // 收翅
+		node->set_rotation(Vector3(0.16f, 0.0f, p_left ? 1.42f : -1.42f)); // 收翅
 		return node;
 	};
 	h.wing_l = make_wing(true);

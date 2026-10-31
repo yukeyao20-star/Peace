@@ -49,6 +49,10 @@ void Campfire::_notification(int p_what) {
 				float flicker = 0.92f + 0.06f * std::sin(t * 7.3f) + 0.02f * std::sin(t * 19.1f + 1.7f);
 				light->set_param(Light3D::PARAM_ENERGY, 1.55f * flicker);
 			}
+			if (flame != nullptr) {
+				float s = 1.0f + 0.06f * std::sin(t * 9.1f) + 0.03f * std::sin(t * 15.7f + 0.8f);
+				flame->set_scale(Vector3(s, 1.0f + 0.10f * std::sin(t * 6.4f), s));
+			}
 		} break;
 		default:
 			break;
@@ -99,6 +103,27 @@ void Campfire::build() {
 		mi->set_rotation(Vector3(1.5707964f, a, 0.0f));
 		add_child(mi);
 	}
+
+	// 炭床：木柴底部一层暗红发光
+	Ref<SphereMesh> bed_mesh;
+	bed_mesh.instantiate();
+	bed_mesh->set_radius(0.24f);
+	bed_mesh->set_height(0.12f);
+	bed_mesh->set_radial_segments(10);
+	bed_mesh->set_rings(5);
+	Ref<StandardMaterial3D> bed_mat;
+	bed_mat.instantiate();
+	bed_mat->set_albedo(Color(0.22f, 0.09f, 0.04f));
+	bed_mat->set_feature(BaseMaterial3D::FEATURE_EMISSION, true);
+	bed_mat->set_emission(Color(1.0f, 0.32f, 0.08f));
+	bed_mat->set_emission_energy_multiplier(0.9f);
+	bed_mesh->set_material(bed_mat);
+	MeshInstance3D *bed = memnew(MeshInstance3D);
+	bed->set_name("EmberBed");
+	bed->set_mesh(bed_mesh);
+	bed->set_position(Vector3(0.0f, 0.10f, 0.0f));
+	bed->set_scale(Vector3(1.0f, 0.55f, 1.0f));
+	add_child(bed);
 
 	// 火焰
 	Ref<SphereMesh> flame_mesh;
@@ -168,6 +193,38 @@ void Campfire::build() {
 	embers->set_position(Vector3(0.0f, 0.22f, 0.0f));
 	embers->set_emitting(true);
 	add_child(embers);
+
+	// 青烟：一小缕慢慢上升、渐隐
+	Ref<SphereMesh> smoke_mesh;
+	smoke_mesh.instantiate();
+	smoke_mesh->set_radius(0.09f);
+	smoke_mesh->set_height(0.18f);
+	smoke_mesh->set_radial_segments(6);
+	smoke_mesh->set_rings(3);
+	Ref<StandardMaterial3D> smoke_mat;
+	smoke_mat.instantiate();
+	smoke_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	smoke_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	smoke_mat->set_albedo(Color(0.55f, 0.58f, 0.58f, 0.12f));
+	smoke_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	smoke_mesh->set_material(smoke_mat);
+	CPUParticles3D *smoke = memnew(CPUParticles3D);
+	smoke->set_name("Smoke");
+	smoke->set_amount(10);
+	smoke->set_lifetime(2.8f);
+	smoke->set_mesh(smoke_mesh);
+	smoke->set_direction(Vector3(0.0f, 1.0f, 0.0f));
+	smoke->set_spread(12.0f);
+	smoke->set_gravity(Vector3(0.05f, 0.12f, 0.02f));
+	smoke->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.22f);
+	smoke->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.40f);
+	smoke->set_param_min(CPUParticles3D::PARAM_SCALE, 0.8f);
+	smoke->set_param_max(CPUParticles3D::PARAM_SCALE, 1.8f);
+	smoke->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_SPHERE);
+	smoke->set_emission_sphere_radius(0.10f);
+	smoke->set_position(Vector3(0.0f, 0.45f, 0.0f));
+	smoke->set_emitting(true);
+	add_child(smoke);
 
 	// 火光
 	light = memnew(OmniLight3D);
