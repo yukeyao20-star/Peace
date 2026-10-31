@@ -1354,6 +1354,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -11.5, 0, -22.5)
 
 [node name="CabinYard" type="CabinYard" parent="."]
 
+[node name="RockingChair" type="RockingChair" parent="."]
+transform = Transform3D(0.707, 0, -0.707, 0, 1, 0, 0.707, 0, 0.707, 8.04, 0.53, 9.98)
+
 [node name="CampCat" type="CampCat" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.5, 0, -12.3)
 

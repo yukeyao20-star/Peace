@@ -43,6 +43,7 @@
 #include "hammock.h"
 #include "floating_lanterns.h"
 #include "cabin_yard.h"
+#include "rocking_chair.h"
 #include "dock_moths.h"
 #include "heron_pond.h"
 #include "campfire.h"
@@ -110,6 +111,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(Hammock);
 	GDREGISTER_CLASS(FloatingLanterns);
 	GDREGISTER_CLASS(CabinYard);
+	GDREGISTER_CLASS(RockingChair);
 	GDREGISTER_CLASS(DockMoths);
 	GDREGISTER_CLASS(HeronPond);
 	GDREGISTER_CLASS(Campfire);
