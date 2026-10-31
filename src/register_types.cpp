@@ -110,6 +110,7 @@
 #include "picnic_food.h"
 #include "winter_gear.h"
 #include "butterfly_garden.h"
+#include "cricket_chorus.h"
 #include "beach_finds.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
@@ -245,6 +246,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(PicnicFood);
 	GDREGISTER_CLASS(WinterGear);
 	GDREGISTER_CLASS(ButterflyGarden);
+	GDREGISTER_CLASS(CricketChorus);
 	GDREGISTER_CLASS(BeachFinds);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
