@@ -12,6 +12,7 @@ class Player;
 
 namespace godot {
 
+class CPUParticles3D;
 class Node3D;
 class OmniLight3D;
 class SkyCycle;
@@ -29,6 +30,8 @@ private:
 	OmniLight3D *lantern_light = nullptr;
 	StandardMaterial3D *lantern_glass = nullptr;
 	SkyCycle *sky = nullptr;
+	CPUParticles3D *visit = nullptr; // 坐下后围过来的萤火虫
+	bool visit_hint = false;
 	float lamp_t = 0.0f;
 
 	void build();

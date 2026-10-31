@@ -1,6 +1,7 @@
 #include "bench.h"
 
 #include <godot_cpp/classes/box_mesh.hpp>
+#include <godot_cpp/classes/cpu_particles3d.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/input.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
@@ -41,7 +42,7 @@ void Bench::_notification(int p_what) {
 			}
 			add_to_group("interactables");
 			seat_yaw = 1.5707964f; // 朝 +X（火堆方向）
-			seat_pos = get_global_position() + Vector3(0.0f, 0.36f, 0.0f);
+			seat_pos = get_global_position() + Vector3(0.0f, 0.145f, 0.0f);
 			if (get_parent() != nullptr) {
 				sky = Object::cast_to<SkyCycle>(get_parent()->get_node_or_null("SkyCycle"));
 			}
@@ -66,6 +67,25 @@ void Bench::_notification(int p_what) {
 				lantern_light->set_visible(on > 0.02f);
 				if (lantern_glass != nullptr) {
 					lantern_glass->set("emission_energy_multiplier", 0.35f + 2.6f * on * flick);
+				}
+			}
+			// 夜里坐在长椅上：萤火虫会慢慢围过来
+			bool night_ok = false;
+			if (sky != nullptr) {
+				night_ok = sky->get_night_factor() > 0.5f
+						&& sky->get_rain_amount() + sky->get_snow_amount() < 0.3f;
+			}
+			if (visit != nullptr) {
+				bool show = seated != nullptr && night_ok;
+				visit->set_emitting(show);
+				if (show && !visit_hint) {
+					visit_hint = true;
+					if (get_parent() != nullptr) {
+						Node *gd = get_parent()->get_node_or_null("GameDirector");
+						if (gd != nullptr) {
+							gd->call("flash_hint", String::utf8("萤火虫围过来了 · 再坐一会儿"), 3.5f);
+						}
+					}
 				}
 			}
 			if (seated == nullptr) {
@@ -184,4 +204,38 @@ void Bench::build() {
 	lantern_light->set_param(Light3D::PARAM_ENERGY, 0.0f);
 	lantern_light->set_visible(false);
 	lantern_pivot->add_child(lantern_light);
+
+	// 夜坐时的萤火虫：一团小小的暖绿色光点从草地围到座位边
+	Ref<SphereMesh> fly;
+	fly.instantiate();
+	fly->set_radius(0.022f);
+	fly->set_height(0.044f);
+	fly->set_radial_segments(6);
+	fly->set_rings(4);
+	Ref<StandardMaterial3D> fly_mat;
+	fly_mat.instantiate();
+	fly_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	fly_mat->set_albedo(Color(0.95f, 1.0f, 0.55f, 0.95f));
+	fly_mat->set("emission_enabled", true);
+	fly_mat->set("emission", Color(0.85f, 1.0f, 0.38f));
+	fly_mat->set("emission_energy_multiplier", 2.0f);
+	fly_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	fly->set_material(fly_mat);
+	visit = memnew(CPUParticles3D);
+	visit->set_name("BenchFireflies");
+	visit->set_amount(18);
+	visit->set_lifetime(4.2f);
+	visit->set_mesh(fly);
+	visit->set_direction(Vector3(0.0f, 1.0f, 0.0f));
+	visit->set_spread(70.0f);
+	visit->set_gravity(Vector3(0.02f, 0.03f, 0.01f));
+	visit->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.10f);
+	visit->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.28f);
+	visit->set_param_min(CPUParticles3D::PARAM_SCALE, 0.5f);
+	visit->set_param_max(CPUParticles3D::PARAM_SCALE, 1.2f);
+	visit->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_BOX);
+	visit->set_emission_box_extents(Vector3(1.4f, 0.5f, 1.5f));
+	visit->set_position(Vector3(0.0f, 0.7f, 0.0f));
+	visit->set_emitting(false);
+	add_child(visit);
 }
