@@ -117,7 +117,8 @@
 | 104 | 银河星尘带（调研星野参考后：倾斜大圆 900 星点/MultiMesh 单 draw call/颜色温度/随星穹旋转/昼夜显隐） | a621ab3 |
 | 105 | 拍照模式升级（调研 CameraAttributesPractical 后：景深/三分网格/暗角/层级/退出恢复） | 17443ba |
 | 106 | 手柄支持（调研 Godot Input 手柄 API 后：左摇杆径向死区移动/右摇杆视角/ABXY 与十字键映射/插拔提示/落地与互动短震动） | 8bca4fd |
-| 107 | 门廊雨链（调研雨链/悬链线后：十级铜杯随风轻摆/雨珠螺旋下滑/落到石钵泛涟漪/程序化流水声/雪天白霜；顺手修 T 键天气切换与八音盒待办回调） | 本轮提交 |
+| 107 | 门廊雨链（调研雨链/悬链线后：十级铜杯随风轻摆/雨珠螺旋下滑/落到石钵泛涟漪/程序化流水声/雪天白霜；顺手修 T 键天气切换与八音盒待办回调） | 7dba046 |
+| 108 | 雨后蜗牛（调研地面痕迹淡出做法后：四只雨后出没/慢爬游走/黏液痕逐片淡出/人靠近缩回壳里/雨停归隐） | 本轮提交 |
 
 ## 编号对账
 
@@ -159,6 +160,10 @@
 - Tshmofen/verlet-rope-4 —— Godot 4 Verlet 绳索；本作链条短而绷直，
   用更轻的单摆轻摆，不逐节点积分
 - godot-demo-projects compute/texture —— 水滴落水面的涟漪高度场参考
+- Godot 官方文档「Using decals」/ Decal 类 —— 足迹、水渍类贴花随时间淡出的做法
+- godotshaders「Decal shader (+Y_Fading +Particle Alpha)」—— 用 alpha 渐变做地面痕迹
+- Wandering Door Games / So Little Slime —— Line2D 尾端更淡更细的黏液痕，整条定时淡出
+- pollen-not-included snail.gd —— 蜗牛移动/进食/睡眠状态划分参考
 
 ## 收尾
 
