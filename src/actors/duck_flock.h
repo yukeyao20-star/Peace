@@ -39,6 +39,9 @@ private:
 		float bob_w = 1.1f;    // 浮动频率
 		float bob_phase = 0.0f;
 		float yaw_offset = 0.0f; // 朝向微偏（不完全沿切线）
+		bool duckling = false;
+		int follow = -1;        // 小鸭跟随的母鸭下标
+		float follow_side = 0.0f;
 	};
 
 	int duck_count = 4;
@@ -72,7 +75,8 @@ private:
 	void update_crumbs(float p_delta);
 
 	void build();
-	void spawn_duck(int p_index, unsigned p_seed);
+	void spawn_duck(int p_index, unsigned p_seed, bool p_duckling = false,
+			int p_follow = -1, float p_side = 0.0f);
 	Ref<AudioStreamWAV> make_quack();
 
 protected:

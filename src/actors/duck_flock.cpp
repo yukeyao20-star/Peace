@@ -131,6 +131,29 @@ void DuckFlock::_notification(int p_what) {
 				if (d.root == nullptr) {
 					continue;
 				}
+				// 小鸭：不参与环形巡游，贴着母鸭侧后方跟随（投喂/栖岸时也一起走）
+				if (d.follow >= 0 && d.follow < (int)ducks.size()
+						&& ducks[d.follow].root != nullptr) {
+					Duck &m = ducks[d.follow];
+					Transform3D mt = m.root->get_global_transform();
+					Vector3 mfwd = -mt.basis.get_column(2); // 母鸭朝前（-Z）
+					Vector3 mright = mt.basis.get_column(0);
+					float bob_l = std::sin(anim_t * d.bob_w + d.bob_phase) * 0.010f;
+					Vector3 target = m.root->get_global_position()
+							- mfwd * 0.55f + mright * (d.follow_side * 0.55f)
+							+ Vector3(0.0f, bob_l, 0.0f);
+					Vector3 cur = d.root->get_global_position();
+					Vector3 np = cur.lerp(target, Math::min(1.0f, (float)delta * 5.0f));
+					d.root->set_global_position(np);
+					if (mfwd.length_squared() > 0.0001f) {
+						d.root->look_at(np + mfwd.normalized(), Vector3(0.0f, 1.0f, 0.0f));
+					}
+					if (d.wake != nullptr) {
+						float ws_l = 1.0f + 0.10f * std::sin(anim_t * 3.0f + d.bob_phase);
+						d.wake->set_scale(Vector3(ws_l, 1.0f, ws_l));
+					}
+					continue;
+				}
 				d.angle += d.speed * night_mul * (float)delta * (1.0f - rest_k * 0.92f);
 				float bob = std::sin(anim_t * d.bob_w + d.bob_phase) * 0.012f;
 				Vector3 pos(lake_center.x + std::cos(d.angle) * d.radius,
@@ -198,9 +221,12 @@ void DuckFlock::build() {
 	for (int i = 1; i < duck_count; i++) {
 		spawn_duck(i, 20261031u + (unsigned)i * 7919u);
 	}
+	// 两只小鸭跟着 0 号母鸭
+	spawn_duck(duck_count, 20261031u + 991u, true, 0, -0.62f);
+	spawn_duck(duck_count + 1, 20261031u + 1993u, true, 0, 0.62f);
 }
 
-void DuckFlock::spawn_duck(int p_index, unsigned p_seed) {
+void DuckFlock::spawn_duck(int p_index, unsigned p_seed, bool p_duckling, int p_follow, float p_side) {
 	std::mt19937 rng(p_seed);
 	auto rnd = [&rng](float lo, float hi) {
 		std::uniform_real_distribution<float> d(lo, hi);
@@ -208,22 +234,35 @@ void DuckFlock::spawn_duck(int p_index, unsigned p_seed) {
 	};
 
 	Duck d;
-	d.angle = rnd(0.0f, 6.2831853f);
-	d.radius = rnd(6.2f, 9.4f);
-	d.speed = rnd(0.022f, 0.052f) * (rnd(0.0f, 1.0f) < 0.5f ? -1.0f : 1.0f);
-	d.bob_w = rnd(0.9f, 1.7f);
-	d.bob_phase = rnd(0.0f, 6.2831853f);
-	d.yaw_offset = (rnd(0.0f, 1.0f) - 0.5f) * 0.35f;
+	d.duckling = p_duckling;
+	d.follow = p_follow;
+	d.follow_side = p_side;
+	if (p_duckling) {
+		d.bob_w = rnd(1.6f, 2.3f);
+		d.bob_phase = rnd(0.0f, 6.2831853f);
+	} else {
+		d.angle = rnd(0.0f, 6.2831853f);
+		d.radius = rnd(6.2f, 9.4f);
+		d.speed = rnd(0.022f, 0.052f) * (rnd(0.0f, 1.0f) < 0.5f ? -1.0f : 1.0f);
+		d.bob_w = rnd(0.9f, 1.7f);
+		d.bob_phase = rnd(0.0f, 6.2831853f);
+		d.yaw_offset = (rnd(0.0f, 1.0f) - 0.5f) * 0.35f;
+	}
 
 	d.root = memnew(Node3D);
-	d.root->set_name("Duck" + String::num_int64(p_index));
+	d.root->set_name((p_duckling ? "Duckling" : "Duck") + String::num_int64(p_index));
 	add_child(d.root);
 
 	Ref<Shader> toon = meshutil::load_toon_shader();
-	const bool male = rnd(0.0f, 1.0f) < 0.55f;
-	const Color body_c = male ? Color(0.64f, 0.62f, 0.57f) : Color(0.56f, 0.47f, 0.35f);
-	const Color head_c = male ? Color(0.10f, 0.36f, 0.22f) : Color(0.44f, 0.35f, 0.25f);
+	const bool male = !p_duckling && rnd(0.0f, 1.0f) < 0.55f;
+	const Color body_c = p_duckling ? Color(0.86f, 0.76f, 0.42f)
+			: (male ? Color(0.64f, 0.62f, 0.57f) : Color(0.56f, 0.47f, 0.35f));
+	const Color head_c = p_duckling ? Color(0.91f, 0.82f, 0.50f)
+			: (male ? Color(0.10f, 0.36f, 0.22f) : Color(0.44f, 0.35f, 0.25f));
 	const Color beak_c(0.93f, 0.58f, 0.12f);
+	if (p_duckling) {
+		d.root->set_scale(Vector3(0.62f, 0.62f, 0.62f));
+	}
 
 	auto add_sphere = [&](const Vector3 &p_pos, float p_radius, float p_height,
 			const Vector3 &p_scale, const Color &p_color) {
@@ -299,15 +338,15 @@ void DuckFlock::spawn_duck(int p_index, unsigned p_seed) {
 	// 尾迹水圈：贴在吃水线附近的一圈淡白圆环（随浮动轻微缩放）
 	Ref<TorusMesh> torus;
 	torus.instantiate();
-	torus->set_inner_radius(0.17f);
-	torus->set_outer_radius(0.21f);
-	torus->set_rings(6);
-	torus->set_ring_segments(20);
+	torus->set_inner_radius(0.165f);
+	torus->set_outer_radius(0.195f);
+	torus->set_rings(8);
+	torus->set_ring_segments(44); // 圆环更顺滑（低段数近看像白色多边形）
 	Ref<StandardMaterial3D> wake_mat;
 	wake_mat.instantiate();
 	wake_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
 	wake_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
-	wake_mat->set_albedo(Color(0.92f, 0.96f, 1.0f, 0.22f));
+	wake_mat->set_albedo(Color(0.92f, 0.96f, 1.0f, 0.16f));
 	wake_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
 	torus->set_material(wake_mat);
 	MeshInstance3D *wake_mi = memnew(MeshInstance3D);
