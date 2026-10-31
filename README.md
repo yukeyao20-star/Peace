@@ -132,6 +132,10 @@ scons platform=macos target=template_debug
   --export-release "macOS" ../release/game3d.dmg
 ```
 
+## 素材与许可
+
+外部素材的候选来源、许可说明与接入规范见 [docs/ASSETS.md](docs/ASSETS.md)，署名记录见 [ATTRIBUTION.md](ATTRIBUTION.md)。
+
 ## 跨平台构建（CI）
 
 发布主路径是**本机交叉编译**：`scons` 在 macOS 上分别交叉编译 linux/windows 动态库，再由 `tools/package.sh` 统一导出、打包、上传网站（三平台产物已验证可用）。`.github/workflows/build.yml` 只是备用验证通道，且**仅手动触发**（Actions → build → Run workflow；不在 push/PR 时自动跑）：
