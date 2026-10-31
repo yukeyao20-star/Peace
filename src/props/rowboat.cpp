@@ -244,6 +244,32 @@ void Rowboat::build_hull() {
 		}
 	}
 
+	// 船头小灯笼：夜里随船照亮前方水面
+	meshutil::add_box(hull, toon, Vector3(0.06f, 0.55f, 0.06f), Vector3(0.0f, 0.68f, 1.22f), wood_dark);
+	meshutil::add_box(hull, toon, Vector3(0.20f, 0.05f, 0.20f), Vector3(0.0f, 0.98f, 1.22f), wood_dark);
+	Ref<StandardMaterial3D> bow_glow;
+	bow_glow.instantiate();
+	bow_glow->set_albedo(Color(1.0f, 0.86f, 0.58f, 0.92f));
+	bow_glow->set_feature(BaseMaterial3D::FEATURE_EMISSION, true);
+	bow_glow->set_emission(Color(1.0f, 0.78f, 0.44f));
+	bow_glow->set_emission_energy_multiplier(1.5f);
+	Ref<BoxMesh> bow_glass;
+	bow_glass.instantiate();
+	bow_glass->set_size(Vector3(0.14f, 0.16f, 0.14f));
+	bow_glass->set_material(bow_glow);
+	MeshInstance3D *bow_glass_mi = memnew(MeshInstance3D);
+	bow_glass_mi->set_mesh(bow_glass);
+	bow_glass_mi->set_position(Vector3(0.0f, 0.86f, 1.22f));
+	hull->add_child(bow_glass_mi);
+	OmniLight3D *bow_lamp = memnew(OmniLight3D);
+	bow_lamp->set_name("BowLantern");
+	bow_lamp->set_position(Vector3(0.0f, 0.86f, 1.22f));
+	bow_lamp->set_color(Color(1.0f, 0.8f, 0.5f));
+	bow_lamp->set_param(Light3D::PARAM_ENERGY, 1.3f);
+	bow_lamp->set_param(Light3D::PARAM_RANGE, 6.5f);
+	bow_lamp->set_shadow(false);
+	hull->add_child(bow_lamp);
+
 	// 船尾水花
 	Ref<SphereMesh> drop;
 	drop.instantiate();
