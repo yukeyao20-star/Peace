@@ -553,12 +553,12 @@ void GameDirector::roll_day_tasks(int p_day) {
 		t.progress = 0;
 		tasks.push_back(t);
 	} else {
-		// 第 2 天起：浆果恒在（3~5 颗），另从 钓鱼/进球/井水/木箱/菜畦/喂动物
-		// 六类中抽 2 类。以天数为种子确定性生成——读档重进同一天清单一致。
+		// 第 2 天起：浆果恒在（2~4 颗），另从各类湖畔小活动里抽 3 类。
+		// 以天数为种子确定性生成——读档重进同一天清单一致。
 		std::mt19937 rng((unsigned)(cur_day * 2654435761u));
 		DailyTask berry;
 		berry.type = TASK_BERRY;
-		berry.target = 3 + (int)(rng() % 3);
+		berry.target = 2 + (int)(rng() % 3);
 		tasks.push_back(berry);
 		int others[16] = { TASK_FISH, TASK_GOAL, TASK_WELL, TASK_CHEST, TASK_HARVEST, TASK_FEED, TASK_SHELL, TASK_SWING, TASK_PHOTO, TASK_STEW, TASK_CAT, TASK_DEER, TASK_WOODPECKER, TASK_AURORA, TASK_HAMMOCK, TASK_WISH };
 		for (int i = 15; i > 0; i--) { // Fisher-Yates 洗牌
@@ -567,7 +567,7 @@ void GameDirector::roll_day_tasks(int p_day) {
 			others[i] = others[j];
 			others[j] = tmp;
 		}
-		for (int i = 0; i < 2; i++) {
+		for (int i = 0; i < 3; i++) {
 			DailyTask t;
 			t.type = others[i];
 			t.target = (others[i] == TASK_FISH) ? (1 + (int)(rng() % 2)) : 1; // 钓鱼 1~2 条
