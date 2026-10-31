@@ -53,10 +53,12 @@ public:
 	bool is_charging() const { return charging; }
 	bool is_near_shore() const { return near_shore; }
 	int get_caught_count() const { return caught_count; } // 存档/待办展示用
+	int get_current_species() const { return cur_species; } // 调试/图鉴测试用
 	int get_state() const { return state; }
 	float get_bobber_light_energy() const;
 	bool get_bobber_light_visible() const;
 	void close_book();
+	void open_book(); // QA/截图用：直接翻开图鉴
 
 protected:
 
@@ -115,6 +117,7 @@ protected:
 		FISH_YUEYING,     // 月影鲈（夜，常见）
 		FISH_YEMAN,       // 夜鳗（夜，中见）
 		FISH_JINLIN,      // 金鳞鱼（稀有，昼夜都有）
+		FISH_BINGWEN,     // 冰纹鳟（雪天/冰钓出现的冷水鱼）
 		FISH_KIND_COUNT
 	};
 	static const char *species_name(int p_species);   // UTF-8 中文名

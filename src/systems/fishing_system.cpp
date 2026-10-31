@@ -45,8 +45,11 @@ void FishingSystem::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_charging"), &FishingSystem::is_charging);
 	ClassDB::bind_method(D_METHOD("is_near_shore"), &FishingSystem::is_near_shore);
 	ClassDB::bind_method(D_METHOD("get_caught_count"), &FishingSystem::get_caught_count);
+	ClassDB::bind_method(D_METHOD("get_current_species"), &FishingSystem::get_current_species);
+	ClassDB::bind_method(D_METHOD("debug_pick_species", "night"), &FishingSystem::pick_species);
 	ClassDB::bind_method(D_METHOD("get_state"), &FishingSystem::get_state);
 	ClassDB::bind_method(D_METHOD("close_book"), &FishingSystem::close_book);
+	ClassDB::bind_method(D_METHOD("open_book"), &FishingSystem::open_book);
 	ClassDB::bind_method(D_METHOD("get_bobber_light_energy"), &FishingSystem::get_bobber_light_energy);
 	ClassDB::bind_method(D_METHOD("get_bobber_light_visible"), &FishingSystem::get_bobber_light_visible);
 
@@ -878,6 +881,9 @@ void FishingSystem::start_cast(float p_charge) {
 	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
 	bool night_now = (sky != nullptr) ? (sky->get_night_factor() > 0.5f) : false;
 	cur_species = pick_species(night_now);
+	if (ice_cast && d01(rng) < 0.50f) {
+		cur_species = FISH_BINGWEN; // 冰洞下的冷水鳟更活跃
+	}
 	// 金鳞与大鱼走"难拉"档（金鳞必难拉；昼红尾鲤/夜鳗 40% 大型化）
 	big_fish = (cur_species == FISH_JINLIN)
 			|| ((cur_species == FISH_HONGWEI || cur_species == FISH_YEMAN) && d01(rng) < 0.40f);
@@ -887,6 +893,8 @@ void FishingSystem::start_cast(float p_charge) {
 	// 体长在咬钩时就定死：大型 48~78cm / 常规 16~34cm；金鳞 40~65cm 修长
 	if (cur_species == FISH_JINLIN) {
 		cur_size_cm = 40.0f + d01(rng) * 25.0f;
+	} else if (cur_species == FISH_BINGWEN) {
+		cur_size_cm = 20.0f + d01(rng) * 20.0f;
 	} else {
 		cur_size_cm = big_fish ? (48.0f + d01(rng) * 30.0f) : (16.0f + d01(rng) * 18.0f);
 	}
@@ -946,6 +954,8 @@ const char *FishingSystem::species_name(int p_species) {
 			return "夜鳗";
 		case FISH_JINLIN:
 			return "金鳞鱼";
+		case FISH_BINGWEN:
+			return "冰纹鳟";
 		case FISH_QINGLIN:
 		default:
 			return "青鳞鱼";
@@ -966,6 +976,8 @@ Color FishingSystem::species_tint(int p_species) {
 			return Color(0.14f, 0.22f, 0.20f, 0.92f); // 夜鳗墨绿
 		case FISH_JINLIN:
 			return Color(0.62f, 0.50f, 0.14f, 0.95f); // 金鳞暗金
+		case FISH_BINGWEN:
+			return Color(0.48f, 0.68f, 0.80f, 0.88f); // 冰纹鳟：冰水里的银蓝
 		case FISH_QINGLIN:
 		default:
 			return Color(0.10f, 0.16f, 0.28f, 0.85f); // 青鳞原剪影蓝
@@ -979,6 +991,11 @@ int FishingSystem::pick_species(bool p_night) {
 	float roll = d01(rng);
 	if (roll < 0.06f) {
 		return FISH_JINLIN;
+	}
+	// 雪天/湖面封冻：水里混进冷水鳟鱼
+	const float snow_now = (sky != nullptr) ? sky->get_snow_amount() : 0.0f;
+	if (snow_now > 0.35f && d01(rng) < 0.25f) {
+		return FISH_BINGWEN;
 	}
 	if (p_night) {
 		return (d01(rng) < 0.638f) ? FISH_YUEYING : FISH_YEMAN;
@@ -1272,6 +1289,17 @@ void FishingSystem::tick_leaping(float p_delta) {
 
 // —— 鱼获图鉴（B 键）——
 
+void FishingSystem::open_book() {
+	book_open = true;
+	if (book_layer == nullptr) {
+		build_book_ui();
+	}
+	if (book_layer != nullptr) {
+		refresh_book();
+		book_layer->set_visible(true);
+	}
+}
+
 void FishingSystem::close_book() {
 	book_open = false;
 	if (book_layer != nullptr) {
@@ -1288,8 +1316,13 @@ void FishingSystem::build_book_ui() {
 	PanelContainer *panel = memnew(PanelContainer);
 	panel->set_name("FishBookPanel");
 	panel->set_anchors_preset(Control::PRESET_CENTER_RIGHT);
+	// 锚点都落在右边缘/中线时，必须给出完整的左右/上下偏移，
+	// 只设 right 会让左边缘停在屏幕外（面板整块被推出视野）。
+	panel->set_offset(Side::SIDE_LEFT, -372.0f);
 	panel->set_offset(Side::SIDE_RIGHT, -24.0f);
-	panel->set_custom_minimum_size(Vector2(342.0f, 0.0f));
+	panel->set_offset(Side::SIDE_TOP, -150.0f);
+	panel->set_offset(Side::SIDE_BOTTOM, 150.0f);
+	panel->set_custom_minimum_size(Vector2(348.0f, 0.0f));
 	panel->add_theme_stylebox_override("panel", uistyle::make_wood_textured(14.0f, 0.96f));
 	book_layer->add_child(panel);
 
