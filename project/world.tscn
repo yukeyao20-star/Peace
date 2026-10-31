@@ -1302,6 +1302,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.2, 0, -8.8)
 
 [node name="Icicles" type="IcicleField" parent="."]
 
+[node name="CampCat" type="CampCat" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.5, 0, -12.3)
+
 [node name="Swing" type="SwingSet" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15.0, 0, -17.5)
 
