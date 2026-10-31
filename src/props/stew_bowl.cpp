@@ -26,9 +26,26 @@ void StewBowl::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("requires_line_of_sight"), &StewBowl::requires_line_of_sight);
 	ClassDB::bind_method(D_METHOD("interact", "player_pos"), &StewBowl::interact);
 	ClassDB::bind_method(D_METHOD("get_bowls_left"), &StewBowl::get_bowls_left);
+	ClassDB::bind_method(D_METHOD("set_bowls_left", "n"), &StewBowl::set_bowls_left);
 	ClassDB::bind_method(D_METHOD("get_holding"), &StewBowl::get_holding);
 	ClassDB::bind_method(D_METHOD("get_held_visible"), &StewBowl::get_held_visible);
 	ClassDB::bind_method(D_METHOD("get_sip_ready"), &StewBowl::get_sip_ready);
+}
+
+void StewBowl::set_bowls_left(int p_n) {
+	bowls_left = Math::clamp(p_n, 0, 3);
+	holding = false;
+	if (held != nullptr) {
+		held->set_visible(false);
+	}
+	if (held_steam != nullptr) {
+		held_steam->set_emitting(false);
+	}
+	for (int i = 0; i < 3; i++) {
+		if (bowls[i] != nullptr) {
+			bowls[i]->set_visible(i < bowls_left);
+		}
+	}
 }
 
 bool StewBowl::get_held_visible() const {

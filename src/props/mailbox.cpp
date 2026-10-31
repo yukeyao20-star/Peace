@@ -36,6 +36,8 @@ void Mailbox::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_ui_open"), &Mailbox::get_ui_open);
 	ClassDB::bind_method(D_METHOD("get_read_today"), &Mailbox::get_read_today);
 	ClassDB::bind_method(D_METHOD("get_letter_day"), &Mailbox::get_letter_day);
+	ClassDB::bind_method(D_METHOD("get_read_day"), &Mailbox::get_read_day);
+	ClassDB::bind_method(D_METHOD("set_read_day", "day"), &Mailbox::set_read_day);
 }
 
 String Mailbox::get_prompt() const {
@@ -92,9 +94,9 @@ void Mailbox::_notification(int p_what) {
 				const int day = sky->get_day_count();
 				if (day != day_seen) {
 					day_seen = day;
-					read_today = false;
+					read_today = (day == read_day);
 					if (envelope != nullptr) {
-						envelope->set_visible(true);
+						envelope->set_visible(!read_today);
 					}
 				}
 			}
@@ -309,6 +311,7 @@ String Mailbox::letter_for(int p_day, int p_weather) const {
 void Mailbox::open_ui() {
 	ui_open = true;
 	read_today = true;
+	read_day = day_seen;
 	door_target = 1.0f;
 	if (envelope != nullptr) {
 		envelope->set_visible(false);

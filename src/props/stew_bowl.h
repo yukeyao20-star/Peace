@@ -52,6 +52,7 @@ public:
 	void interact(const Vector3 &p_player_pos) override;
 
 	int get_bowls_left() const { return bowls_left; }
+	void set_bowls_left(int p_n);
 	bool get_holding() const { return holding; }
 	bool get_held_visible() const;
 	bool get_sip_ready() const { return snd_sip.is_valid(); }

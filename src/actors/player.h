@@ -153,6 +153,7 @@ public:
 	}
 	bool get_photo_mode() const { return photo_mode; }
 	int get_star_wishes() const { return star_wishes; }
+	void set_star_wishes(int p_n) { star_wishes = Math::max(0, p_n); }
 	int get_photo_filter() const { return photo_filter; }
 	void leave_boat() {
 		is_boating = false;

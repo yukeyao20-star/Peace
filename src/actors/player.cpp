@@ -136,6 +136,7 @@ void Player::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("close_help"), &Player::close_help);
 	ClassDB::bind_method(D_METHOD("launch_firework"), &Player::launch_firework);
 	ClassDB::bind_method(D_METHOD("get_star_wishes"), &Player::get_star_wishes);
+	ClassDB::bind_method(D_METHOD("set_star_wishes", "n"), &Player::set_star_wishes);
 	ClassDB::bind_method(D_METHOD("get_photo_filter"), &Player::get_photo_filter);
 	ClassDB::bind_method(D_METHOD("_on_map_gui_input", "event"), &Player::_on_map_gui_input);
 	ClassDB::bind_method(D_METHOD("_on_map_bg_gui_input", "event"), &Player::_on_map_bg_gui_input);

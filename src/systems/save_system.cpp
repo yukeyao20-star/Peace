@@ -1,6 +1,8 @@
 #include "save_system.h"
 
 #include "../props/shells.h"
+#include "../props/mailbox.h"
+#include "../props/stew_bowl.h"
 #include "../actors/player.h"
 
 #include <godot_cpp/classes/config_file.hpp>
@@ -74,6 +76,28 @@ void SaveSystem::_notification(int p_what) {
 					player_applied = true;
 				}
 			}
+			// v8 生活状态：各节点就绪后各补应用一次
+			if (loaded_data && !wishes_applied) {
+				Player *wp = find_player();
+				if (wp != nullptr) {
+					wp->set_star_wishes(star_wishes);
+					wishes_applied = true;
+				}
+			}
+			if (loaded_data && !mailbox_applied) {
+				Mailbox *wm = find_mailbox();
+				if (wm != nullptr) {
+					wm->set_read_day(mailbox_read_day);
+					mailbox_applied = true;
+				}
+			}
+			if (loaded_data && !stew_applied) {
+				StewBowl *ws = find_stew_bowl();
+				if (ws != nullptr) {
+					ws->set_bowls_left(stew_bowls);
+					stew_applied = true;
+				}
+			}
 			// v6 贝壳：ShellField 可能晚于本节点 READY，逐帧补应用一次
 			if (loaded_data && !shells_applied) {
 				ShellField *sh = find_shells();
@@ -136,6 +160,20 @@ Player *SaveSystem::find_player() const {
 		return nullptr;
 	}
 	return Object::cast_to<Player>(get_parent()->get_node_or_null(NodePath("Player")));
+}
+
+Mailbox *SaveSystem::find_mailbox() const {
+	if (get_parent() == nullptr) {
+		return nullptr;
+	}
+	return Object::cast_to<Mailbox>(get_parent()->get_node_or_null(NodePath("Homestead/Mailbox")));
+}
+
+StewBowl *SaveSystem::find_stew_bowl() const {
+	if (get_parent() == nullptr) {
+		return nullptr;
+	}
+	return Object::cast_to<StewBowl>(get_parent()->get_node_or_null(NodePath("StewBowl")));
 }
 
 ShellField *SaveSystem::find_shells() const {
@@ -239,6 +277,22 @@ bool SaveSystem::save_now() {
 	cf->set_value(SEC, "player_y", player_pos.y);
 	cf->set_value(SEC, "player_z", player_pos.z);
 
+	// v8：生活状态——许愿次数 / 信箱已读日 / 汤碗余数（缺源保留缓存）
+	if (p != nullptr) {
+		star_wishes = p->get_star_wishes();
+	}
+	cf->set_value(SEC, "star_wishes", star_wishes);
+	Mailbox *mb = find_mailbox();
+	if (mb != nullptr) {
+		mailbox_read_day = mb->get_read_day();
+	}
+	cf->set_value(SEC, "mailbox_read_day", mailbox_read_day);
+	StewBowl *sbowl = find_stew_bowl();
+	if (sbowl != nullptr) {
+		stew_bowls = sbowl->get_bowls_left();
+	}
+	cf->set_value(SEC, "stew_bowls", stew_bowls);
+
 	return cf->save(SAVE_PATH) == Error::OK;
 }
 
@@ -283,6 +337,12 @@ bool SaveSystem::load_now() {
 	player_pos.y = (float)cf->get_value(SEC, "player_y", 0.0);
 	player_pos.z = (float)cf->get_value(SEC, "player_z", 0.0);
 	player_applied = false;
+	star_wishes = (int)cf->get_value(SEC, "star_wishes", 0);
+	mailbox_read_day = (int)cf->get_value(SEC, "mailbox_read_day", -1);
+	stew_bowls = (int)cf->get_value(SEC, "stew_bowls", 3);
+	wishes_applied = false;
+	mailbox_applied = false;
+	stew_applied = false;
 
 	loaded_data = true;
 	restored = false;      // 有数据待应用，交给 _process 的重试通道

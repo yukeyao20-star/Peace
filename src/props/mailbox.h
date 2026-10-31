@@ -37,6 +37,7 @@ private:
 	bool ui_open = false;
 	bool read_today = false;
 	int day_seen = -1;
+	int read_day = -1; // 哪一天的信已经读过（存档用）
 	float door_t = 0.0f;
 	float door_target = 0.0f;
 	SkyCycle *sky = nullptr;
@@ -64,6 +65,8 @@ public:
 	bool get_ui_open() const { return ui_open; }
 	bool get_read_today() const { return read_today; }
 	int get_letter_day() const { return day_seen; }
+	int get_read_day() const { return read_day; }
+	void set_read_day(int p_day) { read_day = p_day; read_today = (day_seen == read_day); }
 };
 
 } // namespace godot

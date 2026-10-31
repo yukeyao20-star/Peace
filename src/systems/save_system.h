@@ -33,6 +33,8 @@ class Chest;
 class CabinDoor;
 class ShutterWindow;
 class ShellField;
+class Mailbox;
+class StewBowl;
 
 class SaveSystem : public Node {
 	GDCLASS(SaveSystem, Node)
@@ -68,6 +70,13 @@ private:
 	bool player_pos_saved = false;
 	Vector3 player_pos;
 	bool player_applied = false;
+	// v8：生活状态（许愿次数 / 信箱已读日 / 汤碗余数）
+	int star_wishes = 0;
+	int mailbox_read_day = -1;
+	int stew_bowls = 3;
+	bool wishes_applied = false;
+	bool mailbox_applied = false;
+	bool stew_applied = false;
 
 	SkyCycle *find_sky() const;
 	GameDirector *find_director() const;
@@ -76,6 +85,8 @@ private:
 	ShutterWindow *find_window(int p_index) const; // 0..3 → ShutterFL/FR/L/B 固定路径
 	ShellField *find_shells() const;
 	Player *find_player() const;
+	Mailbox *find_mailbox() const;
+	StewBowl *find_stew_bowl() const;
 	void restore_targets(); // 把缓存值写回 SkyCycle/GameDirector（缺谁下帧再试）
 	void trim_logs();       // user://logs/ 超过 10MB 时按最旧优先删除（引擎只按份数轮转不限体积）
 
