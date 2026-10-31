@@ -2,15 +2,20 @@
 
 #include <cmath>
 
+#include <godot_cpp/classes/array_mesh.hpp>
 #include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/geometry_instance3d.hpp>
+#include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/multi_mesh.hpp>
+#include <godot_cpp/classes/multi_mesh_instance3d.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
+#include <godot_cpp/classes/surface_tool.hpp>
 #include <godot_cpp/classes/window.hpp>
 
 #include "../systems/mesh_util.h"
@@ -145,19 +150,38 @@ void FlowerBed::build() {
 	stem_mesh->set_rings(1);
 	stem_mesh->set_material(meshutil::toon_material(toon, Color(0.28f, 0.46f, 0.20f), 0.2f));
 
+	// 优化（第 130 轮）：12 根茎、24 片叶各合成一个 MultiMesh；
+	// 每朵花头（杯+3片花瓣）烘成一张网格，花圃 draw call 从约 90 降到 20。
+	Ref<MultiMesh> stem_mm;
+	stem_mm.instantiate();
+	stem_mm->set_transform_format(MultiMesh::TRANSFORM_3D);
+	stem_mm->set_mesh(stem_mesh);
+	stem_mm->set_instance_count(FLOWER_COUNT);
+
+	Ref<SphereMesh> leaf_sphere;
+	leaf_sphere.instantiate();
+	leaf_sphere->set_radius(1.0f);
+	leaf_sphere->set_height(2.0f);
+	leaf_sphere->set_radial_segments(6);
+	leaf_sphere->set_rings(3);
+	leaf_sphere->set_material(meshutil::toon_material(toon, Color(0.30f, 0.48f, 0.20f), 0.2f));
+	Ref<MultiMesh> leaf_mm;
+	leaf_mm.instantiate();
+	leaf_mm->set_transform_format(MultiMesh::TRANSFORM_3D);
+	leaf_mm->set_mesh(leaf_sphere);
+	leaf_mm->set_instance_count(FLOWER_COUNT * 2);
+
+	int leaf_i = 0;
 	for (int i = 0; i < FLOWER_COUNT; i++) {
 		const int col = i % 4;
 		const int row = i / 4;
 		const float x = -0.60f + 0.40f * (float)col;
 		const float z = -0.26f + 0.26f * (float)row;
-		MeshInstance3D *stem = memnew(MeshInstance3D);
-		stem->set_mesh(stem_mesh);
-		stem->set_position(Vector3(x, 0.27f, z));
-		add_child(stem);
+		stem_mm->set_instance_transform(i, Transform3D(Basis(), Vector3(x, 0.27f, z)));
 		for (int l = 0; l < 2; l++) {
-			MeshInstance3D *leaf = meshutil::add_sphere(this, toon, 0.07f,
-					Vector3(x + (l == 0 ? -0.05f : 0.05f), 0.20f + 0.05f * (float)l, z), Color(0.30f, 0.48f, 0.20f));
-			leaf->set_scale(Vector3(1.1f, 0.18f, 0.5f));
+			const Basis sb = Basis().scaled(Vector3(0.077f, 0.0126f, 0.035f));
+			leaf_mm->set_instance_transform(leaf_i++, Transform3D(sb,
+					Vector3(x + (l == 0 ? -0.05f : 0.05f), 0.20f + 0.05f * (float)l, z)));
 		}
 
 		Node3D *h = memnew(Node3D);
@@ -165,6 +189,7 @@ void FlowerBed::build() {
 		h->set_position(Vector3(x, 0.44f, z));
 		add_child(h);
 		heads[i] = h;
+
 		Ref<CylinderMesh> cup;
 		cup.instantiate();
 		cup->set_top_radius(0.075f);
@@ -172,18 +197,35 @@ void FlowerBed::build() {
 		cup->set_height(0.09f);
 		cup->set_radial_segments(8);
 		cup->set_rings(1);
-		cup->set_material(meshutil::toon_material(toon, petals[row % 3], 0.3f));
-		MeshInstance3D *cm = memnew(MeshInstance3D);
-		cm->set_mesh(cup);
-		h->add_child(cm);
-		// 三片外翻花瓣
+		Ref<BoxMesh> petal_mesh;
+		petal_mesh.instantiate();
+		petal_mesh->set_size(Vector3(0.06f, 0.02f, 0.035f));
+
+		Ref<SurfaceTool> st;
+		st.instantiate();
+		st->begin(Mesh::PRIMITIVE_TRIANGLES);
+		st->append_from(cup, 0, Transform3D());
 		for (int p = 0; p < 3; p++) {
 			const float a = (float)p * 2.094f;
-			meshutil::add_box(h, toon, Vector3(0.06f, 0.02f, 0.035f),
-					Vector3(std::cos(a) * 0.06f, 0.03f, std::sin(a) * 0.06f), petals[row % 3],
-					Vector3(0.4f, a, 0.0f));
+			Basis pb;
+			pb.set_euler_scale(Vector3(0.4f, a, 0.0f), Vector3(1, 1, 1));
+			st->append_from(petal_mesh, 0, Transform3D(pb, Vector3(std::cos(a) * 0.06f, 0.03f, std::sin(a) * 0.06f)));
 		}
+		Ref<ArrayMesh> head_mesh = st->commit();
+		head_mesh->surface_set_material(0, meshutil::toon_material(toon, petals[row % 3], 0.3f));
+		MeshInstance3D *hm = memnew(MeshInstance3D);
+		hm->set_mesh(head_mesh);
+		h->add_child(hm);
 	}
+
+	MultiMeshInstance3D *stem_mi = memnew(MultiMeshInstance3D);
+	stem_mi->set_name("Stems");
+	stem_mi->set_multimesh(stem_mm);
+	add_child(stem_mi);
+	MultiMeshInstance3D *leaf_mi = memnew(MultiMeshInstance3D);
+	leaf_mi->set_name("Leaves");
+	leaf_mi->set_multimesh(leaf_mm);
+	add_child(leaf_mi);
 
 	// 露珠
 	Ref<SphereMesh> dew_mesh;

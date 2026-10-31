@@ -6,11 +6,15 @@
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/geometry_instance3d.hpp>
+#include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/multi_mesh.hpp>
+#include <godot_cpp/classes/multi_mesh_instance3d.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
+#include <godot_cpp/classes/surface_tool.hpp>
 #include <godot_cpp/classes/window.hpp>
 
 #include "../systems/mesh_util.h"
@@ -117,12 +121,26 @@ void Pumpkins::build() {
 		add_child(p);
 		pumpkins[i] = p;
 		const float r = radii[i];
-		// 三颗重叠的扁球做出南瓜瓣
+		// 三颗重叠的扁球做出南瓜瓣（烘成一张网格，一只南瓜一次 draw）
+		Ref<SphereMesh> unit_sphere;
+		unit_sphere.instantiate();
+		unit_sphere->set_radius(1.0f);
+		unit_sphere->set_height(2.0f);
+		unit_sphere->set_radial_segments(10);
+		unit_sphere->set_rings(6);
+		Ref<SurfaceTool> surf;
+		surf.instantiate();
+		surf->begin(Mesh::PRIMITIVE_TRIANGLES);
 		for (int s = -1; s <= 1; s++) {
-			MeshInstance3D *lobe = meshutil::add_sphere(p, toon, r,
-					Vector3((float)s * r * 0.28f, r * 0.62f, 0.0f), orange[i]);
-			lobe->set_scale(Vector3(0.82f, 0.62f, 0.95f));
+			const Basis sb = Basis().scaled(Vector3(r * 0.82f, r * 0.62f, r * 0.95f));
+			surf->append_from(unit_sphere, 0, Transform3D(sb,
+					Vector3((float)s * r * 0.28f, r * 0.62f, 0.0f)));
 		}
+		Ref<ArrayMesh> lobes = surf->commit();
+		lobes->surface_set_material(0, meshutil::toon_material(toon, orange[i], 0.25f));
+		MeshInstance3D *lmi = memnew(MeshInstance3D);
+		lmi->set_mesh(lobes);
+		p->add_child(lmi);
 		Ref<CylinderMesh> stem_mesh;
 		stem_mesh.instantiate();
 		stem_mesh->set_top_radius(r * 0.10f);
@@ -233,11 +251,27 @@ void Pumpkins::build() {
 		dewdrops[i] = d;
 	}
 
-	// 藤叶
+	// 藤叶（7 片合成一个 MultiMesh）
+	Ref<SphereMesh> leaf_unit;
+	leaf_unit.instantiate();
+	leaf_unit->set_radius(1.0f);
+	leaf_unit->set_height(2.0f);
+	leaf_unit->set_radial_segments(6);
+	leaf_unit->set_rings(3);
+	leaf_unit->set_material(meshutil::toon_material(toon, Color(0.30f, 0.46f, 0.18f), 0.2f));
+	Ref<MultiMesh> leaf_mm;
+	leaf_mm.instantiate();
+	leaf_mm->set_transform_format(MultiMesh::TRANSFORM_3D);
+	leaf_mm->set_mesh(leaf_unit);
+	leaf_mm->set_instance_count(7);
 	for (int i = 0; i < 7; i++) {
 		const float a = (float)i * 0.9f;
-		MeshInstance3D *leaf = meshutil::add_sphere(this, toon, 0.11f,
-				Vector3(std::cos(a) * 0.85f, 0.04f, std::sin(a) * 0.85f), Color(0.30f, 0.46f, 0.18f));
-		leaf->set_scale(Vector3(1.2f, 0.14f, 0.8f));
+		const Basis sb = Basis(Vector3(0.0f, 1.0f, 0.0f), a * 0.5f).scaled(Vector3(0.132f, 0.0154f, 0.088f));
+		leaf_mm->set_instance_transform(i, Transform3D(sb,
+				Vector3(std::cos(a) * 0.85f, 0.04f, std::sin(a) * 0.85f)));
 	}
+	MultiMeshInstance3D *leaf_mi = memnew(MultiMeshInstance3D);
+	leaf_mi->set_name("VineLeaves");
+	leaf_mi->set_multimesh(leaf_mm);
+	add_child(leaf_mi);
 }
