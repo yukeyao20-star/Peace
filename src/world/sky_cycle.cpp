@@ -9,6 +9,8 @@
 #include <godot_cpp/classes/csg_box3d.hpp>
 #include <godot_cpp/classes/directional_light3d.hpp>
 #include <godot_cpp/classes/audio_server.hpp>
+#include <godot_cpp/classes/audio_stream_player.hpp>
+#include <godot_cpp/classes/audio_stream_wav.hpp>
 #include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/canvas_layer.hpp>
@@ -127,6 +129,7 @@ void SkyCycle::_notification(int p_what) {
 			build_stars();
 			build_moon();
 			build_underwater();
+			build_underwater_ambience();
 			// 调试：ZCODE_FORCE_METEOR=1 时首次流星提前到 0.4s（探针截图用）
 			if (OS::get_singleton() != nullptr
 					&& OS::get_singleton()->get_environment("ZCODE_FORCE_METEOR") == "1") {
@@ -180,6 +183,13 @@ void SkyCycle::_notification(int p_what) {
 				Color col = uw_tint->get_color();
 				col.a = uw_alpha;
 				uw_tint->set_color(col);
+				// 水下环境音：低频涌动 + 气泡，随入水深度淡入
+				if (uw_amb != nullptr) {
+					float amb_t = uw_alpha / 0.55f;
+					float target_db = Math::lerp(-60.0f, -16.0f, amb_t);
+					uw_amb_db = Math::move_toward(uw_amb_db, target_db, (float)delta * 45.0f);
+					uw_amb->set_volume_db(uw_amb_db);
+				}
 				// 水下距离雾：深度雾把远处湖底/对岸压暗成深青，水体才有"厚度"；
 				// apply() 每帧已按天气重置雾底色与浓度，这里只在其上按水下权重叠加，不会累积。
 				if (env.is_valid() && uw_alpha > 0.001f) {
@@ -979,4 +989,70 @@ String SkyCycle::get_phase_name() const {
 	}
 	// 中文字面量必须 String::utf8()（String(const char*) 是 latin-1 展宽，会乱码）
 	return String::utf8(phase) + String::utf8(" · ") + String::utf8(w);
+}
+
+// —— 水下环境音：8 秒无缝循环（低频涌动 + 低频噪声 + 几粒气泡），程序化合成 ——
+Ref<AudioStreamWAV> SkyCycle::make_underwater_loop() {
+	const int sr = 22050;
+	const float dur = 8.0f;
+	const int n = (int)(dur * sr);
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+	std::mt19937 rng(636363u);
+	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
+
+	// 气泡出现时刻（循环内的相对秒数）
+	const float bubbles[5] = { 0.9f, 2.4f, 3.8f, 5.5f, 6.9f };
+	float lp = 0.0f;
+	for (int i = 0; i < n; i++) {
+		float t = (float)i / sr;
+		// 低频涌动：55Hz 主体 + 82.5Hz 泛音，缓慢呼吸
+		float breath = 0.55f + 0.20f * std::sin(6.2831853f * 0.125f * t);
+		float hum = std::sin(6.2831853f * 55.0f * t) * 0.30f * breath
+				+ std::sin(6.2831853f * 82.5f * t) * 0.10f * breath;
+		// 低通噪声：深水的沉闷底噪
+		lp += 0.015f * ((d01(rng) - 0.5f) - lp);
+		float rumble = lp * 2.4f;
+		// 气泡：短促上滑正弦
+		float bub = 0.0f;
+		for (int b = 0; b < 5; b++) {
+			float bt = t - bubbles[b];
+			if (bt >= 0.0f && bt < 0.20f) {
+				float env = Math::clamp(bt / 0.01f, 0.0f, 1.0f) * Math::exp(-bt * 22.0f);
+				float f = 330.0f + 520.0f * (bt / 0.20f);
+				bub += std::sin(6.2831853f * f * bt) * env * 0.16f;
+			}
+		}
+		float samp = hum + rumble + bub;
+		// 首尾 60ms 淡入淡出，接缝不咔哒
+		float edge = Math::min(1.0f, Math::min(t / 0.06f, (dur - t) / 0.06f));
+		samp *= Math::clamp(edge, 0.0f, 1.0f);
+		int16_t q = (int16_t)Math::clamp(samp * 24000.0f, -32000.0f, 32000.0f);
+		w[i * 2] = (uint8_t)(q & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
+	}
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_data(bytes);
+	wav->set_loop_mode(AudioStreamWAV::LOOP_FORWARD);
+	wav->set_loop_begin(0);
+	wav->set_loop_end(n);
+	return wav;
+}
+
+void SkyCycle::build_underwater_ambience() {
+	uw_amb_stream = make_underwater_loop();
+	if (!uw_amb_stream.is_valid()) {
+		return;
+	}
+	uw_amb = memnew(AudioStreamPlayer);
+	uw_amb->set_name("UnderwaterAmbience");
+	uw_amb->set_stream(uw_amb_stream);
+	uw_amb->set_volume_db(-60.0f);
+	add_child(uw_amb);
+	uw_amb->play();
 }
