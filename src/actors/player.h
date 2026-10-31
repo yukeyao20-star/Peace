@@ -236,6 +236,10 @@ private:
 	bool vol_key_prev = false;
 	int cam_preset = 1;        // C：镜头近/标准/远
 	float master_volume = 1.0f;
+	bool saved_fullscreen = false;
+	float settings_apply_t = 0.0f;
+	void load_settings();
+	void save_settings();
 	godot::CanvasLayer *photo_layer = nullptr;
 	godot::Label *photo_toast = nullptr;
 	godot::Label *debug_overlay = nullptr;

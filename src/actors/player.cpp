@@ -18,6 +18,7 @@
 #include <godot_cpp/classes/canvas_layer.hpp>
 #include <godot_cpp/classes/capsule_mesh.hpp>
 #include <godot_cpp/classes/color_rect.hpp>
+#include <godot_cpp/classes/config_file.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/audio_server.hpp>
 #include <godot_cpp/classes/display_server.hpp>
@@ -243,6 +244,8 @@ void Player::_notification(int p_what) {
 			debug_overlay->hide();
 			photo_layer->add_child(debug_overlay);
 			build_album_ui();
+			load_settings();
+			settings_apply_t = 0.35f;
 			hud_prompt = memnew(Label);
 			hud_prompt->set_anchors_preset(Control::PRESET_CENTER_BOTTOM);
 			hud_prompt->set_offset(SIDE_LEFT, -200.0f);
@@ -538,6 +541,7 @@ void Player::_notification(int p_what) {
 			if (Engine::get_singleton()->is_editor_hint()) {
 				break;
 			}
+			save_settings();
 			if (steps_voice != nullptr) {
 				steps_voice->stop();
 				steps_voice->set_stream(Ref<AudioStream>());
@@ -574,6 +578,15 @@ void Player::_notification(int p_what) {
 				_update_look(p_delta); // 睡觉 / 大地图 / 相册打开时鼠标不转动视角
 			}
 			_update_camera(p_delta);
+			if (settings_apply_t > 0.0f) {
+				settings_apply_t -= p_delta;
+				if (settings_apply_t <= 0.0f) {
+					set_hud_visible(!hud_hidden);
+					if (saved_fullscreen) {
+						DisplayServer::get_singleton()->window_set_mode(DisplayServer::WINDOW_MODE_FULLSCREEN);
+					}
+				}
+			}
 			ring_t += p_delta;
 			if (target_ring != nullptr && target_ring->is_visible()) {
 				float s = 1.0f + 0.07f * std::sin(ring_t * 3.1f);
@@ -725,6 +738,7 @@ void Player::_physics_step() {
 	if (h_down && !hud_key_prev && !photo_mode) {
 		hud_hidden = !hud_hidden;
 		set_hud_visible(!hud_hidden);
+		save_settings();
 		show_photo_toast(hud_hidden ? String::utf8("界面已收起 · H 恢复") : String::utf8("界面已恢复"), 1.8f);
 	}
 	hud_key_prev = h_down;
@@ -735,6 +749,8 @@ void Player::_physics_step() {
 		bool fs = ds->window_get_mode() == DisplayServer::WINDOW_MODE_FULLSCREEN
 				|| ds->window_get_mode() == DisplayServer::WINDOW_MODE_EXCLUSIVE_FULLSCREEN;
 		ds->window_set_mode(fs ? DisplayServer::WINDOW_MODE_WINDOWED : DisplayServer::WINDOW_MODE_FULLSCREEN);
+		saved_fullscreen = !fs;
+		save_settings();
 		show_photo_toast(fs ? String::utf8("窗口模式") : String::utf8("全屏模式 · F11 返回"), 1.6f);
 	}
 	f11_prev = f11_down;
@@ -747,6 +763,7 @@ void Player::_physics_step() {
 		AudioServer *as = AudioServer::get_singleton();
 		as->set_bus_mute(0, master_volume <= 0.001f);
 		as->set_bus_volume_db(0, Math::linear_to_db(Math::max(master_volume, 0.001f)));
+		save_settings();
 		show_photo_toast(String::utf8("音量 ") + String::num_int64((int)Math::round(master_volume * 100.0f)) + String::utf8("%"), 1.2f);
 	}
 	vol_key_prev = vol_down;
@@ -1553,6 +1570,32 @@ void Player::show_photo_toast(const String &p_text, float p_seconds) {
 	photo_toast->set_modulate(Color(1, 1, 1, 1));
 	photo_toast->show();
 	photo_toast_t = p_seconds;
+}
+
+void Player::load_settings() {
+	Ref<ConfigFile> cf;
+	cf.instantiate();
+	if (cf->load("user://settings.cfg") != Error::OK) {
+		return; // 没有设置文件：保持默认
+	}
+	master_volume = Math::clamp((float)cf->get_value("settings", "volume", master_volume), 0.0f, 1.0f);
+	hud_hidden = (bool)cf->get_value("settings", "hud_hidden", hud_hidden);
+	saved_fullscreen = (bool)cf->get_value("settings", "fullscreen", saved_fullscreen);
+	AudioServer *as = AudioServer::get_singleton();
+	as->set_bus_mute(0, master_volume <= 0.001f);
+	as->set_bus_volume_db(0, Math::linear_to_db(Math::max(master_volume, 0.001f)));
+}
+
+void Player::save_settings() {
+	Ref<ConfigFile> cf;
+	cf.instantiate();
+	cf->set_value("settings", "volume", master_volume);
+	cf->set_value("settings", "hud_hidden", hud_hidden);
+	DisplayServer *ds = DisplayServer::get_singleton();
+	bool fs = ds->window_get_mode() == DisplayServer::WINDOW_MODE_FULLSCREEN
+			|| ds->window_get_mode() == DisplayServer::WINDOW_MODE_EXCLUSIVE_FULLSCREEN;
+	cf->set_value("settings", "fullscreen", fs);
+	cf->save("user://settings.cfg");
 }
 
 void Player::build_album_ui() {
