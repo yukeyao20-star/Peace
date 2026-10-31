@@ -974,6 +974,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 0, 23.5)
 [node name="WoodenToys" type="WoodenToys" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17, 0, 16)
 
+[node name="StoneCairn" type="StoneCairn" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 0, 26)
+
 [node name="FireflyJar" type="FireflyJar" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10.5, 0.55, 12.5)
 

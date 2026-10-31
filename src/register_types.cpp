@@ -119,6 +119,7 @@
 #include "firefly_jar.h"
 #include "paper_boat.h"
 #include "wooden_toys.h"
+#include "stone_cairn.h"
 #include "beach_finds.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
@@ -263,6 +264,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(FireflyJar);
 	GDREGISTER_CLASS(PaperBoat);
 	GDREGISTER_CLASS(WoodenToys);
+	GDREGISTER_CLASS(StoneCairn);
 	GDREGISTER_CLASS(BeachFinds);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
