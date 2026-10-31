@@ -1244,6 +1244,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, -0.55, 26)
 
 [node name="Herons" type="HeronPond" parent="."]
 
+[node name="Campfire" type="Campfire" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.6, 0, -13.5)
+
 [node name="GameDirector" type="GameDirector" parent="." unique_id=1818518943]
 
 [node name="Ambience" type="Ambience" parent="." unique_id=564152197]
