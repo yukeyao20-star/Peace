@@ -63,6 +63,7 @@
 #include "sky_cycle.h"
 #include "terrain_builder.h"
 #include "../interact/bed.h"
+#include "../props/rowboat.h"
 
 using namespace godot;
 
@@ -111,6 +112,7 @@ void Player::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("teleport_to", "position"), &Player::teleport_to);
 	ClassDB::bind_method(D_METHOD("toggle_map"), &Player::toggle_map);
 	ClassDB::bind_method(D_METHOD("get_is_map_open"), &Player::get_is_map_open);
+	ClassDB::bind_method(D_METHOD("get_is_boating"), &Player::get_is_boating);
 	ClassDB::bind_method(D_METHOD("launch_firework"), &Player::launch_firework);
 	ClassDB::bind_method(D_METHOD("_on_map_gui_input", "event"), &Player::_on_map_gui_input);
 	ClassDB::bind_method(D_METHOD("_on_map_bg_gui_input", "event"), &Player::_on_map_bg_gui_input);
@@ -582,6 +584,35 @@ void Player::_physics_step() {
 		if (sleep_key_released && sleep_fade_t > 0.6f && any_cancel_down) {
 			stop_sleep();
 		}
+		return;
+	}
+
+	// 2.5 划船：位置跟着船走，自身物理与交互全部暂停（上下船由 Rowboat 处理）
+	if (is_boating) {
+		if (boat != nullptr) {
+			set_global_position(boat->get_global_position() + Vector3(0.0f, 0.45f, 0.0f));
+			if (model != nullptr) {
+				float yaw = boat->get_global_rotation().y;
+				float lean = 0.0f;
+				Rowboat *rb = Object::cast_to<Rowboat>(boat);
+				if (rb != nullptr && std::fabs(rb->get_speed()) > 0.1f) {
+					lean = std::sin(rb->get_row_phase()) * 0.10f;
+				}
+				model->set_basis(Basis(Vector3(0.0f, 1.0f, 0.0f), yaw)
+						* Basis(Vector3(1.0f, 0.0f, 0.0f), lean));
+				model->set_position(Vector3(0.0f, 0.0f, 0.0f));
+			}
+		}
+		set_velocity(Vector3(0.0f, 0.0f, 0.0f));
+		if (prompt != nullptr) {
+			prompt->hide();
+		}
+		if (hud_prompt != nullptr) {
+			hud_prompt->hide();
+		}
+		// 船上不处理交互，但要维持 E 的边沿状态：否则下船时同一次按键会被
+		// 交互扫描当成"刚按下"，立刻又把人送回船上。
+		e_prev = act_pressed("interact", KEY_E);
 		return;
 	}
 

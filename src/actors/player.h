@@ -115,6 +115,16 @@ public:
 	bool get_is_map_open() const { return is_map_open; } // PauseMenu 判定"Esc 只关地图"用
 	void toggle_map(); // 已 bind ClassDB；PauseMenu 在 Esc 路径上直接调用
 	void teleport_to(const Vector3 &p_pos);
+	void board_boat(Node3D *p_boat) {
+		is_boating = true;
+		boat = p_boat;
+		is_swimming = false;
+		was_swimming = false;
+		if (propeller != nullptr) propeller->set_visible(false);
+		set_velocity(Vector3(0, 0, 0));
+	}
+	void leave_boat() { is_boating = false; boat = nullptr; }
+	bool get_is_boating() const { return is_boating; }
 	void play_ui(int type = 0);
 	void _on_map_gui_input(const Ref<InputEvent> &p_event);
 	void _on_map_bg_gui_input(const Ref<InputEvent> &p_event);
@@ -177,6 +187,8 @@ private:
 	// —— 游泳（深水自动切换：身体横置 + 背后螺旋桨，空格上浮 / Ctrl 下潜）——
 	bool is_swimming = false;
 	bool was_swimming = false;
+	bool is_boating = false;   // 坐在小木船上（Rowboat 控制移动）
+	Node3D *boat = nullptr;
 	Node3D *propeller = nullptr;
 	CPUParticles3D *swim_bubbles = nullptr; // 螺旋桨气泡尾迹
 	Node3D *propeller_blades = nullptr;
