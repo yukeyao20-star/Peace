@@ -1,15 +1,23 @@
 #include "cabin_life.h"
 
+#include <algorithm>
 #include <cmath>
+#include <random>
+#include <vector>
 
 #include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/cpu_particles3d.hpp>
+#include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/image.hpp>
+#include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/omni_light3d.hpp>
 #include <godot_cpp/classes/shader.hpp>
+#include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
+#include <godot_cpp/classes/torus_mesh.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 
 #include "../systems/mesh_util.h"
@@ -21,6 +29,12 @@ void CabinLife::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_window_glow_energy", "index"), &CabinLife::get_window_glow_energy);
 	ClassDB::bind_method(D_METHOD("get_porch_energy"), &CabinLife::get_porch_energy);
 	ClassDB::bind_method(D_METHOD("get_smoke_enabled"), &CabinLife::get_smoke_enabled);
+	ClassDB::bind_method(D_METHOD("get_smoke_amount"), &CabinLife::get_smoke_amount);
+	ClassDB::bind_method(D_METHOD("get_roof_snow_level"), &CabinLife::get_roof_snow_level);
+	ClassDB::bind_method(D_METHOD("get_frost_level"), &CabinLife::get_frost_level);
+	ClassDB::bind_method(D_METHOD("get_icicle_level"), &CabinLife::get_icicle_level);
+	ClassDB::bind_method(D_METHOD("get_icicle_count"), &CabinLife::get_icicle_count);
+	ClassDB::bind_method(D_METHOD("get_wreath_sway"), &CabinLife::get_wreath_sway);
 }
 
 float CabinLife::get_window_glow_energy(int p_index) const {
@@ -78,15 +92,146 @@ void CabinLife::_notification(int p_what) {
 			if (porch_glass.is_valid()) {
 				porch_glass->set("emission_energy_multiplier", 0.25f + 1.8f * on);
 			}
+
+			// —— 冬日细节：冷度缓慢积累/消退，霜、积雪与垂冰跟着长出来 ——
+			const float cold_target = Math::clamp(Math::max(snow * 1.30f, (night - 0.30f) * 1.25f), 0.0f, 1.0f);
+			cold = Math::lerp(cold, cold_target, 1.0f - std::exp(-1.1f * delta));
+			// 雪停后屋顶的白要留一阵（化雪比积雪慢）
+			const float cover_rate = (snow > snow_cover) ? 0.30f : 0.055f;
+			snow_cover = Math::lerp(snow_cover, snow, 1.0f - std::exp(-cover_rate * delta));
+			frost_level = Math::clamp((cold - 0.18f) / 0.52f, 0.0f, 1.0f);
+			icicle_level = Math::clamp((cold - 0.30f) / 0.50f, 0.0f, 1.0f);
+			if (frost_mat.is_valid()) {
+				frost_mat->set_albedo(Color(0.92f, 0.97f, 1.0f, 0.82f * frost_level));
+			}
+			for (int i = 0; i < 4; i++) {
+				if (frost[i] != nullptr) {
+					frost[i]->set_visible(frost_level > 0.02f);
+				}
+			}
+			const float roof_s = 0.15f + 0.85f * Math::clamp(snow_cover * 1.15f, 0.0f, 1.0f);
+			for (int i = 0; i < 5; i++) {
+				if (roof_snow[i] != nullptr) {
+					roof_snow[i]->set_visible(snow_cover > 0.04f);
+					roof_snow[i]->set_scale(Vector3(1.0f, roof_s, 1.0f));
+				}
+			}
+			for (size_t i = 0; i < icicles.size(); i++) {
+				const float h = icicle_scale[i].y * icicle_level;
+				icicles[i]->set_visible(icicle_level > 0.03f);
+				icicles[i]->set_scale(Vector3(icicle_scale[i].x, Math::max(0.001f, h), icicle_scale[i].z));
+				icicles[i]->set_position(icicle_base[i] - Vector3(0.0f, h * 0.5f, 0.0f));
+			}
+			if (wreath != nullptr) {
+				wreath_sway = std::sin(t * 0.9f) * 0.030f + std::sin(t * 1.7f + 0.6f) * 0.011f;
+				wreath->set_rotation(Vector3(1.5708f + std::sin(t * 0.7f + 0.4f) * 0.018f, 0.0f, wreath_sway));
+				if (wreath_mat.is_valid()) {
+					const float w = Math::clamp(snow_cover * 0.55f, 0.0f, 0.55f);
+					wreath_mat->set_shader_parameter("albedo",
+							Color(0.13f, 0.27f, 0.15f).lerp(Color(0.80f, 0.86f, 0.92f), w));
+				}
+			}
+
 			if (smoke != nullptr) {
-				// 风把炊烟慢慢往东南带；雨雪天压低一点
-				smoke->set_gravity(Vector3(0.10f + 0.05f * std::sin(t * 0.21f), 0.10f, 0.04f + 0.03f * std::sin(t * 0.13f + 1.0f)));
-				smoke->set_emitting(wet < 0.55f);
+				// 风把炊烟慢慢往东南带；雪天烟更浓、走得更低
+				smoke->set_gravity(Vector3(0.10f + 0.05f * std::sin(t * 0.21f), 0.10f - 0.05f * snow, 0.04f + 0.03f * std::sin(t * 0.13f + 1.0f)));
+				smoke->set_emitting(rain < 0.55f);
+				const int wanted = 22 + (int)(16.0f * snow);
+				if (wanted != smoke_amount) {
+					smoke_amount = wanted;
+					smoke->set_amount(wanted);
+				}
 			}
 		} break;
 		default:
 			break;
 	}
+}
+
+// 程序生成一张"蕨叶状"窗霜纹理：从四边种下几根主枝，逐像素蜿蜒生长、
+// 偶尔分叉，越靠近枝梢越细越淡。无需外部贴图，每次开局同一张（固定种子）。
+Ref<ImageTexture> CabinLife::make_frost_texture(unsigned p_seed) {
+	const int S = 128;
+	Ref<Image> img = Image::create(S, S, false, Image::FORMAT_RGBA8);
+	img->fill(Color(0, 0, 0, 0));
+	std::mt19937 rng(p_seed);
+	auto rnd = [&](float a, float b) {
+		return a + (b - a) * (float)(rng() % 10000u) / 10000.0f;
+	};
+	struct Branch {
+		float x = 0.0f;
+		float y = 0.0f;
+		float ang = 0.0f;
+		float life = 0.0f;
+		int depth = 0;
+	};
+	std::vector<Branch> stack;
+	for (int i = 0; i < 12; i++) {
+		Branch b;
+		switch (rng() % 4u) {
+			case 0: b.x = rnd(2.0f, S - 2.0f); b.y = 0.0f; b.ang = 1.5708f + rnd(-0.55f, 0.55f); break;
+			case 1: b.x = rnd(2.0f, S - 2.0f); b.y = S - 1.0f; b.ang = -1.5708f + rnd(-0.55f, 0.55f); break;
+			case 2: b.x = 0.0f; b.y = rnd(2.0f, S - 2.0f); b.ang = rnd(-0.55f, 0.55f); break;
+			default: b.x = S - 1.0f; b.y = rnd(2.0f, S - 2.0f); b.ang = 3.1416f + rnd(-0.55f, 0.55f); break;
+		}
+		b.life = rnd(36.0f, 92.0f);
+		stack.push_back(b);
+	}
+	int guard = 0;
+	while (!stack.empty() && guard++ < 9000) {
+		Branch b = stack.back();
+		stack.pop_back();
+		const int life = (int)b.life;
+		float x = b.x;
+		float y = b.y;
+		float ang = b.ang;
+		for (int s = 0; s < life; s++) {
+			ang += rnd(-0.24f, 0.24f);
+			x += std::cos(ang);
+			y += std::sin(ang);
+			if (x < 0.0f || x >= (float)S || y < 0.0f || y >= (float)S) {
+				break;
+			}
+			const int ix = (int)x;
+			const int iy = (int)y;
+			const float taper = 1.0f - (float)s / (float)life;
+			const float a = (0.26f + 0.55f * taper) * (b.depth > 0 ? 0.72f : 1.0f);
+			const Color prev = img->get_pixel(ix, iy);
+			img->set_pixel(ix, iy, Color(0.87f, 0.94f, 1.0f, Math::min(1.0f, prev.a + a)));
+			if (ix + 1 < S) {
+				const Color p2 = img->get_pixel(ix + 1, iy);
+				img->set_pixel(ix + 1, iy, Color(0.87f, 0.94f, 1.0f, Math::min(1.0f, p2.a + a * 0.40f)));
+			}
+			// 细小的霜针横生
+			if (rnd(0.0f, 1.0f) < 0.09f) {
+				const int nx = ix + (int)std::lround(std::cos(ang + 1.45f));
+				const int ny = iy + (int)std::lround(std::sin(ang + 1.45f));
+				if (nx >= 0 && nx < S && ny >= 0 && ny < S) {
+					img->set_pixel(nx, ny, Color(0.87f, 0.94f, 1.0f, a * 0.65f));
+				}
+			}
+			if (b.depth < 3 && s > 5 && rnd(0.0f, 1.0f) < 0.038f) {
+				Branch c;
+				c.x = x;
+				c.y = y;
+				c.ang = ang + (rnd(0.0f, 1.0f) < 0.5f ? -0.95f : 0.95f);
+				c.life = rnd(9.0f, 24.0f);
+				c.depth = b.depth + 1;
+				stack.push_back(c);
+				break; // 主枝到分叉处收住，留下自然的渐细
+			}
+		}
+	}
+	// 一层极淡的薄雾，让整块玻璃有"上霜"的感觉，而不只是几条蕨叶
+	for (int y = 0; y < S; y++) {
+		for (int x = 0; x < S; x++) {
+			const Color c = img->get_pixel(x, y);
+			if (c.a < 0.09f) {
+				img->set_pixel(x, y, Color(0.90f, 0.96f, 1.0f, 0.09f));
+			}
+		}
+	}
+	return ImageTexture::create_from_image(img);
 }
 
 void CabinLife::build() {
@@ -212,4 +357,115 @@ void CabinLife::build() {
 	porch_light->set_param(Light3D::PARAM_ENERGY, 0.0f);
 	porch_light->set_visible(false);
 	host->add_child(porch_light);
+
+	std::mt19937 rng(20261102u);
+	auto rr = [&](float a, float b) {
+		return a + (b - a) * (float)(rng() % 10000u) / 10000.0f;
+	};
+
+	// —— 冬日 1：窗玻璃上的蕨状霜花（冷天/雪夜慢慢长出来） ——
+	frost_mat.instantiate();
+	frost_mat->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, make_frost_texture(20261101u));
+	frost_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	frost_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	frost_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	frost_mat->set_albedo(Color(0.92f, 0.97f, 1.0f, 0.0f));
+	for (int i = 0; i < 4; i++) {
+		const bool side = pane_size[i].x < pane_size[i].z;
+		Ref<BoxMesh> fm;
+		fm.instantiate();
+		fm->set_size(side ? Vector3(0.02f, 0.90f, 1.03f) : Vector3(1.03f, 0.90f, 0.02f));
+		fm->set_material(Ref<Material>(frost_mat));
+		Vector3 off;
+		if (i < 2) {
+			off = Vector3(0.0f, 0.0f, 0.035f);
+		} else if (i == 2) {
+			off = Vector3(-0.035f, 0.0f, 0.0f);
+		} else {
+			off = Vector3(0.0f, 0.0f, -0.035f);
+		}
+		frost[i] = memnew(MeshInstance3D);
+		frost[i]->set_name(String("WindowFrost") + String::num_int64(i));
+		frost[i]->set_mesh(fm);
+		frost[i]->set_position(panes[i] + off);
+		frost[i]->set_visible(false);
+		host->add_child(frost[i]);
+	}
+
+	// —— 冬日 2：屋顶积雪（主屋两面坡 + 屋脊 + 侧棚 + 门廊棚） ——
+	const Color snow_col(0.90f, 0.93f, 0.98f);
+	const float slope = std::atan2(2.0f, 4.4f);
+	roof_snow[0] = meshutil::add_box(host, toon, Vector3(4.95f, 0.12f, 7.7f), Vector3(-2.23f, 4.87f, 0.0f), snow_col, Vector3(0.0f, 0.0f, slope));
+	roof_snow[1] = meshutil::add_box(host, toon, Vector3(4.95f, 0.12f, 7.7f), Vector3(2.23f, 4.87f, 0.0f), snow_col, Vector3(0.0f, 0.0f, -slope));
+	roof_snow[2] = meshutil::add_box(host, toon, Vector3(0.30f, 0.14f, 7.7f), Vector3(0.0f, 5.84f, 0.0f), snow_col);
+	roof_snow[3] = meshutil::add_box(host, toon, Vector3(3.8f, 0.10f, 4.3f), Vector3(5.62f, 3.25f, -1.45f), snow_col, Vector3(0.0f, 0.0f, -0.208f));
+	roof_snow[4] = meshutil::add_box(host, toon, Vector3(4.0f, 0.10f, 2.1f), Vector3(0.0f, 3.10f, 4.35f), snow_col, Vector3(-0.139f, 0.0f, 0.0f));
+	for (int i = 0; i < 5; i++) {
+		roof_snow[i]->set_visible(false);
+	}
+
+	// —— 冬日 3：屋檐垂冰 ——
+	Ref<CylinderMesh> ice;
+	ice.instantiate();
+	ice->set_top_radius(0.032f);
+	ice->set_bottom_radius(0.0f);
+	ice->set_height(1.0f);
+	ice->set_radial_segments(5);
+	ice->set_rings(1);
+	Ref<StandardMaterial3D> ice_mat;
+	ice_mat.instantiate();
+	ice_mat->set_albedo(Color(0.80f, 0.92f, 1.0f, 0.78f));
+	ice_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	ice_mat->set_roughness(0.12f);
+	ice_mat->set_metallic(0.25f);
+	ice->set_material(Ref<Material>(ice_mat));
+	auto add_icicle = [&](const Vector3 &p_eave, float p_len) {
+		MeshInstance3D *mi = memnew(MeshInstance3D);
+		mi->set_mesh(ice);
+		mi->set_position(p_eave);
+		mi->set_visible(false);
+		host->add_child(mi);
+		icicles.push_back(mi);
+		icicle_base.push_back(p_eave);
+		icicle_scale.push_back(Vector3(rr(0.75f, 1.15f), p_len, rr(0.75f, 1.15f)));
+	};
+	for (int i = 0; i < 8; i++) {
+		const float z = -3.3f + 0.94f * (float)i;
+		add_icicle(Vector3(-4.36f, 3.78f, z), rr(0.14f, 0.34f));
+		add_icicle(Vector3(4.36f, 3.78f, z), rr(0.14f, 0.34f));
+	}
+	for (int i = 0; i < 6; i++) {
+		const float x = -1.7f + 0.68f * (float)i;
+		add_icicle(Vector3(x, 3.08f, 5.30f), rr(0.10f, 0.28f));
+	}
+
+	// —— 冬日 4：门上的松枝花环（红果 + 随门开合） ——
+	wreath_mat = meshutil::toon_material(toon, Color(0.13f, 0.27f, 0.15f), 0.25f);
+	Ref<TorusMesh> torus;
+	torus.instantiate();
+	torus->set_inner_radius(0.16f);
+	torus->set_outer_radius(0.30f);
+	torus->set_rings(28);
+	torus->set_ring_segments(8);
+	torus->set_material(wreath_mat);
+	wreath = memnew(Node3D);
+	wreath->set_name("WinterWreath");
+	wreath->set_rotation(Vector3(1.5708f, 0.0f, 0.0f));
+	MeshInstance3D *ring_mi = memnew(MeshInstance3D);
+	ring_mi->set_mesh(torus);
+	wreath->add_child(ring_mi);
+	for (int i = 0; i < 7; i++) {
+		const float a = (float)i * 0.8976f;
+		meshutil::add_sphere(wreath, toon, 0.036f, Vector3(std::cos(a) * 0.23f, 0.058f, std::sin(a) * 0.23f), Color(0.62f, 0.12f, 0.13f));
+	}
+	// 挂在门扇上：开门时花环跟着门一起转
+	Node3D *wreath_mount = host;
+	Node *door_panel = host->get_node_or_null(NodePath("CabinDoor/Pivot/Panel"));
+	if (door_panel != nullptr && Object::cast_to<Node3D>(door_panel) != nullptr) {
+		wreath_mount = Object::cast_to<Node3D>(door_panel);
+		wreath->set_position(Vector3(0.0f, 1.32f, 0.125f));
+	} else {
+		wreath->set_position(Vector3(0.0f, 1.52f, 3.55f));
+	}
+	wreath_mount->add_child(wreath);
 }
