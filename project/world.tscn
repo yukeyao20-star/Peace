@@ -1352,6 +1352,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -11.5, 0, -22.5)
 
 [node name="FloatingLanterns" type="FloatingLanterns" parent="."]
 
+[node name="WishLanternDock" type="WishLanternDock" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.0, -0.26, -10.8)
+
 [node name="CabinYard" type="CabinYard" parent="."]
 
 [node name="RockingChair" type="RockingChair" parent="."]
