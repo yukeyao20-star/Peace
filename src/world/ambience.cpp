@@ -225,6 +225,23 @@ void Ambience::_notification(int p_what) {
 				}
 				owl_t = (night_ok2 ? 19.0f : 5.0f) + (float)(rng() % 1000u) * 0.020f;
 			}
+
+			// —— 白天水鸟（鸥鸣）：晴朗白天、玩家在湖边一带才叫，给白天补一层远声 ——
+			gull_t -= (float)delta;
+			if (gull_t <= 0.0f) {
+				bool day_ok = (night_f < 0.35f) && (wet_s < 0.3f);
+				bool near_lake = true;
+				if (player_cache != nullptr) {
+					const Vector3 pp = player_cache->get_global_position();
+					near_lake = Vector2(pp.x + 6.0f, pp.z - 26.0f).length() < 75.0f;
+				}
+				if (day_ok && near_lake && gull != nullptr && !gull->is_playing()) {
+					gull->set_pitch_scale(0.95f + (float)(rng() % 1000u) * 0.00011f);
+					gull->set_volume_db(-20.0f + Math::linear_to_db(Math::max(mg, 0.0001f)));
+					gull->play(0.0f);
+				}
+				gull_t = (day_ok ? 14.0f : 6.0f) + (float)(rng() % 1000u) * 0.016f;
+			}
 		} break;
 		default:
 			break;
@@ -272,6 +289,7 @@ void Ambience::build() {
 	snd_chirp = make_chirp();
 	snd_loon = make_loon();
 	snd_owl = make_owl();
+	snd_gull = make_gull();
 	snd_birds = load_looping_mp3("res://assets/audio/birds_morning.mp3");
 	snd_water = load_looping_mp3("res://assets/audio/water_lap.mp3");
 	if (!snd_water.is_valid()) {
@@ -349,13 +367,19 @@ void Ambience::build() {
 	owl->set_stream(snd_owl);
 	owl->set_volume_db(-21.0f);
 	add_child(owl);
+
+	gull = memnew(AudioStreamPlayer);
+	gull->set_name("Gull");
+	gull->set_stream(snd_gull);
+	gull->set_volume_db(-20.0f);
+	add_child(gull);
 }
 
 // 退出收口（NOTIFICATION_EXIT_TREE 触发）：stop 全部播放器并清掉成员上的音频流引用
 void Ambience::shutdown_audio() {
 	set_process(false);
-	AudioStreamPlayer *players[10] = {wind, wind_snow, rain, cricket, birds, water, hearth, bgm, loon, owl};
-	for (int i = 0; i < 10; ++i) {
+	AudioStreamPlayer *players[11] = {wind, wind_snow, rain, cricket, birds, water, hearth, bgm, loon, owl, gull};
+	for (int i = 0; i < 11; ++i) {
 		if (players[i] != nullptr) {
 			players[i]->stop();
 			players[i]->set_stream(Ref<AudioStream>());
@@ -367,6 +391,7 @@ void Ambience::shutdown_audio() {
 	snd_chirp = Ref<AudioStreamWAV>();
 	snd_loon = Ref<AudioStreamWAV>();
 	snd_owl = Ref<AudioStreamWAV>();
+	snd_gull = Ref<AudioStreamWAV>();
 	snd_birds = Ref<AudioStream>();
 	snd_water = Ref<AudioStream>();
 	snd_hearth = Ref<AudioStream>();
@@ -715,6 +740,47 @@ Ref<AudioStreamWAV> Ambience::make_loon() {
 }
 
 // 猫头鹰：两声低沉圆润的「咕—咕」
+// 白天水鸟：三声下滑的「啊—啊—啊」，带一点颤音，像远处湖面上的鸥
+Ref<AudioStreamWAV> Ambience::make_gull() {
+	const int sr = 22050;
+	const float dur = 1.35f;
+	const int n = (int)(dur * sr);
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
+	for (int i = 0; i < n; i++) {
+		float t = (float)i / sr;
+		float samp = 0.0f;
+		for (int b = 0; b < 3; b++) {
+			float bt = t - b * 0.40f;
+			if (bt < 0.0f || bt > 0.34f) {
+				continue;
+			}
+			float u = bt / 0.34f;
+			float f0 = (b == 0 ? 980.0f : (b == 1 ? 880.0f : 810.0f)) - 260.0f * u
+					+ std::sin(6.2831853f * 17.0f * bt) * 24.0f;
+			float env = Math::clamp(bt / 0.025f, 0.0f, 1.0f)
+					* Math::clamp((0.34f - bt) / 0.16f, 0.0f, 1.0f);
+			float v = std::sin(6.2831853f * f0 * bt)
+					+ 0.30f * std::sin(6.2831853f * f0 * 2.0f * bt)
+					+ 0.16f * std::sin(6.2831853f * f0 * 3.0f * bt);
+			samp += v * env * 0.34f;
+		}
+		samp += (d01(rng) - 0.5f) * 0.006f;
+		int16_t q = (int16_t)Math::clamp(samp * 13000.0f, -32000.0f, 32000.0f);
+		w[i * 2] = (uint8_t)(q & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
+	}
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_data(bytes);
+	return wav;
+}
+
 Ref<AudioStreamWAV> Ambience::make_owl() {
 	const int sr = 22050;
 	const float dur = 1.1f;

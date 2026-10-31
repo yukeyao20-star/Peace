@@ -8,6 +8,8 @@
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
+#include "../interact/interactable.h"
+
 namespace godot {
 
 class AudioStreamPlayer3D;
@@ -16,8 +18,8 @@ class CPUParticles3D;
 class OmniLight3D;
 class TerrainBuilder;
 
-class Campfire : public Node3D {
-	GDCLASS(Campfire, Node3D)
+class Campfire : public Interactable {
+	GDCLASS(Campfire, Interactable)
 
 private:
 	OmniLight3D *light = nullptr;
@@ -26,6 +28,7 @@ private:
 	AudioStreamPlayer3D *crackle = nullptr;
 	Ref<AudioStreamWAV> snd_crackle;
 	float t = 0.0f;
+	float boost = 0.0f; // 添柴后的火势余韵（秒）
 
 	void build();
 	Ref<AudioStreamWAV> make_crackle();
@@ -35,6 +38,12 @@ protected:
 
 public:
 	void _notification(int p_what);
+
+	String get_prompt() const override;
+	Vector3 get_interact_pos() const override;
+	float get_interact_distance() const override;
+	bool requires_line_of_sight() const override { return false; }
+	void interact(const Vector3 &p_player_pos) override;
 };
 
 } // namespace godot

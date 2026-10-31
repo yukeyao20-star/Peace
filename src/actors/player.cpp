@@ -1251,7 +1251,9 @@ void Player::_update_camera(double delta) {
 		return; // 不走跟随 + 遮挡回拉（机位是手工摆在屋里的）
 	}
 
-	const Vector3 head = get_global_position() + Vector3(0.0, is_swimming ? 0.55 : camera_height, 0.0);
+	// 坐下时视点跟着落到长椅上，相机也拉近一点，像真的窝在椅子里看湖
+	const double head_h = is_sitting ? 1.05 : (is_swimming ? 0.55 : camera_height);
+	const Vector3 head = get_global_position() + Vector3(0.0, head_h, 0.0);
 
 	if (!cam_follow_init) {
 		cam_follow = head;
@@ -1264,6 +1266,9 @@ void Player::_update_camera(double delta) {
 	cam_follow = cam_follow.lerp(head, factor);
 
 	double cam_dist_eff = is_swimming ? Math::min(cam_dist, 4.0) : cam_dist;
+	if (is_sitting) {
+		cam_dist_eff = Math::min(cam_dist_eff, 4.2);
+	}
 	Vector3 off = Basis(Vector3(0.0, 1.0, 0.0), (float)cam_yaw).xform(
 			Vector3(0.0, std::sin(cam_pitch), std::cos(cam_pitch)) * cam_dist_eff);
 	Vector3 want = cam_follow + off;

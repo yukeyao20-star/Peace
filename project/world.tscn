@@ -165,10 +165,24 @@ shader_parameter/albedo = Color(0.72, 0.53, 0.32, 1)
 shader_parameter/rim = 0.35
 shader_parameter/roughness_value = 0.9
 
+[sub_resource type="Gradient" id="FireflyDotGradient"]
+offsets = PackedFloat32Array(0, 0.55, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0.5, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="FireflyDot"]
+gradient = SubResource("FireflyDotGradient")
+width = 32
+height = 32
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
 [sub_resource type="StandardMaterial3D" id="FireflyMat"]
 transparency = 1
+blend_mode = 1
 shading_mode = 0
 vertex_color_use_as_albedo = true
+albedo_texture = SubResource("FireflyDot")
 billboard_mode = 3
 billboard_keep_scale = true
 particles_anim_h_frames = 1
@@ -1172,10 +1186,37 @@ scale_amount_min = 0.6
 scale_amount_max = 1.3
 color_ramp = SubResource("FireflyGradient")
 
+[node name="FirefliesB" type="CPUParticles3D" parent="." unique_id=2044119033]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.8, 1.15, -13.0)
+amount = 26
+lifetime = 5.5
+randomness = 0.55
+mesh = SubResource("FireflyQuad")
+emission_shape = 3
+emission_box_extents = Vector3(5.5, 1.1, 4.0)
+spread = 180.0
+gravity = Vector3(0, 0.06, 0)
+initial_velocity_min = 0.25
+initial_velocity_max = 0.65
+linear_accel_min = -0.12
+linear_accel_max = 0.12
+radial_accel_min = -0.2
+radial_accel_max = 0.2
+tangential_accel_min = -0.4
+tangential_accel_max = 0.4
+orbit_velocity_min = -0.05
+orbit_velocity_max = 0.05
+damping_min = 0.0
+damping_max = 0.02
+scale_amount_min = 0.55
+scale_amount_max = 1.15
+color_ramp = SubResource("FireflyGradient")
+
 [node name="SkyCycle" type="SkyCycle" parent="." unique_id=2111357219]
 sun_path = NodePath("../Sun")
 env_path = NodePath("../WorldEnvironment")
 fireflies_path = NodePath("../Fireflies")
+fireflies_b_path = NodePath("../FirefliesB")
 
 [node name="Bird1" type="Bird" parent="." unique_id=345462864]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 12, -10)

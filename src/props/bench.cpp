@@ -1,12 +1,17 @@
 #include "bench.h"
 
+#include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/input.hpp>
+#include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/omni_light3d.hpp>
 #include <godot_cpp/classes/shader.hpp>
+#include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 
 #include "../actors/player.h"
 #include "../systems/mesh_util.h"
+#include "../world/sky_cycle.h"
 #include "../world/terrain_builder.h"
 
 using namespace godot;
@@ -37,10 +42,25 @@ void Bench::_notification(int p_what) {
 			add_to_group("interactables");
 			seat_yaw = 1.5707964f; // 朝 +X（火堆方向）
 			seat_pos = get_global_position() + Vector3(0.0f, 0.36f, 0.0f);
+			if (get_parent() != nullptr) {
+				sky = Object::cast_to<SkyCycle>(get_parent()->get_node_or_null("SkyCycle"));
+			}
 			build();
 			set_process(true);
 		} break;
 		case NOTIFICATION_PROCESS: {
+			// 长椅旁小灯：入夜亮起，火光/风里轻微跳动
+			lamp_t += (float)get_process_delta_time();
+			if (lantern_light != nullptr) {
+				float night = (sky != nullptr) ? sky->get_night_factor() : 0.0f;
+				float on = Math::clamp((night - 0.25f) / 0.45f, 0.0f, 1.0f);
+				float flick = 0.90f + 0.06f * std::sin(lamp_t * 9.7f) + 0.03f * std::sin(lamp_t * 23.3f + 1.1f);
+				lantern_light->set_param(Light3D::PARAM_ENERGY, 1.25f * on * flick);
+				lantern_light->set_visible(on > 0.02f);
+				if (lantern_glass != nullptr) {
+					lantern_glass->set("emission_energy_multiplier", 0.35f + 2.6f * on * flick);
+				}
+			}
 			if (seated == nullptr) {
 				return;
 			}
@@ -123,4 +143,34 @@ void Bench::build() {
 		float z = (i % 2 == 0) ? -0.70f : 0.70f;
 		meshutil::add_box(this, toon, Vector3(0.09f, 0.45f, 0.09f), Vector3(x, 0.22f, z), wood_dark);
 	}
+
+	// 长椅旁的立杆小灯（傍晚自动亮，白天熄灭）
+	meshutil::add_box(this, toon, Vector3(0.08f, 1.16f, 0.08f), Vector3(0.62f, 0.58f, 1.02f), wood_dark);
+	meshutil::add_box(this, toon, Vector3(0.40f, 0.06f, 0.06f), Vector3(0.46f, 1.14f, 1.02f), wood_dark);
+	meshutil::add_box(this, toon, Vector3(0.24f, 0.05f, 0.24f), Vector3(0.30f, 1.17f, 1.02f), wood_dark);
+	meshutil::add_box(this, toon, Vector3(0.24f, 0.04f, 0.24f), Vector3(0.30f, 0.89f, 1.02f), wood_dark);
+
+	Ref<BoxMesh> glass_mesh;
+	glass_mesh.instantiate();
+	glass_mesh->set_size(Vector3(0.19f, 0.24f, 0.19f));
+	lantern_glass = memnew(StandardMaterial3D);
+	lantern_glass->set_albedo(Color(1.0f, 0.78f, 0.45f, 1.0f));
+	lantern_glass->set("emission_enabled", true);
+	lantern_glass->set("emission", Color(1.0f, 0.66f, 0.30f));
+	lantern_glass->set("emission_energy_multiplier", 0.35f);
+	glass_mesh->set_material(Ref<Material>(lantern_glass));
+	MeshInstance3D *glass = memnew(MeshInstance3D);
+	glass->set_name("BenchLantern");
+	glass->set_mesh(glass_mesh);
+	glass->set_position(Vector3(0.30f, 1.03f, 1.02f));
+	add_child(glass);
+
+	lantern_light = memnew(OmniLight3D);
+	lantern_light->set_name("LanternLight");
+	lantern_light->set_position(Vector3(0.30f, 1.05f, 1.02f));
+	lantern_light->set_color(Color(1.0f, 0.68f, 0.34f));
+	lantern_light->set_param(Light3D::PARAM_RANGE, 5.5f);
+	lantern_light->set_param(Light3D::PARAM_ENERGY, 0.0f);
+	lantern_light->set_visible(false);
+	add_child(lantern_light);
 }

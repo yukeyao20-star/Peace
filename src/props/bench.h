@@ -12,6 +12,10 @@ class Player;
 
 namespace godot {
 
+class OmniLight3D;
+class SkyCycle;
+class StandardMaterial3D;
+
 class Bench : public Interactable {
 	GDCLASS(Bench, Interactable)
 
@@ -20,6 +24,10 @@ private:
 	Vector3 seat_pos;
 	float seat_yaw = 0.0f;
 	bool e_prev = false;
+	OmniLight3D *lantern_light = nullptr;
+	StandardMaterial3D *lantern_glass = nullptr;
+	SkyCycle *sky = nullptr;
+	float lamp_t = 0.0f;
 
 	void build();
 	void stand_up();

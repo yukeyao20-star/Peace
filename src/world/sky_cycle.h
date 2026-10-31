@@ -47,6 +47,7 @@ private:
 	NodePath sun_path;   // 指向 DirectionalLight3D（太阳/月亮）
 	NodePath env_path;   // 指向 WorldEnvironment
 	NodePath fireflies_path; // 指向 CPUParticles3D（萤火虫，仅夜间晴天出现）
+	NodePath fireflies_b_path; // 第二簇萤火虫（长椅/码头一带）
 
 	DirectionalLight3D *sun = nullptr;
 	WorldEnvironment *world_env = nullptr;
@@ -75,6 +76,7 @@ private:
 	CPUParticles3D *downpour = nullptr; // 大雨层
 	CPUParticles3D *snowflakes = nullptr; // 雪花层
 	CPUParticles3D *fireflies = nullptr; // 萤火虫（夜间 + 非雨雪天）
+	CPUParticles3D *fireflies_b = nullptr; // 长椅水湾的第二簇萤火虫
 	Ref<ShaderMaterial> precip_mat;      // 雨丝材质（fixed_y = true，带屋檐遮蔽）
 	Ref<ShaderMaterial> precip_mat_snow; // 雪花材质（fixed_y = false；billboard 模式不同必须分开）
 	// —— 屋檐遮蔽体：全部在木屋局部空间描述（木屋绕 Y 转了 45°，
@@ -154,6 +156,8 @@ public:
 	NodePath get_env_path() const { return env_path; }
 	void set_fireflies_path(const NodePath &p) { fireflies_path = p; }
 	NodePath get_fireflies_path() const { return fireflies_path; }
+	void set_fireflies_b_path(const NodePath &p) { fireflies_b_path = p; }
+	NodePath get_fireflies_b_path() const { return fireflies_b_path; }
 	void set_time_of_day(float p) { time_of_day = p; }
 	float get_time_of_day() const { return time_of_day; }
 	void set_day_length(float p) { day_length = p; }

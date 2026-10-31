@@ -61,6 +61,7 @@ private:
 	AudioStreamPlayer *cricket = nullptr;   // 夜间虫鸣（一次性短颤音）
 	AudioStreamPlayer *loon = nullptr;      // 夜间潜鸟远鸣
 	AudioStreamPlayer *owl = nullptr;       // 夜间猫头鹰
+	AudioStreamPlayer *gull = nullptr;      // 白天湖上的海鸥/水鸟叫声
 	AudioStreamPlayer *birds = nullptr;     // 晨曦鸟鸣循环（birds_morning.mp3）
 	AudioStreamPlayer *water = nullptr;     // 湖水拍岸循环（water_lap.mp3）
 	AudioStreamPlayer *hearth = nullptr;    // 壁炉柴火循环（cabin_fireplace.mp3）
@@ -72,6 +73,7 @@ private:
 	Ref<AudioStreamWAV> snd_chirp;     // 蟋蟀短颤音
 	Ref<AudioStreamWAV> snd_loon;      // 潜鸟远鸣
 	Ref<AudioStreamWAV> snd_owl;       // 猫头鹰
+	Ref<AudioStreamWAV> snd_gull;      // 白天水鸟叫
 	Ref<AudioStream> snd_birds;        // 晨曦鸟鸣（birds_morning.mp3）
 	Ref<AudioStream> snd_water;        // 湖水拍岸（water_lap.mp3）
 	Ref<AudioStream> snd_hearth;       // 壁炉柴火（cabin_fireplace.mp3）
@@ -98,6 +100,7 @@ private:
 	float cricket_t = 3.0f;   // 距下次虫鸣的倒计时（秒）
 	float loon_t = 12.0f;     // 距下次潜鸟鸣叫
 	float owl_t = 8.0f;       // 距下次猫头鹰
+	float gull_t = 16.0f;     // 距下次白天水鸟叫
 
 	std::mt19937 rng{2026u}; // 虫鸣间隔/音高随机源（Math 无 randf，走 std）
 
@@ -108,6 +111,7 @@ private:
 	Ref<AudioStreamWAV> make_chirp();
 	Ref<AudioStreamWAV> make_loon();
 	Ref<AudioStreamWAV> make_owl();
+	Ref<AudioStreamWAV> make_gull();
 	Ref<AudioStreamWAV> make_water_lap();
 	void apply_gain(AudioStreamPlayer *p, float gain, bool &paused);
 

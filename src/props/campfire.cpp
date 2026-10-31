@@ -23,6 +23,40 @@
 using namespace godot;
 
 void Campfire::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("get_prompt"), &Campfire::get_prompt);
+	ClassDB::bind_method(D_METHOD("get_interact_pos"), &Campfire::get_interact_pos);
+	ClassDB::bind_method(D_METHOD("get_interact_distance"), &Campfire::get_interact_distance);
+	ClassDB::bind_method(D_METHOD("requires_line_of_sight"), &Campfire::requires_line_of_sight);
+	ClassDB::bind_method(D_METHOD("interact", "player_pos"), &Campfire::interact);
+}
+
+String Campfire::get_prompt() const {
+	return String::utf8("按 E 添柴");
+}
+
+Vector3 Campfire::get_interact_pos() const {
+	return get_global_position() + Vector3(0.0f, 0.35f, 0.0f);
+}
+
+float Campfire::get_interact_distance() const {
+	return 2.8f;
+}
+
+void Campfire::interact(const Vector3 &p_player_pos) {
+	(void)p_player_pos;
+	boost = 0.9f;
+	if (embers != nullptr) {
+		embers->restart();
+	}
+	if (crackle != nullptr) {
+		crackle->set_volume_db(-8.0f);
+	}
+	if (get_parent() != nullptr) {
+		Node *gd = get_parent()->get_node_or_null("GameDirector");
+		if (gd != nullptr) {
+			gd->call("flash_hint", String::utf8("柴火添上了 · 火光一下子暖起来"), 3.0f);
+		}
+	}
 }
 
 void Campfire::_notification(int p_what) {
@@ -40,18 +74,29 @@ void Campfire::_notification(int p_what) {
 				p.y = terrain->get_terrain_height(p.x, p.z) + 0.03f;
 				set_global_position(p);
 			}
+			add_to_group("interactables");
 			build();
 			set_process(true);
 		} break;
 		case NOTIFICATION_PROCESS: {
 			t += (float)get_process_delta_time();
+			if (boost > 0.0f) {
+				boost = Math::max(0.0f, boost - (float)get_process_delta_time());
+			}
+			// 添柴后 0.9s 内火势冲高再回落（前段猛、后段缓）
+			float b = boost / 0.9f;
+			float surge = 1.0f + 1.15f * b * b;
 			if (light != nullptr) {
 				float flicker = 0.92f + 0.06f * std::sin(t * 7.3f) + 0.02f * std::sin(t * 19.1f + 1.7f);
-				light->set_param(Light3D::PARAM_ENERGY, 1.55f * flicker);
+				light->set_param(Light3D::PARAM_ENERGY, 1.55f * flicker * surge);
 			}
 			if (flame != nullptr) {
 				float s = 1.0f + 0.06f * std::sin(t * 9.1f) + 0.03f * std::sin(t * 15.7f + 0.8f);
-				flame->set_scale(Vector3(s, 1.0f + 0.10f * std::sin(t * 6.4f), s));
+				flame->set_scale(Vector3(s * (1.0f + 0.55f * b), (1.0f + 0.10f * std::sin(t * 6.4f)) * (1.0f + 0.8f * b), s * (1.0f + 0.55f * b)));
+			}
+			if (crackle != nullptr) {
+				float target_db = (boost > 0.0f) ? -8.0f : -20.0f;
+				crackle->set_volume_db(Math::lerp((float)crackle->get_volume_db(), target_db, 1.0f - std::exp(-6.0f * (float)get_process_delta_time())));
 			}
 		} break;
 		default:
