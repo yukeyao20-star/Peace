@@ -236,7 +236,7 @@ void Player::_notification(int p_what) {
 			guide_panel->set_offset(SIDE_LEFT, -214.0f);
 			guide_panel->set_offset(SIDE_RIGHT, -16.0f);
 			guide_panel->set_offset(SIDE_TOP, 16.0f);
-			guide_panel->set_offset(SIDE_BOTTOM, 286.0f);
+			guide_panel->set_offset(SIDE_BOTTOM, 308.0f);
 
 			// 小黑板：墨绿板面 + 原木边框，粉笔字（与木牌/木屋同一材质语言）
 			guide_panel->add_theme_stylebox_override("panel", uistyle::make_blackboard_textured(0.98f));
@@ -255,6 +255,7 @@ void Player::_notification(int p_what) {
 				"[空格] 跳跃 · 支持凌空二段跳",
 				"[空格/Ctrl] 游泳 · 上浮 / 下潜",
 				"[E] 划船 · W/S 划行 · A/D 转向",
+				"[E] 坐下 · 长椅 / 秋千",
 				"[P] 拍照 · [H] 隐藏界面 · F12 保存",
 				"[F11] 全屏 · [V] 镜头远近",
 				"[F3] 调试 · [ - / = ] 音量"
@@ -715,7 +716,7 @@ void Player::_physics_step() {
 
 	// 2.3 拍照模式：位置冻结、隐藏角色和 HUD，只留自由机位
 	bool p_down = input->is_key_pressed(KEY_P);
-	if (p_down && !photo_prev && !is_sitting && !is_boating) {
+	if (p_down && !photo_prev && !is_boating) {
 		set_photo_mode(!photo_mode);
 	}
 	photo_prev = p_down;
@@ -1413,6 +1414,13 @@ void Player::set_hud_visible(bool p_visible) {
 				flayer->set_visible(p_visible);
 			}
 		}
+		Node *shells = get_parent()->get_node_or_null("Shells");
+		if (shells != nullptr) {
+			CanvasLayer *slayer = Object::cast_to<CanvasLayer>(shells->get_node_or_null("ShellHUD"));
+			if (slayer != nullptr) {
+				slayer->set_visible(p_visible);
+			}
+		}
 	}
 }
 
@@ -1454,6 +1462,12 @@ void Player::save_photo() {
 	Ref<Image> img = get_viewport()->get_texture()->get_image();
 	Error err = img.is_valid() ? img->save_png(path) : ERR_UNAVAILABLE;
 	if (err == OK) {
+		if (get_parent() != nullptr) {
+			Node *gd = get_parent()->get_node_or_null("GameDirector");
+			if (gd != nullptr) {
+				gd->call("on_photo_taken");
+			}
+		}
 		show_photo_toast(String::utf8("截图已保存 · user://screenshots"), 3.0f);
 	} else {
 		show_photo_toast(String::utf8("截图保存失败"), 2.0f);

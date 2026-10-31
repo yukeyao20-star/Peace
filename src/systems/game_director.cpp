@@ -71,6 +71,12 @@ float marker_height(int p_type) {
 			return 1.7f; // 菜畦上方
 		case GameDirector::TASK_FEED:
 			return 1.9f; // 动物头顶
+		case GameDirector::TASK_SHELL:
+			return 1.1f; // 沙滩贝壳上方
+		case GameDirector::TASK_SWING:
+			return 1.9f; // 秋千横梁上方
+		case GameDirector::TASK_PHOTO:
+			return 2.2f; // 玩家头顶
 		default:
 			return 2.0f;
 	}
@@ -92,6 +98,12 @@ const char *task_name(int p_type) {
 			return "照看菜畦";
 		case GameDirector::TASK_FEED:
 			return "喂动物";
+		case GameDirector::TASK_SHELL:
+			return "拾贝壳";
+		case GameDirector::TASK_SWING:
+			return "荡秋千";
+		case GameDirector::TASK_PHOTO:
+			return "拍一张照片";
 		default:
 			return "?";
 	}
@@ -108,6 +120,9 @@ void GameDirector::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("on_chest_looted"), &GameDirector::on_chest_looted);
 	ClassDB::bind_method(D_METHOD("on_plot_harvested"), &GameDirector::on_plot_harvested);
 	ClassDB::bind_method(D_METHOD("on_animal_fed"), &GameDirector::on_animal_fed);
+	ClassDB::bind_method(D_METHOD("on_shell_collected"), &GameDirector::on_shell_collected);
+	ClassDB::bind_method(D_METHOD("on_swing_ridden"), &GameDirector::on_swing_ridden);
+	ClassDB::bind_method(D_METHOD("on_photo_taken"), &GameDirector::on_photo_taken);
 	ClassDB::bind_method(D_METHOD("get_count"), &GameDirector::get_count);
 	ClassDB::bind_method(D_METHOD("get_target"), &GameDirector::get_target);
 	ClassDB::bind_method(D_METHOD("is_done"), &GameDirector::is_done);
@@ -510,8 +525,8 @@ void GameDirector::roll_day_tasks(int p_day) {
 		berry.type = TASK_BERRY;
 		berry.target = 3 + (int)(rng() % 3);
 		tasks.push_back(berry);
-		int others[6] = { TASK_FISH, TASK_GOAL, TASK_WELL, TASK_CHEST, TASK_HARVEST, TASK_FEED };
-		for (int i = 5; i > 0; i--) { // Fisher-Yates 洗牌
+		int others[9] = { TASK_FISH, TASK_GOAL, TASK_WELL, TASK_CHEST, TASK_HARVEST, TASK_FEED, TASK_SHELL, TASK_SWING, TASK_PHOTO };
+		for (int i = 8; i > 0; i--) { // Fisher-Yates 洗牌
 			int j = (int)(rng() % (unsigned)(i + 1));
 			int tmp = others[i];
 			others[i] = others[j];
@@ -665,6 +680,32 @@ Node3D *GameDirector::resolve_marker_target(int p_type) {
 			}
 		}
 		return best_ripe != nullptr ? best_ripe : best;
+	}
+	if (p_type == TASK_SHELL) {
+		// 挑离玩家最近、还没被拾起的贝壳
+		Node3D *player = Object::cast_to<Node3D>(root->find_child("Player", true, false));
+		const Vector3 ppos = (player != nullptr) ? player->get_global_position() : Vector3();
+		Node3D *best = nullptr;
+		float best_d = 0.0f;
+		Array shells = get_tree()->get_nodes_in_group(StringName("beach_shells"));
+		for (int i = 0; i < shells.size(); i++) {
+			Node3D *sh = Object::cast_to<Node3D>(shells[i]);
+			if (sh == nullptr || !sh->is_visible()) {
+				continue;
+			}
+			float d = (sh->get_global_position() - ppos).length_squared();
+			if (best == nullptr || d < best_d) {
+				best = sh;
+				best_d = d;
+			}
+		}
+		return best;
+	}
+	if (p_type == TASK_SWING) {
+		return Object::cast_to<Node3D>(root->find_child("Swing", true, false));
+	}
+	if (p_type == TASK_PHOTO) {
+		return Object::cast_to<Node3D>(root->find_child("Player", true, false));
 	}
 	if (p_type == TASK_FEED) {
 		// 就近挑一只农场动物
@@ -867,6 +908,21 @@ void GameDirector::on_plot_harvested() {
 void GameDirector::on_animal_fed() {
 	note_first_interaction();
 	mark_task_progress(TASK_FEED);
+}
+
+void GameDirector::on_shell_collected() {
+	note_first_interaction();
+	mark_task_progress(TASK_SHELL);
+}
+
+void GameDirector::on_swing_ridden() {
+	note_first_interaction();
+	mark_task_progress(TASK_SWING);
+}
+
+void GameDirector::on_photo_taken() {
+	note_first_interaction();
+	mark_task_progress(TASK_PHOTO);
 }
 
 void GameDirector::on_chest_looted() {

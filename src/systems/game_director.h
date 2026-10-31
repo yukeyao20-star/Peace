@@ -54,6 +54,9 @@ public:
 		TASK_CHEST,     // 开木箱（chest_opened）
 		TASK_HARVEST,   // 照看菜畦：收获一茬作物（crop_harvested，按茬计）
 		TASK_FEED,      // 喂农场动物（animal_fed）
+		TASK_SHELL,     // 拾起一枚贝壳（shell_collected）
+		TASK_SWING,     // 荡一次秋千（swing_ridden）
+		TASK_PHOTO,     // 拍一张照片（photo_taken）
 		TASK_KIND_COUNT
 	};
 	struct DailyTask {
@@ -135,6 +138,9 @@ public:
 	void on_chest_looted();
 	void on_plot_harvested();
 	void on_animal_fed();
+	void on_shell_collected();
+	void on_swing_ridden();
+	void on_photo_taken();
 
 	int get_count() const { return count; }
 	int get_target() const { return target; }
