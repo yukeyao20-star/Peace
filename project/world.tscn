@@ -1281,6 +1281,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, -0.55, 26)
 
 [node name="Kelp" type="KelpField" parent="."]
 
+[node name="LilyPond" type="LilyPond" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.2, 0, -8.8)
+
 [node name="DockMoths" type="DockMoths" parent="."]
 
 [node name="Herons" type="HeronPond" parent="."]

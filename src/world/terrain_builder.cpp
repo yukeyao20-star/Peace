@@ -975,6 +975,8 @@ void TerrainBuilder::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_on_frozen_lake", "x", "z", "y"), &TerrainBuilder::is_on_frozen_lake);
 	ClassDB::bind_method(D_METHOD("is_in_bush", "x", "z", "y"), &TerrainBuilder::is_in_bush);
 	ClassDB::bind_method(D_METHOD("get_terrain_height", "x", "z"), &TerrainBuilder::get_terrain_height);
+	ClassDB::bind_method(D_METHOD("water_depth_at", "x", "z"), &TerrainBuilder::water_depth_at);
+	ClassDB::bind_method(D_METHOD("get_water_level"), &TerrainBuilder::get_water_level);
 }
 
 void TerrainBuilder::_notification(int p_what) {
