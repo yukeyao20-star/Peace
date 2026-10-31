@@ -101,6 +101,7 @@
 #include "pan_rack.h"
 #include "telescope.h"
 #include "weather_station.h"
+#include "garden_windmill.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
 #include "leaf_drift.h"
@@ -226,6 +227,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(PanRack);
 	GDREGISTER_CLASS(Telescope);
 	GDREGISTER_CLASS(WeatherStation);
+	GDREGISTER_CLASS(GardenWindmill);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
 	GDREGISTER_CLASS(LeafDrift);
