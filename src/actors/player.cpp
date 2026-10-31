@@ -19,6 +19,7 @@
 #include <godot_cpp/classes/capsule_mesh.hpp>
 #include <godot_cpp/classes/color_rect.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
+#include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/font.hpp>
 #include <godot_cpp/classes/image.hpp>
@@ -49,7 +50,10 @@
 #include <godot_cpp/classes/panel.hpp>
 #include <godot_cpp/classes/panel_container.hpp>
 #include <godot_cpp/classes/v_box_container.hpp>
+#include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/classes/torus_mesh.hpp>
+#include <godot_cpp/classes/viewport.hpp>
+#include <godot_cpp/classes/viewport_texture.hpp>
 #include <godot_cpp/classes/world3d.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/math.hpp>
@@ -114,6 +118,7 @@ void Player::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_is_map_open"), &Player::get_is_map_open);
 	ClassDB::bind_method(D_METHOD("get_is_boating"), &Player::get_is_boating);
 	ClassDB::bind_method(D_METHOD("get_is_sitting"), &Player::get_is_sitting);
+	ClassDB::bind_method(D_METHOD("get_photo_mode"), &Player::get_photo_mode);
 	ClassDB::bind_method(D_METHOD("launch_firework"), &Player::launch_firework);
 	ClassDB::bind_method(D_METHOD("_on_map_gui_input", "event"), &Player::_on_map_gui_input);
 	ClassDB::bind_method(D_METHOD("_on_map_bg_gui_input", "event"), &Player::_on_map_bg_gui_input);
@@ -170,6 +175,28 @@ void Player::_notification(int p_what) {
 			hud_layer = memnew(CanvasLayer);
 			hud_layer->set_layer(6);
 			add_child(hud_layer);
+
+			photo_layer = memnew(CanvasLayer);
+			photo_layer->set_name("PhotoLayer");
+			photo_layer->set_layer(9);
+			add_child(photo_layer);
+			photo_toast = memnew(Label);
+			photo_toast->set_name("PhotoToast");
+			photo_toast->set_anchors_preset(Control::PRESET_BOTTOM_WIDE);
+			photo_toast->set_offset(SIDE_LEFT, 0.0f);
+			photo_toast->set_offset(SIDE_RIGHT, 0.0f);
+			photo_toast->set_offset(SIDE_TOP, -86.0f);
+			photo_toast->set_offset(SIDE_BOTTOM, -50.0f);
+			photo_toast->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+			photo_toast->add_theme_font_size_override("font_size", 22);
+			photo_toast->add_theme_color_override("font_color", Color(1.0f, 0.95f, 0.78f));
+			photo_toast->add_theme_color_override("font_outline_color", Color(0.09f, 0.07f, 0.04f));
+			photo_toast->add_theme_constant_override("outline_size", 6);
+			if (cjk.is_valid()) {
+				photo_toast->add_theme_font_override("font", cjk);
+			}
+			photo_toast->hide();
+			photo_layer->add_child(photo_toast);
 			hud_prompt = memnew(Label);
 			hud_prompt->set_anchors_preset(Control::PRESET_CENTER_BOTTOM);
 			hud_prompt->set_offset(SIDE_LEFT, -200.0f);
@@ -194,7 +221,7 @@ void Player::_notification(int p_what) {
 			guide_panel->set_offset(SIDE_LEFT, -214.0f);
 			guide_panel->set_offset(SIDE_RIGHT, -16.0f);
 			guide_panel->set_offset(SIDE_TOP, 16.0f);
-			guide_panel->set_offset(SIDE_BOTTOM, 212.0f);
+			guide_panel->set_offset(SIDE_BOTTOM, 240.0f);
 
 			// 小黑板：墨绿板面 + 原木边框，粉笔字（与木牌/木屋同一材质语言）
 			guide_panel->add_theme_stylebox_override("panel", uistyle::make_blackboard_textured(0.98f));
@@ -212,7 +239,8 @@ void Player::_notification(int p_what) {
 				"[M] 舆图 · 苍湖全景漫游",
 				"[空格] 跳跃 · 支持凌空二段跳",
 				"[空格/Ctrl] 游泳 · 上浮 / 下潜",
-				"[E] 划船 · W/S 划行 · A/D 转向"
+				"[E] 划船 · W/S 划行 · A/D 转向",
+				"[P] 拍照 · 隐藏界面 · F12 保存"
 			};
 
 			for (int hi = 0; hi < 8; ++hi) {
@@ -495,6 +523,15 @@ void Player::_notification(int p_what) {
 				_update_look(p_delta); // 睡觉或展开大地图时鼠标不转动视角
 			}
 			_update_camera(p_delta);
+			if (photo_toast_t > 0.0f && photo_toast != nullptr) {
+				photo_toast_t -= p_delta;
+				if (photo_toast_t <= 0.0f) {
+					photo_toast->hide();
+				} else {
+					float a = Math::min(1.0f, photo_toast_t / 0.5f);
+					photo_toast->set_modulate(Color(1, 1, 1, a));
+				}
+			}
 
 			// 动态烟花强光高能衰减驱动：真实照亮夜空、大地与建筑
 			for (auto it = active_firework_flashes.begin(); it != active_firework_flashes.end();) {
@@ -586,6 +623,33 @@ void Player::_physics_step() {
 		if (sleep_key_released && sleep_fade_t > 0.6f && any_cancel_down) {
 			stop_sleep();
 		}
+		return;
+	}
+
+	// 2.3 拍照模式：位置冻结、隐藏角色和 HUD，只留自由机位
+	bool p_down = input->is_key_pressed(KEY_P);
+	if (p_down && !photo_prev && !is_sitting && !is_boating) {
+		set_photo_mode(!photo_mode);
+	}
+	photo_prev = p_down;
+	if (photo_mode) {
+		set_velocity(Vector3(0, 0, 0));
+		move_and_slide();
+		if (model != nullptr) {
+			model->set_visible(false);
+		}
+		if (prompt != nullptr) {
+			prompt->hide();
+		}
+		if (hud_prompt != nullptr) {
+			hud_prompt->hide();
+		}
+		bool f12 = input->is_key_pressed(KEY_F12);
+		if (f12 && !f12_prev) {
+			save_photo();
+		}
+		f12_prev = f12;
+		e_prev = act_pressed("interact", KEY_E);
 		return;
 	}
 
@@ -1215,11 +1279,13 @@ void Player::_update_look(double delta) {
 	cam_yaw -= (double)rel.x * mouse_sens;
 	cam_pitch = Math::clamp(cam_pitch + (double)rel.y * mouse_sens_y, -0.5, 1.25);
 
+	const double zoom_min = photo_mode ? 1.2 : 2.5;
+	const double zoom_max = photo_mode ? 15.0 : 9.0;
 	if (input->is_mouse_button_pressed(MOUSE_BUTTON_WHEEL_UP)) {
-		cam_dist = Math::max(2.5, cam_dist - 0.6);
+		cam_dist = Math::max(zoom_min, cam_dist - 0.6);
 	}
 	if (input->is_mouse_button_pressed(MOUSE_BUTTON_WHEEL_DOWN)) {
-		cam_dist = Math::min(9.0, cam_dist + 0.6);
+		cam_dist = Math::min(zoom_max, cam_dist + 0.6);
 	}
 }
 
@@ -1231,6 +1297,69 @@ void Player::_update_look(double delta) {
 //   鼠标一转，目标机位是绕球面瞬移的，但相机位置在慢慢追，
 //   结果就是"视角永远慢半拍"。用户报的"有延迟/有积分"主要就是这一条。
 //   现在改成：跟随时（角色走动）平滑，环绕（鼠标转动）直接给到位。
+void Player::set_photo_mode(bool p_on) {
+	photo_mode = p_on;
+	if (model != nullptr) {
+		model->set_visible(!p_on);
+	}
+	if (hud_layer != nullptr) {
+		hud_layer->set_visible(!p_on);
+	}
+	if (get_parent() != nullptr) {
+		CanvasLayer *gd = Object::cast_to<CanvasLayer>(get_parent()->get_node_or_null("GameDirector"));
+		if (gd != nullptr) {
+			gd->set_visible(!p_on);
+		}
+		CanvasLayer *clock = Object::cast_to<CanvasLayer>(get_parent()->get_node_or_null("HUDClock"));
+		if (clock != nullptr) {
+			clock->set_visible(!p_on);
+		}
+		Node *fishing = get_parent()->get_node_or_null("FishingSystem");
+		if (fishing != nullptr) {
+			CanvasLayer *flayer = Object::cast_to<CanvasLayer>(fishing->get_node_or_null("FishingUI"));
+			if (flayer != nullptr) {
+				flayer->set_visible(!p_on);
+			}
+		}
+	}
+	if (p_on) {
+		show_photo_toast(String::utf8("拍照模式 · 鼠标转视角 · 滚轮缩放 · F12 保存 · P 退出"), 5.0f);
+		if (prompt != nullptr) {
+			prompt->hide();
+		}
+		if (hud_prompt != nullptr) {
+			hud_prompt->hide();
+		}
+	} else {
+		show_photo_toast(String::utf8("已退出拍照模式"), 1.6f);
+	}
+}
+
+void Player::show_photo_toast(const String &p_text, float p_seconds) {
+	if (photo_toast == nullptr) {
+		return;
+	}
+	photo_toast->set_text(p_text);
+	photo_toast->set_modulate(Color(1, 1, 1, 1));
+	photo_toast->show();
+	photo_toast_t = p_seconds;
+}
+
+void Player::save_photo() {
+	const String dir = String::utf8("user://screenshots");
+	DirAccess::make_dir_recursive_absolute(dir);
+	String stamp = Time::get_singleton()->get_datetime_string_from_system();
+	stamp = stamp.replace(":", "-").replace("T", "_");
+	const String path = dir + String("/peace_") + stamp + String(".png");
+	Ref<Image> img = get_viewport()->get_texture()->get_image();
+	Error err = img.is_valid() ? img->save_png(path) : ERR_UNAVAILABLE;
+	if (err == OK) {
+		show_photo_toast(String::utf8("截图已保存 · user://screenshots"), 3.0f);
+	} else {
+		show_photo_toast(String::utf8("截图保存失败"), 2.0f);
+	}
+}
+
 void Player::_update_camera(double delta) {
 	if (camera == nullptr) {
 		return;

@@ -134,6 +134,7 @@ public:
 	void stand_up() { is_sitting = false; }
 	void suppress_interaction(float p_seconds) { interact_lock = p_seconds; }
 	bool get_is_sitting() const { return is_sitting; }
+	bool get_photo_mode() const { return photo_mode; }
 	void leave_boat() {
 		is_boating = false;
 		boat = nullptr;
@@ -206,6 +207,15 @@ private:
 	bool was_swimming = false;
 	bool is_boating = false;   // 坐在小木船上（Rowboat 控制移动）
 	bool is_sitting = false;   // 坐在长椅上（Bench 控制起坐）
+	bool photo_mode = false;   // 拍照模式：隐藏 HUD/角色，只留自由机位
+	bool photo_prev = false;
+	bool f12_prev = false;
+	godot::CanvasLayer *photo_layer = nullptr;
+	godot::Label *photo_toast = nullptr;
+	float photo_toast_t = 0.0f;
+	void set_photo_mode(bool p_on);
+	void save_photo();
+	void show_photo_toast(const godot::String &p_text, float p_seconds);
 	Vector3 sit_pos;
 	float sit_yaw = 0.0f;
 	bool swim_hint_shown = false; // 入水操作提示只弹一次

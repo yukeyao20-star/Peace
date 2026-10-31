@@ -168,6 +168,7 @@ void FishingSystem::build_ui() {
 			"res://assets/fonts/NotoSansSC-Regular.ttf");
 
 	layer = memnew(CanvasLayer);
+	layer->set_name("FishingUI");
 	layer->set_layer(7);
 	add_child(layer);
 
