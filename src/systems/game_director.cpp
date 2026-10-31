@@ -187,6 +187,7 @@ void GameDirector::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_target"), &GameDirector::get_target);
 	ClassDB::bind_method(D_METHOD("is_done"), &GameDirector::is_done);
 	ClassDB::bind_method(D_METHOD("get_current_day"), &GameDirector::get_current_day);
+	ClassDB::bind_method(D_METHOD("get_day100_celebrated"), &GameDirector::get_day100_celebrated);
 	ClassDB::bind_method(D_METHOD("flash_hint", "text", "seconds"), &GameDirector::flash_hint);
 	// —— 存档恢复用 ——
 	ClassDB::bind_method(D_METHOD("get_daily_serial"), &GameDirector::get_daily_serial);
@@ -240,6 +241,28 @@ void GameDirector::_notification(int p_what) {
 				connect_sources(); // 钓鱼/足球/菜畦在各自 READY 后才出现，逐帧补连
 			}
 			check_day_rollover(); // 自然午夜或床上睡觉跨天 → 换新清单
+			// —— 第 100 天：湖畔小庆典 ——
+			SkyCycle *skyc = (get_parent() != nullptr)
+					? Object::cast_to<SkyCycle>(get_parent()->get_node_or_null("SkyCycle"))
+					: nullptr;
+			const int today = (skyc != nullptr) ? skyc->get_day_count() : 1;
+			if (today >= 100 && day100_celebrated < 100) {
+				day100_celebrated = 100;
+				announce_center(String::utf8("第一百天\n\n湖还在，屋子还在。\n谢谢你陪湖畔慢慢走到这里。"), 7.0f);
+				celebrate_fire_t = 1.5f;
+				celebrate_bursts = 0;
+			}
+			if (celebrate_fire_t >= 0.0f) {
+				celebrate_fire_t -= (float)delta;
+				if (celebrate_fire_t <= 0.0f && celebrate_bursts < 3) {
+					Node *pl = (get_parent() != nullptr) ? get_parent()->get_node_or_null("Player") : nullptr;
+					if (pl != nullptr && skyc != nullptr && skyc->get_night_factor() > 0.5f) {
+						pl->call("launch_firework");
+					}
+					celebrate_bursts++;
+					celebrate_fire_t = (celebrate_bursts < 3) ? 2.5f : -1.0f;
+				}
+			}
 			// 目标方向指示（世界空间标记；目标失效就近重解析，贴近自动收牌）
 			marker_t += (float)delta;
 			update_goal_marker();

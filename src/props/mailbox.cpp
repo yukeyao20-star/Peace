@@ -301,6 +301,11 @@ String Mailbox::letter_for(int p_day, int p_weather) const {
 		"昨天有颗流星划过。许愿这种事，要趁早。",
 		"湖边的风把风筝线吹得嗡嗡响。记得收线，也记得抬头。",
 	};
+	if (p_day == 100) {
+		return String::utf8("第一百封信。湖还在，屋子还在，火堆也还亮着。\n\n"
+				"你从第一颗浆果走到今天，慢一点也没关系。\n\n"
+				"往后的日子，也请多多关照。");
+	}
 	int idx = (p_day * 7 + p_weather * 3) % 8;
 	if (idx < 0) {
 		idx += 8;

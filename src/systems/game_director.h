@@ -133,6 +133,10 @@ private:
 	void check_day_rollover();            // 轮询 SkyCycle day_count，跨天换清单
 	void mark_task_progress(int p_type);  // 某类待办 +1 并检查当日是否完成
 	void announce_center(const String &p_text, float p_seconds);
+
+	int day100_celebrated = 0;
+	float celebrate_fire_t = -1.0f;
+	int celebrate_bursts = 0;
 	void sync_legacy_fields();            // 把清单状态镜像回 count/target/done
 	void apply_farm_serial_to_plots(const String &p_serial); // 序列逐块下发到 farm_plots 组
 
@@ -170,6 +174,7 @@ public:
 	int get_target() const { return target; }
 	bool is_done() const { return done; }
 	int get_current_day() const { return cur_day; }
+	int get_day100_celebrated() const { return day100_celebrated; }
 
 	// —— 每日清单存档序列（SaveSystem 读写）——
 	String get_daily_serial() const;
