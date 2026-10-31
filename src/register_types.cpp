@@ -16,6 +16,7 @@
 #include "ice_surface.h"
 #include "bird.h"
 #include "rabbit.h"
+#include "bird_feeder.h"
 #include "hud_clock.h"
 #include "butterfly_swarm.h"
 #include "duck_flock.h"
@@ -93,6 +94,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(IceSurface);
 	GDREGISTER_CLASS(Bird);
 	GDREGISTER_CLASS(Rabbit);
+	GDREGISTER_CLASS(BirdFeeder);
 	GDREGISTER_CLASS(HUDClock);
 	GDREGISTER_CLASS(ButterflySwarm);
 	GDREGISTER_CLASS(DuckFlock);
