@@ -84,6 +84,10 @@ void SkyCycle::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_phase_name"), &SkyCycle::get_phase_name);
 	ClassDB::bind_method(D_METHOD("get_moon_phase"), &SkyCycle::get_moon_phase);
 	ClassDB::bind_method(D_METHOD("get_night_factor"), &SkyCycle::get_night_factor);
+	ClassDB::bind_method(D_METHOD("get_constellation_count"), &SkyCycle::get_constellation_count);
+	ClassDB::bind_method(D_METHOD("get_constellation_line_count"), &SkyCycle::get_constellation_line_count);
+	ClassDB::bind_method(D_METHOD("get_meteor_flash"), &SkyCycle::get_meteor_flash);
+	ClassDB::bind_method(D_METHOD("get_meteor_count"), &SkyCycle::get_meteor_count);
 	// 雨雪因子 getter 此前只有 C++ 调用方，-s 脚本摸不到（坑 17.3），补绑
 	ClassDB::bind_method(D_METHOD("get_rain_amount"), &SkyCycle::get_rain_amount);
 	ClassDB::bind_method(D_METHOD("get_rainbow_fade"), &SkyCycle::get_rainbow_fade);
@@ -283,6 +287,15 @@ void SkyCycle::_notification(int p_what) {
 			if (stars != nullptr) {
 				stars->rotate_y((float)delta * 0.01f);
 			}
+			// —— 星座星点：各自节奏轻轻眨眼；流星过后整片星空短暂提亮 ——
+			const_t += (float)delta;
+			if (meteor_flash > 0.0f) {
+				meteor_flash = Math::max(0.0f, meteor_flash - (float)delta * 0.9f);
+			}
+			for (size_t i = 0; i < const_stars.size(); i++) {
+				const float tw = 1.0f + 0.16f * std::sin(const_t * 1.35f + const_phase[i]);
+				const_stars[i]->set_scale(Vector3(tw, tw, tw));
+			}
 			// —— 流星：晴夜深空偶发一颗，从视野前上方斜掠而过 ——
 			if (shooting_star != nullptr) {
 				if (star_life > 0.0f) {
@@ -326,6 +339,8 @@ void SkyCycle::_notification(int p_what) {
 							star_dur = force ? 2.0f : rnd(0.7f, 1.1f);
 							star_life = star_dur;
 							star_timer = force ? 0.6f : rnd(18.0f, 45.0f);
+							meteor_flash = 1.0f;
+							meteor_count++;
 						} else {
 							star_timer = 4.0f;
 						}
@@ -498,8 +513,16 @@ void SkyCycle::apply() {
 	float night = 0.0f;
 	if (star_mat.is_valid()) {
 		night = get_night_factor();
-		const float alpha = night * (1.0f - cloud * 0.92f);
+		const float flash = meteor_flash * night; // 白天的流星不该把星空点亮
+		const float alpha = Math::clamp(night * (1.0f - cloud * 0.92f) + 0.15f * flash, 0.0f, 1.0f);
 		star_mat->set_albedo(Color(1.0f, 1.0f, 1.0f, alpha));
+		const float ca = Math::clamp(alpha * 1.15f + 0.25f * flash, 0.0f, 1.0f);
+		if (const_star_mat.is_valid()) {
+			const_star_mat->set_albedo(Color(1.0f, 1.0f, 1.0f, 0.92f * ca));
+		}
+		if (const_line_mat.is_valid()) {
+			const_line_mat->set_albedo(Color(0.62f, 0.76f, 1.0f, 0.50f * ca));
+		}
 		if (stars != nullptr) {
 			stars->set_visible(alpha > 0.004f); // 白天/浓云整组隐藏，省一次 draw call
 		}
@@ -954,6 +977,7 @@ void SkyCycle::build_stars() {
 		}
 	}
 	Ref<ImageTexture> star_tex = ImageTexture::create_from_image(star_img);
+	star_texture = star_tex;
 	star_mat->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, star_tex);
 
 	Ref<QuadMesh> quad;
@@ -1018,6 +1042,110 @@ void SkyCycle::build_stars() {
 	shooting_star->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 	shooting_star->set_visible(false);
 	add_child(shooting_star);
+
+	build_constellations();
+}
+
+// 三组手摆的星座：北斗七星 / 猎户座 / 仙后座。
+// 星点比背景星更大更亮、带连线；整体挂在 stars 节点下，随星穹一起缓慢转。
+// 方位错开（52°/126°/246°），任何朝向下至少有一组在视野里。
+void SkyCycle::build_constellations() {
+	if (stars == nullptr) {
+		return;
+	}
+	const_star_mat.instantiate();
+	const_star_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	const_star_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	const_star_mat->set_billboard_mode(BaseMaterial3D::BILLBOARD_ENABLED);
+	const_star_mat->set_flag(BaseMaterial3D::FLAG_BILLBOARD_KEEP_SCALE, true);
+	const_star_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	const_star_mat->set_blend_mode(BaseMaterial3D::BLEND_MODE_ADD);
+	const_star_mat->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, star_texture);
+	const_star_mat->set_albedo(Color(1.0f, 1.0f, 1.0f, 0.0f));
+
+	const_line_mat.instantiate();
+	const_line_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	const_line_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	const_line_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	const_line_mat->set_albedo(Color(0.62f, 0.76f, 1.0f, 0.0f));
+
+	constellation_root = memnew(Node3D);
+	constellation_root->set_name("Constellations");
+	stars->add_child(constellation_root);
+
+	Ref<QuadMesh> quad;
+	quad.instantiate();
+	quad->set_size(Vector2(4.2f, 4.2f));
+	quad->set_material(const_star_mat);
+
+	Ref<BoxMesh> line_mesh;
+	line_mesh.instantiate();
+	line_mesh->set_size(Vector3(0.7f, 0.7f, 1.0f));
+	line_mesh->set_material(const_line_mat);
+
+	const float R = 252.0f;
+	auto dir_from = [](float p_az, float p_elev) {
+		return Vector3(std::cos(p_elev) * std::sin(p_az), std::sin(p_elev), std::cos(p_elev) * std::cos(p_az));
+	};
+	auto place = [&](const Vector3 &p_center, float p_x, float p_y) {
+		const Vector3 right = Vector3(0, 1, 0).cross(p_center).normalized();
+		const Vector3 up = p_center.cross(right).normalized();
+		return p_center * R + right * p_x + up * p_y;
+	};
+	auto add_constellation = [&](float p_az, float p_elev, float p_scale,
+			const std::vector<Vector2> &p_pts, const std::vector<int> &p_edges) {
+		const Vector3 c = dir_from(p_az, p_elev);
+		std::vector<Vector3> world;
+		for (const Vector2 &p : p_pts) {
+			const Vector3 pos = place(c, p.x * p_scale, p.y * p_scale);
+			world.push_back(pos);
+			MeshInstance3D *mi = memnew(MeshInstance3D);
+			mi->set_mesh(quad);
+			mi->set_position(pos);
+			mi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+			constellation_root->add_child(mi);
+			const_stars.push_back(mi);
+			const_phase.push_back((float)const_stars.size() * 1.37f);
+		}
+		for (size_t i = 0; i + 1 < p_edges.size(); i += 2) {
+			const Vector3 a = world[p_edges[i]];
+			const Vector3 b = world[p_edges[i + 1]];
+			const Vector3 d = b - a;
+			const float len = d.length();
+			if (len < 0.001f) {
+				continue;
+			}
+			const Vector3 nd = d / len;
+			const Vector3 upv = std::abs(nd.y) > 0.95f ? Vector3(0, 0, 1) : Vector3(0, 1, 0);
+			Transform3D t;
+			t.set_basis(Basis::looking_at(nd, upv) * Basis().scaled(Vector3(1.0f, 1.0f, len)));
+			t.set_origin((a + b) * 0.5f);
+			MeshInstance3D *li = memnew(MeshInstance3D);
+			li->set_mesh(line_mesh);
+			li->set_transform(t);
+			li->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+			constellation_root->add_child(li);
+			const_lines.push_back(li);
+		}
+	};
+
+	// 北斗七星：勺身四点 + 勺柄三点
+	add_constellation(0.9f, 0.72f, 3.2f,
+			{ Vector2(-6, 3), Vector2(-3, 5), Vector2(2, 4.5f), Vector2(1, 0.5f),
+					Vector2(4, 1.2f), Vector2(8, 2.2f), Vector2(12, 2.6f) },
+			{ 0, 1, 1, 2, 2, 3, 3, 0, 3, 4, 4, 5, 5, 6 });
+
+	// 猎户座：头 + 双肩 + 三星腰带 + 双脚
+	add_constellation(2.2f, 0.62f, 3.0f,
+			{ Vector2(-9, 6), Vector2(9, 6), Vector2(0, 11), Vector2(0, 1.4f),
+					Vector2(4, 0.6f), Vector2(8, -0.2f), Vector2(-6, -8), Vector2(6, -8) },
+			{ 2, 0, 2, 1, 0, 3, 1, 5, 3, 4, 4, 5, 3, 6, 5, 7 });
+
+	// 仙后座：W 形五连星
+	add_constellation(4.3f, 0.85f, 2.7f,
+			{ Vector2(-10, 3), Vector2(-5, -4), Vector2(0, 2.5f),
+					Vector2(5, -4), Vector2(10, 3) },
+			{ 0, 1, 1, 2, 2, 3, 3, 4 });
 }
 
 void SkyCycle::build_moon() {

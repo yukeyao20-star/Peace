@@ -14,6 +14,7 @@
 // 场景里挂在 World 根下，sun_path / env_path 指向 Sun 与 WorldEnvironment。
 
 #include <cmath>
+#include <vector>
 
 #include <godot_cpp/classes/audio_effect_low_pass_filter.hpp>
 #include <godot_cpp/classes/node3d.hpp>
@@ -32,6 +33,7 @@ class ColorRect;
 class DirectionalLight3D;
 class Environment;
 class CSGBox3D;
+class ImageTexture;
 class MeshInstance3D;
 class MultiMeshInstance3D;
 class Node3D;
@@ -118,6 +120,17 @@ private:
 	bool precip_shelter_ready = false; // 是否已采集并写入遮蔽体
 	MultiMeshInstance3D *stars = nullptr;    // 星空穹顶（夜空晴天可见）
 	Ref<StandardMaterial3D> star_mat;        // 星星材质（每帧只调 albedo 透明度）
+	Ref<ImageTexture> star_texture;          // 圆形星点纹理（星座星点复用）
+	Node3D *constellation_root = nullptr;    // 三组星座（挂在 stars 下，随星穹一起转）
+	Ref<StandardMaterial3D> const_star_mat;  // 星座星点材质
+	Ref<StandardMaterial3D> const_line_mat;  // 星座连线材质
+	std::vector<MeshInstance3D *> const_stars;
+	std::vector<MeshInstance3D *> const_lines;
+	std::vector<float> const_phase;          // 每颗星点的闪烁相位
+	float const_t = 0.0f;
+	float meteor_flash = 0.0f;               // 流星掠过后整片星空的短暂提亮
+	int meteor_count = 0;
+	void build_constellations();
 	MeshInstance3D *shooting_star = nullptr; // 流星（晴夜深空偶发）
 	Ref<StandardMaterial3D> star_trail_mat;
 	float star_timer = 16.0f;
@@ -223,6 +236,11 @@ public:
 	// 阈值都从这里取（此前各抄一份 sin 公式已漂移）；找不到 SkyCycle 的调用方
 	// 自行按 0（= 正午白天）兜底，与本函数在 time_of_day=0.5 时的返回值一致。
 	float get_night_factor() const;
+
+	int get_constellation_count() const { return (int)const_stars.size(); }
+	int get_constellation_line_count() const { return (int)const_lines.size(); }
+	float get_meteor_flash() const { return meteor_flash; }
+	int get_meteor_count() const { return meteor_count; }
 
 	String get_phase_name() const; // 如 "白天 · 小雨"（调试用）
 };
