@@ -1545,6 +1545,10 @@ void Player::save_photo() {
 			if (gd != nullptr) {
 				gd->call("on_photo_taken");
 			}
+			Node *frame = get_parent()->get_node_or_null("PhotoFrame");
+			if (frame != nullptr) {
+				frame->call("refresh");
+			}
 		}
 		show_photo_toast(String::utf8("截图已保存 · user://screenshots"), 3.0f);
 	} else {
