@@ -896,6 +896,8 @@ material = SubResource("WoodDarkMat")
 [node name="CabinDoor" type="CabinDoor" parent="Homestead" unique_id=283008900]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 3.42)
 
+[node name="HearthFire" type="HearthFire" parent="Homestead"]
+
 [node name="ShutterFL" type="ShutterWindow" parent="Homestead" unique_id=961442186]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.4, 2.0, 3.44)
 

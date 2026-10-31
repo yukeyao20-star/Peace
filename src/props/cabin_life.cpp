@@ -82,7 +82,7 @@ void CabinLife::_notification(int p_what) {
 				}
 			}
 			if (window_light != nullptr) {
-				window_light->set_param(Light3D::PARAM_ENERGY, 0.75f * on * flicker);
+				window_light->set_param(Light3D::PARAM_ENERGY, 0.55f * on * flicker);
 				window_light->set_visible(on > 0.02f);
 			}
 			if (porch_light != nullptr) {
@@ -321,7 +321,7 @@ void CabinLife::build() {
 	window_light->set_name("WindowLight");
 	window_light->set_position(Vector3(0.0f, 2.1f, 4.3f));
 	window_light->set_color(Color(1.0f, 0.68f, 0.34f));
-	window_light->set_param(Light3D::PARAM_RANGE, 7.5f);
+	window_light->set_param(Light3D::PARAM_RANGE, 5.0f);
 	window_light->set_param(Light3D::PARAM_ENERGY, 0.0f);
 	window_light->set_visible(false);
 	host->add_child(window_light);
