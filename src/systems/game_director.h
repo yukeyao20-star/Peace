@@ -58,6 +58,7 @@ public:
 		TASK_SWING,     // 荡一次秋千（swing_ridden）
 		TASK_PHOTO,     // 拍一张照片（photo_taken）
 		TASK_STEW,      // 搅一搅汤锅（stew_stirred）
+		TASK_CAT,       // 摸摸火堆边的猫（cat_petted）
 		TASK_KIND_COUNT
 	};
 	struct DailyTask {
@@ -143,6 +144,7 @@ public:
 	void on_swing_ridden();
 	void on_photo_taken();
 	void on_stew_stirred();
+	void on_cat_petted();
 
 	int get_count() const { return count; }
 	int get_target() const { return target; }

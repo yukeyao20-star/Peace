@@ -79,6 +79,8 @@ float marker_height(int p_type) {
 			return 2.2f; // 玩家头顶
 		case GameDirector::TASK_STEW:
 			return 1.0f; // 汤锅上方
+		case GameDirector::TASK_CAT:
+			return 1.1f; // 猫头顶
 		default:
 			return 2.0f;
 	}
@@ -108,6 +110,8 @@ const char *task_name(int p_type) {
 			return "拍一张照片";
 		case GameDirector::TASK_STEW:
 			return "搅一锅汤";
+		case GameDirector::TASK_CAT:
+			return "摸摸猫";
 		default:
 			return "?";
 	}
@@ -128,6 +132,7 @@ void GameDirector::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("on_swing_ridden"), &GameDirector::on_swing_ridden);
 	ClassDB::bind_method(D_METHOD("on_photo_taken"), &GameDirector::on_photo_taken);
 	ClassDB::bind_method(D_METHOD("on_stew_stirred"), &GameDirector::on_stew_stirred);
+	ClassDB::bind_method(D_METHOD("on_cat_petted"), &GameDirector::on_cat_petted);
 	ClassDB::bind_method(D_METHOD("get_count"), &GameDirector::get_count);
 	ClassDB::bind_method(D_METHOD("get_target"), &GameDirector::get_target);
 	ClassDB::bind_method(D_METHOD("is_done"), &GameDirector::is_done);
@@ -530,8 +535,8 @@ void GameDirector::roll_day_tasks(int p_day) {
 		berry.type = TASK_BERRY;
 		berry.target = 3 + (int)(rng() % 3);
 		tasks.push_back(berry);
-		int others[10] = { TASK_FISH, TASK_GOAL, TASK_WELL, TASK_CHEST, TASK_HARVEST, TASK_FEED, TASK_SHELL, TASK_SWING, TASK_PHOTO, TASK_STEW };
-		for (int i = 9; i > 0; i--) { // Fisher-Yates 洗牌
+		int others[11] = { TASK_FISH, TASK_GOAL, TASK_WELL, TASK_CHEST, TASK_HARVEST, TASK_FEED, TASK_SHELL, TASK_SWING, TASK_PHOTO, TASK_STEW, TASK_CAT };
+		for (int i = 10; i > 0; i--) { // Fisher-Yates 洗牌
 			int j = (int)(rng() % (unsigned)(i + 1));
 			int tmp = others[i];
 			others[i] = others[j];
@@ -714,6 +719,9 @@ Node3D *GameDirector::resolve_marker_target(int p_type) {
 	}
 	if (p_type == TASK_STEW) {
 		return Object::cast_to<Node3D>(root->find_child("StewPot", true, false));
+	}
+	if (p_type == TASK_CAT) {
+		return Object::cast_to<Node3D>(root->find_child("CampCat", true, false));
 	}
 	if (p_type == TASK_FEED) {
 		// 就近挑一只农场动物
@@ -936,6 +944,11 @@ void GameDirector::on_photo_taken() {
 void GameDirector::on_stew_stirred() {
 	note_first_interaction();
 	mark_task_progress(TASK_STEW);
+}
+
+void GameDirector::on_cat_petted() {
+	note_first_interaction();
+	mark_task_progress(TASK_CAT);
 }
 
 void GameDirector::on_chest_looted() {
