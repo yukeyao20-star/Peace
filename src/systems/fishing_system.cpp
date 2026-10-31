@@ -6,6 +6,7 @@
 #include <cmath>
 
 #include <godot_cpp/classes/audio_stream.hpp>
+#include <godot_cpp/classes/omni_light3d.hpp>
 #include <godot_cpp/classes/audio_stream_player.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
@@ -42,8 +43,22 @@ void FishingSystem::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_charging"), &FishingSystem::is_charging);
 	ClassDB::bind_method(D_METHOD("is_near_shore"), &FishingSystem::is_near_shore);
 	ClassDB::bind_method(D_METHOD("get_caught_count"), &FishingSystem::get_caught_count);
+	ClassDB::bind_method(D_METHOD("get_state"), &FishingSystem::get_state);
+	ClassDB::bind_method(D_METHOD("get_bobber_light_energy"), &FishingSystem::get_bobber_light_energy);
+	ClassDB::bind_method(D_METHOD("get_bobber_light_visible"), &FishingSystem::get_bobber_light_visible);
 
 	ADD_SIGNAL(MethodInfo("fish_caught")); // 每钓上一条时发出（GameDirector 每日待办计数用）
+}
+
+float FishingSystem::get_bobber_light_energy() const {
+	if (bobber_light == nullptr) {
+		return 0.0f;
+	}
+	return bobber_light->get_param(Light3D::PARAM_ENERGY);
+}
+
+bool FishingSystem::get_bobber_light_visible() const {
+	return bobber_light != nullptr && bobber_light->is_visible();
 }
 
 void FishingSystem::_notification(int p_what) {
@@ -104,6 +119,28 @@ void FishingSystem::_notification(int p_what) {
 				}
 				if (player == nullptr) {
 					return;
+				}
+			}
+
+			// —— 夜钓小灯：只在天黑且浮漂在水里时亮，搏鱼时轻轻急促 ——
+			bobber_t += delta;
+			{
+				float night = (sky != nullptr) ? sky->get_night_factor() : 0.0f;
+				bool on = bobber != nullptr && bobber->is_visible() && night > 0.34f;
+				float pulse = (state == 2) ? (1.0f + 0.45f * std::sin(bobber_t * 7.5f)) : 1.0f;
+				if (bobber_light != nullptr) {
+					bobber_light->set_visible(on);
+					bobber_light->set_param(Light3D::PARAM_ENERGY, on ? 0.62f * pulse : 0.0f);
+				}
+				if (bobber_tip_mat.is_valid()) {
+					bobber_tip_mat->set("emission_energy_multiplier", on ? 2.4f * pulse : 0.25f);
+				}
+				if (on && !night_hint_shown && state == 1) {
+					night_hint_shown = true;
+					Node *gd = get_parent() != nullptr ? get_parent()->get_node_or_null("GameDirector") : nullptr;
+					if (gd != nullptr) {
+						gd->call("flash_hint", String::utf8("夜里的浮漂亮着一盏小灯 · 盯住那点暖光"), 4.0f);
+					}
 				}
 			}
 
@@ -336,6 +373,28 @@ void FishingSystem::build_tackle() {
 		bottom->set_mesh(ball(0.07f, 0.12f));
 		bottom->set_material_override(mat_of(Color(0.95f, 0.95f, 0.92f)));
 		bobber->add_child(bottom);
+
+		// 漂尖的一粒小灯：白天是暖黄玻璃，入夜后自己发光
+		MeshInstance3D *tip = memnew(MeshInstance3D);
+		tip->set_name("BobberTip");
+		tip->set_mesh(ball(0.032f, 0.064f));
+		bobber_tip_mat.instantiate();
+		bobber_tip_mat->set_albedo(Color(1.0f, 0.82f, 0.50f, 1.0f));
+		bobber_tip_mat->set("emission_enabled", true);
+		bobber_tip_mat->set("emission", Color(1.0f, 0.72f, 0.36f));
+		bobber_tip_mat->set("emission_energy_multiplier", 0.25f);
+		tip->set_material_override(bobber_tip_mat);
+		tip->set_position(Vector3(0.0f, 0.19f, 0.0f));
+		bobber->add_child(tip);
+
+		bobber_light = memnew(OmniLight3D);
+		bobber_light->set_name("BobberLight");
+		bobber_light->set_position(Vector3(0.0f, 0.16f, 0.0f));
+		bobber_light->set_color(Color(1.0f, 0.74f, 0.42f));
+		bobber_light->set_param(Light3D::PARAM_RANGE, 3.8f);
+		bobber_light->set_param(Light3D::PARAM_ENERGY, 0.0f);
+		bobber_light->set_visible(false);
+		bobber->add_child(bobber_light);
 	}
 	bobber->hide();
 

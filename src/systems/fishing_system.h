@@ -50,10 +50,12 @@ class FishingSystem : public Node {
 	bool near_shore = false;
 
 public:
-	int get_state() const { return state; }
 	bool is_charging() const { return charging; }
 	bool is_near_shore() const { return near_shore; }
 	int get_caught_count() const { return caught_count; } // 存档/待办展示用
+	int get_state() const { return state; }
+	float get_bobber_light_energy() const;
+	bool get_bobber_light_visible() const;
 
 protected:
 
@@ -76,6 +78,10 @@ protected:
 	// 鱼与浮漂
 	Node3D *bobber = nullptr;
 	Node3D *fish = nullptr;
+	class OmniLight3D *bobber_light = nullptr; // 夜钓小灯
+	Ref<class StandardMaterial3D> bobber_tip_mat; // 漂尖微光
+	bool night_hint_shown = false;
+	float bobber_t = 0.0f;
 	Vector3 bobber_pos;
 	bool big_fish = false;
 	float nibble_t = 0.0f;   // 距咬钩剩余秒数
