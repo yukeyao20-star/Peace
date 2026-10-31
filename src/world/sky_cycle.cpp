@@ -290,7 +290,7 @@ void SkyCycle::_notification(int p_what) {
 			// —— 星座星点：各自节奏轻轻眨眼；流星过后整片星空短暂提亮 ——
 			const_t += (float)delta;
 			if (meteor_flash > 0.0f) {
-				meteor_flash = Math::max(0.0f, meteor_flash - (float)delta * 0.9f);
+				meteor_flash = Math::max(0.0f, meteor_flash - (float)delta * 0.45f);
 			}
 			for (size_t i = 0; i < const_stars.size(); i++) {
 				const float tw = 1.0f + 0.16f * std::sin(const_t * 1.35f + const_phase[i]);

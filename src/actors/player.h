@@ -151,6 +151,7 @@ public:
 		lie_yaw = p_yaw;
 	}
 	bool get_photo_mode() const { return photo_mode; }
+	int get_star_wishes() const { return star_wishes; }
 	void leave_boat() {
 		is_boating = false;
 		boat = nullptr;
@@ -312,6 +313,17 @@ private:
 	float map_hover_x = -9999.0f;
 	float map_hover_z = -9999.0f;
 	void build_map_ui();
+
+	// —— 对着流星许愿（G 键；没有流星时才放烟花） ——
+	int star_wishes = 0;
+	int last_meteor_seen = 0;
+	int hint_meteor_seen = 0;
+	CPUParticles3D *wish_sparks = nullptr;
+	AudioStreamPlayer *wish_voice = nullptr;
+	Ref<AudioStreamWAV> snd_wish;
+	void build_wish_sparks();
+	bool try_star_wish();
+	Ref<AudioStreamWAV> make_wish_chime();
 
 	// —— 夜晚放烟花功能（G 键触发） ——
 	bool g_prev = false;

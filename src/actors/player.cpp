@@ -133,6 +133,7 @@ void Player::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("toggle_help"), &Player::toggle_help);
 	ClassDB::bind_method(D_METHOD("close_help"), &Player::close_help);
 	ClassDB::bind_method(D_METHOD("launch_firework"), &Player::launch_firework);
+	ClassDB::bind_method(D_METHOD("get_star_wishes"), &Player::get_star_wishes);
 	ClassDB::bind_method(D_METHOD("_on_map_gui_input", "event"), &Player::_on_map_gui_input);
 	ClassDB::bind_method(D_METHOD("_on_map_bg_gui_input", "event"), &Player::_on_map_bg_gui_input);
 	ClassDB::bind_method(D_METHOD("_on_map_mouse_exited"), &Player::_on_map_mouse_exited);
@@ -316,6 +317,7 @@ void Player::_notification(int p_what) {
 			build_propeller();
 			build_swim_bubbles();
 			build_breath();
+	build_wish_sparks();
 
 			// 脚步声：真实雪地踩雪声优先读取外部音频资源（用户下载的踩雪声录音），其余程序化合成
 			steps_voice = memnew(AudioStreamPlayer);
@@ -924,7 +926,9 @@ void Player::_physics_step() {
 	// 4. 夜晚放烟花功能（G 键触发，与 F 键钓鱼彻底分开，绝不冲突）
 	bool g_down = act_pressed("firework", KEY_G);
 	if (g_down && !g_prev) {
-		launch_firework();
+		if (!try_star_wish()) {
+			launch_firework();
+		}
 	}
 	g_prev = g_down;
 
@@ -1259,6 +1263,15 @@ void Player::_physics_step() {
 	// —— 冷天白气：下雪或寒夜里，隔两秒呼出一小团白雾 ——
 	if (sky_breath == nullptr && get_parent() != nullptr) {
 		sky_breath = Object::cast_to<SkyCycle>(get_parent()->get_node_or_null("SkyCycle"));
+	}
+	if (sky_breath != nullptr) {
+		const int mc = sky_breath->get_meteor_count();
+		if (mc > hint_meteor_seen) {
+			hint_meteor_seen = mc;
+			if (sky_breath->get_meteor_flash() > 0.4f) {
+				show_photo_toast(String::utf8("流星划过 · 按 G 许愿"), 2.6f);
+			}
+		}
 	}
 	if (breath != nullptr) {
 		float snow = (sky_breath != nullptr) ? sky_breath->get_snow_amount() : 0.0f;
@@ -4178,6 +4191,118 @@ void Player::_on_map_mouse_exited() {
 	if (map_coords_label != nullptr) {
 		map_coords_label->set_text(String::utf8("🧭 当前位置: X=") + String::num(p.x, 1) + ", Z=" + String::num(p.z, 1) + String::utf8("  ·  轻触舆图任意处瞬息漫游"));
 	}
+}
+
+// —— 对流星许愿：流星亮着的这一小会儿按 G，会许一个愿而不是放烟花 ——
+void Player::build_wish_sparks() {
+	if (wish_sparks != nullptr) {
+		return;
+	}
+	Ref<SphereMesh> mote;
+	mote.instantiate();
+	mote->set_radius(0.022f);
+	mote->set_height(0.044f);
+	mote->set_radial_segments(5);
+	mote->set_rings(3);
+	Ref<StandardMaterial3D> mat;
+	mat.instantiate();
+	mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	mat->set_blend_mode(BaseMaterial3D::BLEND_MODE_ADD);
+	mat->set_albedo(Color(1.0f, 0.94f, 0.68f, 0.95f));
+	mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	mote->set_material(mat);
+	wish_sparks = memnew(CPUParticles3D);
+	wish_sparks->set_name("WishSparks");
+	wish_sparks->set_amount(26);
+	wish_sparks->set_lifetime(1.5f);
+	wish_sparks->set_one_shot(true);
+	wish_sparks->set_explosiveness_ratio(0.85f);
+	wish_sparks->set_mesh(mote);
+	wish_sparks->set_direction(Vector3(0.0f, 1.0f, 0.0f));
+	wish_sparks->set_spread(55.0f);
+	wish_sparks->set_gravity(Vector3(0.0f, 0.06f, 0.0f));
+	wish_sparks->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.35f);
+	wish_sparks->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.9f);
+	wish_sparks->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_SPHERE);
+	wish_sparks->set_emission_sphere_radius(0.35f);
+	wish_sparks->set_emitting(false);
+	add_child(wish_sparks);
+
+	snd_wish = make_wish_chime();
+	wish_voice = memnew(AudioStreamPlayer);
+	wish_voice->set_name("WishVoice");
+	wish_voice->set_stream(snd_wish);
+	wish_voice->set_volume_db(-6.0f);
+	add_child(wish_voice);
+}
+
+bool Player::try_star_wish() {
+	if (sky_breath == nullptr && get_parent() != nullptr) {
+		sky_breath = Object::cast_to<SkyCycle>(get_parent()->get_node_or_null("SkyCycle"));
+	}
+	if (sky_breath == nullptr) {
+		return false;
+	}
+	if (sky_breath->get_meteor_flash() < 0.20f) {
+		return false;
+	}
+	const int mc = sky_breath->get_meteor_count();
+	if (mc == last_meteor_seen) {
+		return false; // 同一颗流星只能许一次
+	}
+	last_meteor_seen = mc;
+	star_wishes++;
+	if (wish_sparks != nullptr) {
+		wish_sparks->set_global_position(get_global_position() + Vector3(0.0f, 0.25f, 0.0f));
+		wish_sparks->restart();
+	}
+	if (wish_voice != nullptr && snd_wish.is_valid()) {
+		wish_voice->play(0.0f);
+	}
+	static const char *wishes[4] = {
+		"愿明天也是好天气。",
+		"愿猫今晚睡得暖。",
+		"愿湖面早点解冻。",
+		"愿远行的人平安。",
+	};
+	const String msg = String::utf8(wishes[star_wishes % 4]);
+	if (get_parent() != nullptr) {
+		Node *gd = get_parent()->get_node_or_null("GameDirector");
+		if (gd != nullptr) {
+			gd->call("flash_hint", msg, 3.2f);
+			gd->call("on_star_wish");
+		}
+	}
+	return true;
+}
+
+// 1.2 秒的许愿铃声：两个纯音叠加、慢衰减。
+Ref<AudioStreamWAV> Player::make_wish_chime() {
+	const int sr = 22050;
+	const int n = (int)(1.2f * sr);
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+	for (int i = 0; i < n; i++) {
+		const float tsec = (float)i / (float)sr;
+		const float env = std::exp(-tsec * 2.6f) * Math::clamp(tsec / 0.02f, 0.0f, 1.0f);
+		const float a = std::sin(6.2831853f * 880.0f * tsec) * 0.5f;
+		const float b = std::sin(6.2831853f * 1318.5f * tsec) * 0.3f;
+		const float c = std::sin(6.2831853f * 1760.0f * tsec) * 0.12f;
+		float samp = (a + b + c) * env * 0.5f;
+		samp = Math::clamp(samp, -1.0f, 1.0f);
+		const int16_t q = (int16_t)(samp * 9000.0f);
+		w[i * 2] = (uint8_t)(q & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
+	}
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_data(bytes);
+	return wav;
 }
 
 void Player::launch_firework() {
