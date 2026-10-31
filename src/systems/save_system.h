@@ -21,6 +21,9 @@
 // 定位序 FL,FR,L,B；旧档缺键=全关）。
 
 #include <godot_cpp/classes/node.hpp>
+#include <godot_cpp/variant/vector3.hpp>
+
+class Player;
 
 namespace godot {
 
@@ -61,6 +64,10 @@ private:
 	String windows_open; // 百叶窗定位序 "1,0,0,1"×4 FL,FR,L,B（v5 增量键，旧档缺省=全关）
 	String shells_mask;  // 贝壳拾取掩码 "0101..."（v6 增量键，旧档缺省=未拾取）
 	bool shells_applied = false;
+	// v7：玩家位置（旧档缺省=不恢复，留在出生点）
+	bool player_pos_saved = false;
+	Vector3 player_pos;
+	bool player_applied = false;
 
 	SkyCycle *find_sky() const;
 	GameDirector *find_director() const;
@@ -68,6 +75,7 @@ private:
 	CabinDoor *find_door() const;
 	ShutterWindow *find_window(int p_index) const; // 0..3 → ShutterFL/FR/L/B 固定路径
 	ShellField *find_shells() const;
+	Player *find_player() const;
 	void restore_targets(); // 把缓存值写回 SkyCycle/GameDirector（缺谁下帧再试）
 	void trim_logs();       // user://logs/ 超过 10MB 时按最旧优先删除（引擎只按份数轮转不限体积）
 

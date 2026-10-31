@@ -1,6 +1,7 @@
 #include "save_system.h"
 
 #include "../props/shells.h"
+#include "../actors/player.h"
 
 #include <godot_cpp/classes/config_file.hpp>
 #include <godot_cpp/classes/dir_access.hpp>
@@ -64,6 +65,15 @@ void SaveSystem::_notification(int p_what) {
 			if (!restored) {
 				restore_targets();
 			}
+			// v7 玩家位置：Player 就绪后补应用一次
+			if (loaded_data && !player_applied && player_pos_saved) {
+				Player *p = find_player();
+				if (p != nullptr) {
+					p->set_global_position(player_pos);
+					p->set_velocity(Vector3(0.0f, 0.0f, 0.0f));
+					player_applied = true;
+				}
+			}
 			// v6 贝壳：ShellField 可能晚于本节点 READY，逐帧补应用一次
 			if (loaded_data && !shells_applied) {
 				ShellField *sh = find_shells();
@@ -119,6 +129,13 @@ CabinDoor *SaveSystem::find_door() const {
 		return nullptr;
 	}
 	return Object::cast_to<CabinDoor>(get_parent()->get_node_or_null(NodePath("Homestead/CabinDoor")));
+}
+
+Player *SaveSystem::find_player() const {
+	if (get_parent() == nullptr) {
+		return nullptr;
+	}
+	return Object::cast_to<Player>(get_parent()->get_node_or_null(NodePath("Player")));
 }
 
 ShellField *SaveSystem::find_shells() const {
@@ -211,6 +228,17 @@ bool SaveSystem::save_now() {
 	}
 	cf->set_value(SEC, "shells_mask", shells_mask);
 
+	// v7：玩家位置——存前拉最新值；玩家缺席保留缓存
+	Player *p = find_player();
+	if (p != nullptr) {
+		player_pos = p->get_global_position();
+		player_pos_saved = true;
+	}
+	cf->set_value(SEC, "player_saved", player_pos_saved);
+	cf->set_value(SEC, "player_x", player_pos.x);
+	cf->set_value(SEC, "player_y", player_pos.y);
+	cf->set_value(SEC, "player_z", player_pos.z);
+
 	return cf->save(SAVE_PATH) == Error::OK;
 }
 
@@ -250,6 +278,11 @@ bool SaveSystem::load_now() {
 	windows_open = cf->get_value(SEC, "windows_open", String());   // 旧档缺键=空串 → 全关
 	shells_mask = cf->get_value(SEC, "shells_mask", String());     // 旧档缺键=空串 → 都还在
 	shells_applied = false;
+	player_pos_saved = (bool)cf->get_value(SEC, "player_saved", false);
+	player_pos.x = (float)cf->get_value(SEC, "player_x", 0.0);
+	player_pos.y = (float)cf->get_value(SEC, "player_y", 0.0);
+	player_pos.z = (float)cf->get_value(SEC, "player_z", 0.0);
+	player_applied = false;
 
 	loaded_data = true;
 	restored = false;      // 有数据待应用，交给 _process 的重试通道
