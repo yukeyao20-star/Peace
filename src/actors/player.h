@@ -26,6 +26,7 @@ class Control;
 class CPUParticles3D;
 class Label;
 class OmniLight3D;
+class MeshInstance3D;
 class StandardMaterial3D;
 class TextureRect;
 class TerrainBuilder;
@@ -281,6 +282,9 @@ private:
 	class Label3D *prompt = nullptr;           // 悬浮提示（"按 E 开门"等）
 	godot::CanvasLayer *hud_layer = nullptr;   // 交互提示的屏幕空间层（永不裁剪）
 	godot::Label *hud_prompt = nullptr;        // 屏幕下方居中的交互提示
+	godot::MeshInstance3D *target_ring = nullptr; // 目标脚下的微光提示圈
+	godot::StandardMaterial3D *target_ring_mat = nullptr;
+	float ring_t = 0.0f;
 	float hud_prompt_timer = 0.0f;             // 瞬态提示自动消失倒计时（秒）
 	bool e_prev = false;                       // 上一物理帧 E 键状态（边沿触发）
 	double lean_time = 0.0;                    // 推门动画剩余时间（>0 表示播放中）

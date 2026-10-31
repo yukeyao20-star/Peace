@@ -169,6 +169,28 @@ void Player::_notification(int p_what) {
 			if (cjk.is_valid()) {
 				prompt->set_font(cjk);
 			}
+
+			// 近处可交互物脚下的微光圈：帮玩家一眼看出"这个能按 E"
+			Ref<TorusMesh> ring_mesh;
+			ring_mesh.instantiate();
+			ring_mesh->set_inner_radius(0.34f);
+			ring_mesh->set_outer_radius(0.52f);
+			ring_mesh->set_rings(28);
+			ring_mesh->set_ring_segments(4);
+			target_ring_mat = memnew(StandardMaterial3D);
+			target_ring_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+			target_ring_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+			target_ring_mat->set_blend_mode(BaseMaterial3D::BLEND_MODE_ADD);
+			target_ring_mat->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
+			target_ring_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+			target_ring_mat->set_albedo(Color(1.0f, 0.84f, 0.46f, 0.34f));
+			ring_mesh->set_material(Ref<Material>(target_ring_mat));
+			target_ring = memnew(MeshInstance3D);
+			target_ring->set_name("TargetRing");
+			target_ring->set_mesh(ring_mesh);
+			target_ring->set_rotation(Vector3(0.0f, 0.0f, 0.0f));
+			target_ring->hide();
+			add_child(target_ring);
 			prompt->hide();
 			add_child(prompt);
 
@@ -542,6 +564,15 @@ void Player::_notification(int p_what) {
 				_update_look(p_delta); // 睡觉或展开大地图时鼠标不转动视角
 			}
 			_update_camera(p_delta);
+			ring_t += p_delta;
+			if (target_ring != nullptr && target_ring->is_visible()) {
+				float s = 1.0f + 0.07f * std::sin(ring_t * 3.1f);
+				target_ring->set_scale(Vector3(s, s, s));
+				target_ring->set_rotation(Vector3(0.0f, ring_t * 0.35f, 0.0f));
+				if (target_ring_mat != nullptr) {
+					target_ring_mat->set_albedo(Color(1.0f, 0.84f, 0.46f, 0.28f + 0.10f * (0.5f + 0.5f * std::sin(ring_t * 3.1f))));
+				}
+			}
 			if (debug_overlay != nullptr && debug_overlay->is_visible()) {
 				debug_t -= p_delta;
 				if (debug_t <= 0.0f) {
@@ -732,6 +763,9 @@ void Player::_physics_step() {
 		if (hud_prompt != nullptr) {
 			hud_prompt->hide();
 		}
+		if (target_ring != nullptr) {
+			target_ring->hide();
+		}
 		bool f12 = input->is_key_pressed(KEY_F12);
 		if (f12 && !f12_prev) {
 			save_photo();
@@ -756,6 +790,9 @@ void Player::_physics_step() {
 		}
 		if (hud_prompt != nullptr) {
 			hud_prompt->hide();
+		}
+		if (target_ring != nullptr) {
+			target_ring->hide();
 		}
 		e_prev = act_pressed("interact", KEY_E);
 		return;
@@ -786,6 +823,9 @@ void Player::_physics_step() {
 		}
 		if (hud_prompt != nullptr) {
 			hud_prompt->hide();
+		}
+		if (target_ring != nullptr) {
+			target_ring->hide();
 		}
 		// 船上不处理交互，但要维持 E 的边沿状态：否则下船时同一次按键会被
 		// 交互扫描当成"刚按下"，立刻又把人送回船上。
@@ -1259,6 +1299,17 @@ void Player::_update_interaction() {
 		prompt->set_global_position(near_target->get_interact_pos() + Vector3(0.0, 0.85, 0.0));
 		if (hud_prompt != nullptr) {
 			hud_prompt->set_text(near_target->get_prompt());
+		}
+	}
+
+	if (target_ring != nullptr) {
+		bool show_ring = near_target != nullptr && !photo_mode && !hud_hidden && !is_sitting && !is_boating && !is_map_open;
+		if (show_ring) {
+			Vector3 tp = near_target->get_global_position();
+			target_ring->set_global_position(Vector3(tp.x, tp.y + 0.06f, tp.z));
+			target_ring->show();
+		} else {
+			target_ring->hide();
 		}
 	}
 
