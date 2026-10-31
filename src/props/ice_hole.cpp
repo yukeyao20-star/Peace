@@ -22,6 +22,7 @@ void IceHole::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_ice_visible"), &IceHole::get_ice_visible);
 	ClassDB::bind_method(D_METHOD("get_mist_emitting"), &IceHole::get_mist_emitting);
 	ClassDB::bind_method(D_METHOD("get_fish_count"), &IceHole::get_fish_count);
+	ClassDB::bind_method(D_METHOD("get_fishing"), &IceHole::get_fishing);
 	ClassDB::bind_method(D_METHOD("get_ripple_scale"), &IceHole::get_ripple_scale);
 }
 
@@ -57,12 +58,14 @@ void IceHole::_notification(int p_what) {
 			if (mist != nullptr) {
 				mist->set_emitting(ice > 0.5f);
 			}
+			fishing_mix = Math::lerp(fishing_mix, fishing ? 1.0f : 0.0f, 1.0f - std::exp(-2.4f * delta));
 			// 鱼影绕洞口缓慢兜圈，偶尔换向
 			for (size_t i = 0; i < fish.size(); i++) {
 				const float a = t * (0.35f + 0.06f * (float)i) + fish_phase[i];
-				const float r = fish_radius[i];
+				const float r = fish_radius[i] * (1.0f - 0.55f * fishing_mix); // 有人下竿时鱼影聚到洞口
+				const float y = -0.03f + 0.02f * fishing_mix - 0.01f * std::sin(t * 1.7f + fish_phase[i]);
 				Node3D *f = fish[i];
-				f->set_position(Vector3(std::cos(a) * r, -0.03f - 0.01f * std::sin(t * 1.7f + fish_phase[i]), std::sin(a) * r));
+				f->set_position(Vector3(std::cos(a) * r, y, std::sin(a) * r));
 				const Vector3 tangent(-std::sin(a), 0.0f, std::cos(a));
 				f->set_rotation(Vector3(0.0f, std::atan2(tangent.x, tangent.z), 0.0f));
 			}

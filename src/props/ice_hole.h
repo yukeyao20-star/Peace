@@ -30,6 +30,8 @@ private:
 	Ref<StandardMaterial3D> ripple_mat;
 	float t = 0.0f;
 	float ice = 0.0f;
+	bool fishing = false;
+	float fishing_mix = 0.0f;
 
 	void build();
 
@@ -39,6 +41,8 @@ protected:
 public:
 	void _notification(int p_what);
 
+	void set_fishing(bool p_on) { fishing = p_on; }
+	bool get_fishing() const { return fishing; }
 	bool get_ice_visible() const { return is_visible(); }
 	bool get_mist_emitting() const;
 	int get_fish_count() const { return (int)fish.size(); }

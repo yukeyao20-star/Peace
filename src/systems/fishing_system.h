@@ -122,6 +122,8 @@ protected:
 	static Color species_tint(int p_species);         // 鱼影着色（水下的第一辨识度）
 
 	class SkyCycle *sky = nullptr; // 懒查找（读昼夜定鱼种池）
+	class IceHole *ice_hole = nullptr; // 懒查找（冰钓时浮漂落进冰洞）
+	bool ice_fishing = false;
 	int pick_species(bool p_night); // 按昼夜权重定种（金鳞 6% 两池都有）
 
 	// —— 鱼获图鉴（B 键呼出，user://fishing_records.cfg 持久化）——

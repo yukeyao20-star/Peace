@@ -2,6 +2,7 @@
 
 #include "ui_style.h"
 #include "sky_cycle.h"
+#include "../props/ice_hole.h"
 
 #include <cmath>
 
@@ -41,8 +42,6 @@
 using namespace godot;
 
 void FishingSystem::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("get_state"), &FishingSystem::get_state);
-	ClassDB::bind_method(D_METHOD("close_book"), &FishingSystem::close_book);
 	ClassDB::bind_method(D_METHOD("is_charging"), &FishingSystem::is_charging);
 	ClassDB::bind_method(D_METHOD("is_near_shore"), &FishingSystem::is_near_shore);
 	ClassDB::bind_method(D_METHOD("get_caught_count"), &FishingSystem::get_caught_count);
@@ -173,6 +172,13 @@ void FishingSystem::_notification(int p_what) {
 						state = 0;
 					}
 				} break;
+			}
+			// 冰钓状态同步给冰洞（鱼影聚拢/散开）
+			if (ice_fishing && (state == 0 || state == 4)) {
+				ice_fishing = false;
+			}
+			if (ice_hole != nullptr) {
+				ice_hole->set_fishing(ice_fishing && state != 0);
 			}
 
 			// 浮漂落点涟漪：扩散 + 淡出
@@ -744,6 +750,31 @@ void FishingSystem::start_cast(float p_charge) {
 	cast_origin = pp;
 	bool on_bridge = (Math::abs(pp.z - 26.0f) < 2.5f && pp.x > -20.0f && pp.x < 8.0f && pp.y > 0.0f);
 
+	// —— 冰钓：湖面封冻后，冰上只能在冰洞边下竿 ——
+	if (ice_hole == nullptr && get_parent() != nullptr) {
+		ice_hole = Object::cast_to<IceHole>(get_parent()->get_node_or_null("IceHole"));
+	}
+	const float snow_now = (sky != nullptr) ? sky->get_snow_amount() : 0.0f;
+	bool ice_cast = false;
+	if (snow_now > 0.84f && ice_hole != nullptr && ice_hole->get_ice_visible()) {
+		const Vector2 hole_xz(ice_hole->get_global_position().x, ice_hole->get_global_position().z);
+		const float d_hole = Vector2(pp.x, pp.z).distance_to(hole_xz);
+		const bool over_lake = terrain != nullptr && terrain->get_terrain_height(pp.x, pp.z) < water_level + 0.05f;
+		if (over_lake && d_hole > 3.6f) {
+			state = 0;
+			charging = false;
+			charge = 0.0f;
+			cast_cooldown = 0.35f;
+			if (hint != nullptr) {
+				hint->set_text(String::utf8("冰面封住了 · 去冰洞边下竿吧"));
+				hint->show();
+			}
+			return;
+		}
+		ice_cast = over_lake && d_hole <= 3.6f;
+	}
+	ice_fishing = ice_cast;
+
 	Vector3 facing = player->get_facing();
 	Vector2 fdir(facing.x, facing.z);
 	if (fdir.length_squared() > 0.001f) {
@@ -779,7 +810,10 @@ void FishingSystem::start_cast(float p_charge) {
 
 	Vector2 target;
 	bool found = false;
-	if (on_bridge) {
+	if (ice_cast) {
+		target = Vector2(ice_hole->get_global_position().x, ice_hole->get_global_position().z);
+		found = true;
+	} else if (on_bridge) {
 		// 桥上：往栏杆外（玩家朝向）为主，水面就在桥下
 		float bd = Math::min(cast_d, 8.0f);
 		found = find_water_spot(p, fdir, bd, 1.2f, target);
@@ -823,7 +857,7 @@ void FishingSystem::start_cast(float p_charge) {
 	}
 
 	// 最终双重硬核校验：确保目标点水深绝对大于 0.45m（绝对在水面之下）
-	if (terrain != nullptr && terrain->water_depth_at(target.x, target.y) < 0.45f) {
+	if (!ice_cast && terrain != nullptr && terrain->water_depth_at(target.x, target.y) < 0.45f) {
 		state = 0;
 		charging = false;
 		charge = 0.0f;
@@ -836,6 +870,9 @@ void FishingSystem::start_cast(float p_charge) {
 	}
 
 	bobber_pos = Vector3(target.x, water_level + 0.05f, target.y);
+	if (ice_cast) {
+		bobber_pos = Vector3(target.x, ice_hole->get_global_position().y + 0.05f, target.y);
+	}
 
 	// 定鱼：按昼夜定种（金鳞 6% / 昼青鳞红尾 / 夜月影夜鳗），体型档随种
 	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
@@ -868,7 +905,7 @@ void FishingSystem::start_cast(float p_charge) {
 		}
 	}
 
-	nibble_t = 2.0f + d01(rng) * 4.0f;
+	nibble_t = (2.0f + d01(rng) * 4.0f) * (ice_cast ? 0.55f : 1.0f);
 	swim_phase = d01(rng) * 6.28f;
 	tension = 0.0f;
 	catch_prog = 0.0f;
@@ -880,7 +917,7 @@ void FishingSystem::start_cast(float p_charge) {
 	fish->show();
 	start_cast_ring(Vector3(bobber_pos.x, water_level + 0.03f, bobber_pos.z));
 	if (hint != nullptr) {
-		hint->set_text(String::utf8("鱼影靠近浮漂中……（再按 F 收竿）"));
+		hint->set_text(String::utf8(ice_cast ? "冰洞里传来动静……（再按 F 收竿）" : "鱼影靠近浮漂中……（再按 F 收竿）"));
 		hint->show();
 	}
 }
