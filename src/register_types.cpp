@@ -125,6 +125,7 @@
 #include "hand_pump.h"
 #include "firewood_stack.h"
 #include "compost_bin.h"
+#include "sundial.h"
 #include "beach_finds.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
@@ -275,6 +276,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(HandPump);
 	GDREGISTER_CLASS(FirewoodStack);
 	GDREGISTER_CLASS(CompostBin);
+	GDREGISTER_CLASS(Sundial);
 	GDREGISTER_CLASS(BeachFinds);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
