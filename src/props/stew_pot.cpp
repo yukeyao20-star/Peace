@@ -112,6 +112,7 @@ void StewPot::interact(const Vector3 &p_player_pos) {
 	if (get_parent() != nullptr) {
 		Node *gd = get_parent()->get_node_or_null("GameDirector");
 		if (gd != nullptr) {
+			gd->call("on_stew_stirred");
 			gd->call("flash_hint", String::utf8("汤搅匀了 · 热气一下涌起来"), 2.8f);
 		}
 	}

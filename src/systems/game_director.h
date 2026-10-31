@@ -57,6 +57,7 @@ public:
 		TASK_SHELL,     // 拾起一枚贝壳（shell_collected）
 		TASK_SWING,     // 荡一次秋千（swing_ridden）
 		TASK_PHOTO,     // 拍一张照片（photo_taken）
+		TASK_STEW,      // 搅一搅汤锅（stew_stirred）
 		TASK_KIND_COUNT
 	};
 	struct DailyTask {
@@ -141,6 +142,7 @@ public:
 	void on_shell_collected();
 	void on_swing_ridden();
 	void on_photo_taken();
+	void on_stew_stirred();
 
 	int get_count() const { return count; }
 	int get_target() const { return target; }
