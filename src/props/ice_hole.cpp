@@ -1,10 +1,14 @@
 #include "ice_hole.h"
 
 #include <cmath>
+#include <random>
 
 #include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/cpu_particles3d.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
+#include <godot_cpp/classes/audio_stream_player3d.hpp>
+#include <godot_cpp/classes/audio_stream_wav.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/shader.hpp>
@@ -23,6 +27,9 @@ void IceHole::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_mist_emitting"), &IceHole::get_mist_emitting);
 	ClassDB::bind_method(D_METHOD("get_fish_count"), &IceHole::get_fish_count);
 	ClassDB::bind_method(D_METHOD("get_fishing"), &IceHole::get_fishing);
+	ClassDB::bind_method(D_METHOD("get_rumble_count"), &IceHole::get_rumble_count);
+	ClassDB::bind_method(D_METHOD("get_crack_alpha"), &IceHole::get_crack_alpha);
+	ClassDB::bind_method(D_METHOD("get_ice_sound_ready"), &IceHole::get_ice_sound_ready);
 	ClassDB::bind_method(D_METHOD("get_ripple_scale"), &IceHole::get_ripple_scale);
 }
 
@@ -32,6 +39,10 @@ bool IceHole::get_mist_emitting() const {
 
 float IceHole::get_ripple_scale() const {
 	return (ripple != nullptr) ? ripple->get_scale().x : 0.0f;
+}
+
+float IceHole::get_crack_alpha() const {
+	return (crack_mat.is_valid()) ? crack_mat->get_albedo().a : 0.0f;
 }
 
 void IceHole::_notification(int p_what) {
@@ -75,6 +86,46 @@ void IceHole::_notification(int p_what) {
 				const float s = 0.55f + 2.0f * u;
 				ripple->set_scale(Vector3(s, 1.0f, s));
 				ripple_mat->set_albedo(Color(0.88f, 0.96f, 1.0f, 0.42f * (1.0f - u) * ice));
+			}
+			// 冰鸣：封冻的湖面偶尔低低地响一声，冰上裂开一道细纹
+			rumble_t -= delta;
+			if (rumble_t <= 0.0f) {
+				const float night = (sky != nullptr) ? sky->get_night_factor() : 0.0f;
+				const float r = (float)((rumble_count * 7919 + 13) % 1000) / 1000.0f;
+				rumble_t = (night > 0.5f) ? (8.0f + r * 8.0f) : (16.0f + r * 14.0f);
+				rumble_count++;
+				crack_t = 2.4f;
+				if (crack_a != nullptr) {
+					const float a = (float)((rumble_count * 47) % 360) * 0.01745f;
+					crack_a->set_position(Vector3(std::cos(a) * 0.55f, 0.012f, std::sin(a) * 0.55f));
+					crack_a->set_rotation(Vector3(0.0f, a + 0.4f, 0.0f));
+				}
+				if (crack_b != nullptr) {
+					const float a = (float)((rumble_count * 83 + 120) % 360) * 0.01745f;
+					crack_b->set_position(Vector3(std::cos(a) * 0.42f, 0.012f, std::sin(a) * 0.42f));
+					crack_b->set_rotation(Vector3(0.0f, a - 0.7f, 0.0f));
+				}
+				if (ice_voice != nullptr && snd_ice.is_valid()) {
+					ice_voice->set_pitch_scale(0.9f + 0.06f * (float)(rumble_count % 4));
+					ice_voice->play(0.0f);
+				}
+			}
+			if (crack_t > 0.0f) {
+				crack_t = Math::max(0.0f, crack_t - delta);
+				const float u = crack_t / 2.4f;
+				const float alpha = std::sin(u * 3.14159f) * 0.7f * ice;
+				if (crack_mat.is_valid()) {
+					crack_mat->set_albedo(Color(0.92f, 0.97f, 1.0f, alpha));
+				}
+				if (crack_a != nullptr) {
+					crack_a->set_visible(alpha > 0.02f);
+				}
+				if (crack_b != nullptr) {
+					crack_b->set_visible(alpha > 0.02f);
+				}
+			} else {
+				if (crack_a != nullptr) crack_a->set_visible(false);
+				if (crack_b != nullptr) crack_b->set_visible(false);
 			}
 		} break;
 		default:
@@ -212,4 +263,75 @@ void IceHole::build() {
 	ripple->set_scale(Vector3(0.55f, 1.0f, 0.55f));
 	ripple->set_position(Vector3(0.0f, 0.016f, 0.0f));
 	add_child(ripple);
+
+	// —— 冰鸣裂纹：两道细白线，响的时候才出现 ——
+	crack_mat.instantiate();
+	crack_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	crack_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	crack_mat->set_albedo(Color(0.92f, 0.97f, 1.0f, 0.0f));
+	crack_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	Ref<BoxMesh> crack_mesh;
+	crack_mesh.instantiate();
+	crack_mesh->set_size(Vector3(1.9f, 0.006f, 0.035f));
+	crack_mesh->set_material(Ref<Material>(crack_mat));
+	crack_a = memnew(MeshInstance3D);
+	crack_a->set_name("IceCrackA");
+	crack_a->set_mesh(crack_mesh);
+	crack_a->set_visible(false);
+	add_child(crack_a);
+	Ref<BoxMesh> crack_mesh_b;
+	crack_mesh_b.instantiate();
+	crack_mesh_b->set_size(Vector3(1.3f, 0.006f, 0.025f));
+	crack_mesh_b->set_material(Ref<Material>(crack_mat));
+	crack_b = memnew(MeshInstance3D);
+	crack_b->set_name("IceCrackB");
+	crack_b->set_mesh(crack_mesh_b);
+	crack_b->set_visible(false);
+	add_child(crack_b);
+
+	// 冰鸣声：低频的冰层呻吟
+	snd_ice = make_ice_groan();
+	ice_voice = memnew(AudioStreamPlayer3D);
+	ice_voice->set_name("IceVoice");
+	ice_voice->set_stream(snd_ice);
+	ice_voice->set_volume_db(-12.0f);
+	ice_voice->set_unit_size(12.0f);
+	ice_voice->set_max_distance(60.0f);
+	ice_voice->set_position(Vector3(0.0f, 0.1f, 0.0f));
+	add_child(ice_voice);
+}
+
+// 2.6 秒的冰层呻吟：低沉的正弦滑音 + 一段被包络塑形的噪声，
+// 像远处厚冰慢慢裂开又合拢。
+Ref<AudioStreamWAV> IceHole::make_ice_groan() {
+	const int sr = 22050;
+	const int n = (int)(2.6f * sr);
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+	std::mt19937 rng(86420u);
+	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
+	float phase = 0.0f;
+	float lp = 0.0f;
+	for (int i = 0; i < n; i++) {
+		const float tsec = (float)i / (float)sr;
+		const float u = tsec / 2.6f;
+		const float env = std::sin(u * 3.14159f);
+		const float freq = 72.0f - 22.0f * u + 6.0f * std::sin(tsec * 9.0f);
+		phase += 6.2831853f * freq / (float)sr;
+		const float white = d01(rng) - 0.5f;
+		lp += (white - lp) * 0.06f;
+		float samp = (std::sin(phase) * 0.7f + std::sin(phase * 2.01f) * 0.2f + lp * 1.6f) * env;
+		samp = Math::clamp(samp, -1.0f, 1.0f);
+		const int16_t q = (int16_t)(samp * 8000.0f);
+		w[i * 2] = (uint8_t)(q & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
+	}
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_data(bytes);
+	return wav;
 }

@@ -14,6 +14,8 @@ namespace godot {
 
 class CPUParticles3D;
 class MeshInstance3D;
+class AudioStreamPlayer3D;
+class AudioStreamWAV;
 class SkyCycle;
 class StandardMaterial3D;
 
@@ -30,10 +32,20 @@ private:
 	Ref<StandardMaterial3D> ripple_mat;
 	float t = 0.0f;
 	float ice = 0.0f;
+	// 冰鸣与裂纹
+	AudioStreamPlayer3D *ice_voice = nullptr;
+	Ref<AudioStreamWAV> snd_ice;
+	MeshInstance3D *crack_a = nullptr;
+	MeshInstance3D *crack_b = nullptr;
+	Ref<StandardMaterial3D> crack_mat;
+	float rumble_t = 14.0f;
+	float crack_t = 0.0f;
+	int rumble_count = 0;
 	bool fishing = false;
 	float fishing_mix = 0.0f;
 
 	void build();
+	Ref<AudioStreamWAV> make_ice_groan();
 
 protected:
 	static void _bind_methods();
@@ -47,6 +59,9 @@ public:
 	bool get_mist_emitting() const;
 	int get_fish_count() const { return (int)fish.size(); }
 	float get_ripple_scale() const;
+	int get_rumble_count() const { return rumble_count; }
+	float get_crack_alpha() const;
+	bool get_ice_sound_ready() const { return snd_ice.is_valid(); }
 };
 
 } // namespace godot
