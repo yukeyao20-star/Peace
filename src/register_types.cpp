@@ -48,6 +48,7 @@
 #include "photo_frame.h"
 #include "beehive.h"
 #include "camp_tent.h"
+#include "hedgehog.h"
 #include "dock_moths.h"
 #include "heron_pond.h"
 #include "campfire.h"
@@ -120,6 +121,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(PhotoFrame);
 	GDREGISTER_CLASS(Beehive);
 	GDREGISTER_CLASS(CampTent);
+	GDREGISTER_CLASS(Hedgehog);
 	GDREGISTER_CLASS(DockMoths);
 	GDREGISTER_CLASS(HeronPond);
 	GDREGISTER_CLASS(Campfire);
