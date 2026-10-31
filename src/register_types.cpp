@@ -56,6 +56,7 @@
 #include "campfire.h"
 #include "hearth_fire.h"
 #include "ice_hole.h"
+#include "mailbox.h"
 #include "bench.h"
 #include "berry_bush.h"
 #include "farm_plot.h"
@@ -133,6 +134,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(Campfire);
 	GDREGISTER_CLASS(HearthFire);
 	GDREGISTER_CLASS(IceHole);
+	GDREGISTER_CLASS(Mailbox);
 	GDREGISTER_CLASS(Bench);
 	GDREGISTER_CLASS(BerryBush);
 	GDREGISTER_CLASS(FarmPlot);

@@ -142,13 +142,5 @@ void CabinYard::build() {
 				wood_light, Vector3(0.3f + (float)(i % 2) * 0.3f, 0.0f, 0.0f));
 	}
 
-	// —— 信箱 ——
-	Node3D *mail = memnew(Node3D);
-	mail->set_name("Mailbox");
-	mail->set_position(Vector3(-2.6f, 0.0f, 6.2f));
-	host->add_child(mail);
-	meshutil::add_box(mail, toon, Vector3(0.09f, 0.95f, 0.09f), Vector3(0, 0.47f, 0), wood);
-	meshutil::add_box(mail, toon, Vector3(0.30f, 0.22f, 0.38f), Vector3(0, 1.02f, 0), Color(0.55f, 0.42f, 0.26f));
-	meshutil::add_box(mail, toon, Vector3(0.03f, 0.18f, 0.03f), Vector3(0.17f, 1.10f, 0.05f), Color(0.80f, 0.20f, 0.16f));
-	meshutil::add_box(mail, toon, Vector3(0.16f, 0.02f, 0.03f), Vector3(0.09f, 1.19f, 0.05f), Color(0.80f, 0.20f, 0.16f));
+	// 信箱改由独立的 Mailbox 交互节点负责（第 80 轮）
 }
