@@ -99,6 +99,8 @@ float marker_height(int p_type) {
 			return 1.0f;
 		case GameDirector::TASK_STARWISH:
 			return 3.0f;
+		case GameDirector::TASK_SOUP:
+			return 1.0f;
 		default:
 			return 2.0f;
 	}
@@ -148,6 +150,8 @@ const char *task_name(int p_type) {
 			return "读一封湖畔来信";
 		case GameDirector::TASK_STARWISH:
 			return "对流星许愿";
+		case GameDirector::TASK_SOUP:
+			return "喝一碗热汤";
 		default:
 			return "?";
 	}
@@ -178,6 +182,7 @@ void GameDirector::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("on_marshmallow_roasted"), &GameDirector::on_marshmallow_roasted);
 	ClassDB::bind_method(D_METHOD("on_letter_read"), &GameDirector::on_letter_read);
 	ClassDB::bind_method(D_METHOD("on_star_wish"), &GameDirector::on_star_wish);
+	ClassDB::bind_method(D_METHOD("on_soup_drunk"), &GameDirector::on_soup_drunk);
 	ClassDB::bind_method(D_METHOD("get_count"), &GameDirector::get_count);
 	ClassDB::bind_method(D_METHOD("get_target"), &GameDirector::get_target);
 	ClassDB::bind_method(D_METHOD("is_done"), &GameDirector::is_done);
@@ -580,8 +585,8 @@ void GameDirector::roll_day_tasks(int p_day) {
 		berry.type = TASK_BERRY;
 		berry.target = 2 + (int)(rng() % 3);
 		tasks.push_back(berry);
-		int others[20] = { TASK_FISH, TASK_GOAL, TASK_WELL, TASK_CHEST, TASK_HARVEST, TASK_FEED, TASK_SHELL, TASK_SWING, TASK_PHOTO, TASK_STEW, TASK_CAT, TASK_DEER, TASK_WOODPECKER, TASK_AURORA, TASK_HAMMOCK, TASK_WISH, TASK_KITE, TASK_MARSHMALLOW, TASK_LETTER, TASK_STARWISH };
-		for (int i = 19; i > 0; i--) { // Fisher-Yates 洗牌
+		int others[21] = { TASK_FISH, TASK_GOAL, TASK_WELL, TASK_CHEST, TASK_HARVEST, TASK_FEED, TASK_SHELL, TASK_SWING, TASK_PHOTO, TASK_STEW, TASK_CAT, TASK_DEER, TASK_WOODPECKER, TASK_AURORA, TASK_HAMMOCK, TASK_WISH, TASK_KITE, TASK_MARSHMALLOW, TASK_LETTER, TASK_STARWISH, TASK_SOUP };
+		for (int i = 20; i > 0; i--) { // Fisher-Yates 洗牌
 			int j = (int)(rng() % (unsigned)(i + 1));
 			int tmp = others[i];
 			others[i] = others[j];
@@ -794,6 +799,9 @@ Node3D *GameDirector::resolve_marker_target(int p_type) {
 	}
 	if (p_type == TASK_STARWISH) {
 		return Object::cast_to<Node3D>(root->find_child("Player", true, false));
+	}
+	if (p_type == TASK_SOUP) {
+		return Object::cast_to<Node3D>(root->find_child("StewBowl", true, false));
 	}
 	if (p_type == TASK_FEED) {
 		// 就近挑一只农场动物
@@ -1066,6 +1074,11 @@ void GameDirector::on_letter_read() {
 void GameDirector::on_star_wish() {
 	note_first_interaction();
 	mark_task_progress(TASK_STARWISH);
+}
+
+void GameDirector::on_soup_drunk() {
+	note_first_interaction();
+	mark_task_progress(TASK_SOUP);
 }
 
 void GameDirector::on_chest_looted() {
