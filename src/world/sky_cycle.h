@@ -189,6 +189,7 @@ private:
 	void build_underwater();
 	void build_precip_shelter(); // 采集木屋屋顶遮蔽体，写进降水着色器
 	void pick_next_weather();
+	void apply_weather_targets(int p_weather);
 	void apply(); // 把 time_of_day / cloud / rain 写进灯光与天空
 
 protected:
@@ -225,7 +226,7 @@ public:
 
 	// —— 天气状态快照（SaveSystem 存读用）——
 	int get_weather() const { return weather; }
-	void set_weather(int p) { weather = p; }
+	void set_weather(int p); // 立即切到该天气并更新目标值（T 键/读档用）
 	float get_cloud() const { return cloud; }
 	void set_cloud(float p) { cloud = p; }
 	float get_cloud_target() const { return cloud_target; }

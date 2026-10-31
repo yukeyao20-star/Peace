@@ -405,38 +405,62 @@ void SkyCycle::pick_next_weather() {
 			break;
 	}
 	weather = next;
+	apply_weather_targets(weather);
 	switch (weather) {
+		case 0:
+			dur(35.0f, 60.0f);
+			break;
+		case 1:
+			dur(20.0f, 40.0f);
+			break;
+		case 2:
+			dur(18.0f, 30.0f);
+			break;
+		case 3:
+			dur(14.0f, 24.0f);
+			break;
+		default: // 雪：阴天但不下雨，雪强满格
+			dur(45.0f, 85.0f);
+			break;
+	}
+}
+
+// 指定天气对应的目标值（cloud/rain/snow）。切换天气与读档共用这一张表。
+void SkyCycle::apply_weather_targets(int p_weather) {
+	switch (p_weather) {
 		case 0:
 			cloud_target = 0.0f;
 			rain_target = 0.0f;
 			snow_target = 0.0f;
-			dur(35.0f, 60.0f);
 			break;
 		case 1:
 			cloud_target = 0.85f;
 			rain_target = 0.0f;
 			snow_target = 0.0f;
-			dur(20.0f, 40.0f);
 			break;
 		case 2:
 			cloud_target = 0.92f;
 			rain_target = 0.45f;
 			snow_target = 0.0f;
-			dur(18.0f, 30.0f);
 			break;
 		case 3:
 			cloud_target = 1.0f;
 			rain_target = 1.0f;
 			snow_target = 0.0f;
-			dur(14.0f, 24.0f);
 			break;
 		default: // 雪：阴天但不下雨，雪强满格
 			cloud_target = 0.95f;
 			rain_target = 0.0f;
 			snow_target = 1.0f;
-			dur(45.0f, 85.0f);
 			break;
 	}
+}
+
+// T 键 / 读档：立即把目标切过去，而不是等下一轮天气计时器。
+void SkyCycle::set_weather(int p) {
+	weather = p;
+	apply_weather_targets(p);
+	weather_timer = 30.0f;
 }
 
 void SkyCycle::apply() {

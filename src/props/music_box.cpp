@@ -10,6 +10,8 @@
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/scene_tree.hpp>
+#include <godot_cpp/classes/window.hpp>
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
@@ -62,12 +64,12 @@ void MusicBox::interact(const Vector3 &p_player_pos) {
 			notes_fx->restart();
 			notes_fx->set_emitting(true);
 		}
-		if (get_parent() != nullptr) {
-			Node *gd = get_parent()->get_node_or_null("GameDirector");
-			if (gd != nullptr) {
-				gd->call("flash_hint", String::utf8("上弦 · 八音盒叮叮咚咚地唱起来"), 3.0f);
-				gd->call("on_music_box_played");
-			}
+		Node *gd = (get_tree() != nullptr)
+				? get_tree()->get_root()->find_child("GameDirector", true, false)
+				: nullptr;
+		if (gd != nullptr) {
+			gd->call("flash_hint", String::utf8("上弦 · 八音盒叮叮咚咚地唱起来"), 3.0f);
+			gd->call("on_music_box_played");
 		}
 	}
 }

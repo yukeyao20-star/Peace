@@ -61,6 +61,7 @@
 #include "wall_clock.h"
 #include "stew_bowl.h"
 #include "music_box.h"
+#include "rain_chain.h"
 #include "bench.h"
 #include "berry_bush.h"
 #include "farm_plot.h"
@@ -143,6 +144,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(WallClock);
 	GDREGISTER_CLASS(StewBowl);
 	GDREGISTER_CLASS(MusicBox);
+	GDREGISTER_CLASS(RainChain);
 	GDREGISTER_CLASS(Bench);
 	GDREGISTER_CLASS(BerryBush);
 	GDREGISTER_CLASS(FarmPlot);

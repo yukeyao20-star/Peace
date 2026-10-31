@@ -116,7 +116,8 @@
 | 103 | 窗玻璃雨痕（调研雨窗 shader 后：网格水滴屏幕折射/雨强渐显/四窗共享材质/雪天让位霜花） | 25552a0 |
 | 104 | 银河星尘带（调研星野参考后：倾斜大圆 900 星点/MultiMesh 单 draw call/颜色温度/随星穹旋转/昼夜显隐） | a621ab3 |
 | 105 | 拍照模式升级（调研 CameraAttributesPractical 后：景深/三分网格/暗角/层级/退出恢复） | 17443ba |
-| 106 | 手柄支持（调研 Godot Input 手柄 API 后：左摇杆径向死区移动/右摇杆视角/ABXY 与十字键映射/插拔提示/落地与互动短震动） | 本轮提交 |
+| 106 | 手柄支持（调研 Godot Input 手柄 API 后：左摇杆径向死区移动/右摇杆视角/ABXY 与十字键映射/插拔提示/落地与互动短震动） | 8bca4fd |
+| 107 | 门廊雨链（调研雨链/悬链线后：十级铜杯随风轻摆/雨珠螺旋下滑/落到石钵泛涟漪/程序化流水声/雪天白霜；顺手修 T 键天气切换与八音盒待办回调） | 本轮提交 |
 
 ## 编号对账
 
@@ -152,6 +153,12 @@
   start_joy_vibration / stop_joy_vibration；震动必须带有限 duration）
 - 社区常见的径向死区 + 线性重映射写法（长度小于死区归零，否则沿原方向按
   (len-dz)/(1-dz) 重标定），避免方形死区在斜向留下台阶
+- Rain chain（Wikipedia / KCP International）—— 鎖樋：一串带孔金属杯，
+  雨水沿杯沿层层下滑，替代落水管
+- Ralane/godot4-catenary（MIT）—— 装饰性链条的悬链线与风摆思路
+- Tshmofen/verlet-rope-4 —— Godot 4 Verlet 绳索；本作链条短而绷直，
+  用更轻的单摆轻摆，不逐节点积分
+- godot-demo-projects compute/texture —— 水滴落水面的涟漪高度场参考
 
 ## 收尾
 
