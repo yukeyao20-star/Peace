@@ -26,6 +26,7 @@
 #include "rowboat.h"
 #include "kelp_field.h"
 #include "dock_moths.h"
+#include "heron_pond.h"
 #include "berry_bush.h"
 #include "farm_plot.h"
 #include "game_director.h"
@@ -71,6 +72,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(Rowboat);
 	GDREGISTER_CLASS(KelpField);
 	GDREGISTER_CLASS(DockMoths);
+	GDREGISTER_CLASS(HeronPond);
 	GDREGISTER_CLASS(BerryBush);
 	GDREGISTER_CLASS(FarmPlot);
 	GDREGISTER_CLASS(GameDirector);
