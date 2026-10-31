@@ -14,6 +14,7 @@ FootprintManager *FootprintManager::singleton = nullptr;
 
 void FootprintManager::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("spawn_footprint", "type", "pos", "yaw_rad", "scale", "surface"), &FootprintManager::spawn_footprint, DEFVAL(1.0f), DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("get_active_count"), &FootprintManager::get_active_count);
 
 	BIND_ENUM_CONSTANT(TYPE_HUMAN_LEFT);
 	BIND_ENUM_CONSTANT(TYPE_HUMAN_RIGHT);
@@ -251,13 +252,31 @@ void FootprintManager::build_pool() {
 	}
 }
 
+int FootprintManager::get_active_count() const {
+	int n = 0;
+	for (int i = 0; i < POOL_SIZE; ++i) {
+		if (pool[i].active) {
+			n++;
+		}
+	}
+	return n;
+}
+
 void FootprintManager::_process(double delta) {
+	if (sky == nullptr && get_parent() != nullptr) {
+		sky = Object::cast_to<SkyCycle>(get_parent()->get_node_or_null(NodePath("SkyCycle")));
+	}
+	if (sky != nullptr) {
+		snow_now = sky->get_snow_amount();
+	}
+	// 下雪时脚印被新雪一点点盖住，消散得比晴天快
+	const float age_rate = 1.0f + 0.9f * snow_now;
 	for (int i = 0; i < POOL_SIZE; ++i) {
 		Slot &s = pool[i];
 		if (!s.active || s.decal == nullptr) {
 			continue;
 		}
-		s.age += (float)delta;
+		s.age += (float)delta * age_rate;
 		if (s.age >= s.max_age) {
 			s.decal->set_visible(false);
 			s.active = false;

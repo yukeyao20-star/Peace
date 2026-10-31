@@ -40,6 +40,8 @@ private:
 	float snort_t = 5.0f;
 	int state = 0; // 0 吃草/等待 / 1 走 / 2 逃跑
 	bool flee_home = false;
+	Vector3 last_print;
+	bool print_side = false;
 	std::mt19937 rng{20270202u};
 
 	void build();

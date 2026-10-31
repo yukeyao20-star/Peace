@@ -51,6 +51,8 @@ private:
 	int next_slot = 0;
 
 	Ref<ImageTexture> textures[TYPE_MAX];
+	class SkyCycle *sky = nullptr;
+	float snow_now = 0.0f;
 
 	void build_textures();
 	void build_pool();
@@ -77,6 +79,8 @@ public:
 	//          6 泥土小径）；传 -1 = 调用方不指定，纯按当前天气决定（动物走这条路）。
 	//          硬质地面踩不出泥印，只留浅灰擦痕——不区分的话石桥上会印一串泥脚印。
 	void spawn_footprint(FootprintType type, const Vector3 &pos, float yaw_rad, float scale = 1.0f, int surface = -1);
+
+	int get_active_count() const;
 };
 
 } // namespace godot

@@ -1,5 +1,7 @@
 #include "deer_meadow.h"
 
+#include "../world/footprint_manager.h"
+
 #include <cmath>
 
 #include <godot_cpp/classes/audio_stream_player3d.hpp>
@@ -83,6 +85,19 @@ void DeerMeadow::_notification(int p_what) {
 				if (dir.length_squared() > 0.001f) {
 					root->set_rotation(Vector3(0.0f, std::atan2(dir.x, dir.z), 0.0f));
 				}
+				{
+					Vector3 pd = p - last_print;
+					pd.y = 0.0f;
+					if (pd.length() > 0.45f) {
+						last_print = p;
+						if (FootprintManager::get_singleton() != nullptr && dir.length_squared() > 0.001f) {
+							const float yaw = std::atan2(dir.x, dir.z);
+							const Vector3 side(std::cos(yaw) * 0.12f, 0.0f, -std::sin(yaw) * 0.12f);
+							FootprintManager::get_singleton()->spawn_footprint(FootprintManager::TYPE_HOOF, p + Vector3(0, 0.02f, 0) + side, yaw, 1.35f);
+							FootprintManager::get_singleton()->spawn_footprint(FootprintManager::TYPE_HOOF, p + Vector3(0, 0.02f, 0) - side, yaw, 1.35f);
+						}
+					}
+				}
 				for (int i = 0; i < 4; i++) {
 					if (leg[i] != nullptr) {
 						leg[i]->set_rotation(Vector3(std::sin(t * 16.0f + (float)i * 1.7f) * 0.55f, 0.0f, 0.0f));
@@ -128,6 +143,19 @@ void DeerMeadow::_notification(int p_what) {
 				dir.y = 0.0f;
 				if (dir.length_squared() > 0.001f) {
 					root->set_rotation(Vector3(0.0f, std::atan2(dir.x, dir.z), 0.0f));
+				}
+				{
+					Vector3 pd = p - last_print;
+					pd.y = 0.0f;
+					if (pd.length() > 0.45f) {
+						last_print = p;
+						if (FootprintManager::get_singleton() != nullptr && dir.length_squared() > 0.001f) {
+							const float yaw = std::atan2(dir.x, dir.z);
+							const Vector3 side(std::cos(yaw) * 0.12f, 0.0f, -std::sin(yaw) * 0.12f);
+							FootprintManager::get_singleton()->spawn_footprint(FootprintManager::TYPE_HOOF, p + Vector3(0, 0.02f, 0) + side, yaw, 1.35f);
+							FootprintManager::get_singleton()->spawn_footprint(FootprintManager::TYPE_HOOF, p + Vector3(0, 0.02f, 0) - side, yaw, 1.35f);
+						}
+					}
 				}
 				for (int i = 0; i < 4; i++) {
 					if (leg[i] != nullptr) {

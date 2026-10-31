@@ -1,5 +1,7 @@
 #include "squirrel_field.h"
 
+#include "../world/footprint_manager.h"
+
 #include <cmath>
 
 #include <godot_cpp/classes/audio_stream_player3d.hpp>
@@ -110,6 +112,13 @@ void SquirrelField::_notification(int p_what) {
 					if (u >= 1.0f) {
 						s.state = 0;
 						s.wait_t = 1.2f + (float)(rng() % 200u) * 0.009f;
+						if (FootprintManager::get_singleton() != nullptr) {
+							const float yaw = s.root->get_rotation().y;
+							const Vector3 lp = s.hop_to + Vector3(0.0f, 0.01f, 0.0f);
+							const Vector3 side(std::cos(yaw) * 0.035f, 0.0f, -std::sin(yaw) * 0.035f);
+							FootprintManager::get_singleton()->spawn_footprint(FootprintManager::TYPE_PAW, lp + side, yaw, 0.42f);
+							FootprintManager::get_singleton()->spawn_footprint(FootprintManager::TYPE_PAW, lp - side, yaw, 0.42f);
+						}
 					}
 				} else {
 					s.wait_t -= delta;

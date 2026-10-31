@@ -34,6 +34,7 @@ private:
 	Vector3 walk_to;
 	float t = 0.0f;
 	float wait_t = 2.0f;
+	Vector3 last_print;
 	float walk_dur = 2.5f;
 	float state_t = 0.0f;
 	float snuffle_t = 3.0f;

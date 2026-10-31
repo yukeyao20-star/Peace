@@ -1,5 +1,7 @@
 #include "camp_cat.h"
 
+#include "../world/footprint_manager.h"
+
 #include <cmath>
 
 #include <godot_cpp/classes/audio_stream_player3d.hpp>
@@ -126,6 +128,19 @@ void CampCat::_notification(int p_what) {
 			Vector3 pos = get_global_position();
 			pos = pos.lerp(want, 1.0f - std::exp(-1.7f * delta));
 			set_global_position(pos);
+			{
+				Vector3 pd = pos - last_print;
+				pd.y = 0.0f;
+				Vector3 to = want - pos;
+				to.y = 0.0f;
+				if (pd.length() > 0.20f && to.length_squared() > 0.004f && FootprintManager::get_singleton() != nullptr) {
+					last_print = pos;
+					const float yaw = std::atan2(to.x, to.z);
+					const Vector3 side(std::cos(yaw) * 0.055f, 0.0f, -std::sin(yaw) * 0.055f);
+					FootprintManager::get_singleton()->spawn_footprint(FootprintManager::TYPE_PAW, pos + Vector3(0, 0.01f, 0) + side, yaw, 0.42f);
+					FootprintManager::get_singleton()->spawn_footprint(FootprintManager::TYPE_PAW, pos + Vector3(0, 0.01f, 0) - side, yaw, 0.42f);
+				}
+			}
 
 			const Vector3 pp = (player != nullptr) ? player->get_global_position() : Vector3(0, -999, 0);
 			const float near = pos.distance_to(pp);

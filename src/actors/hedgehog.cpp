@@ -14,6 +14,7 @@
 #include "../systems/mesh_util.h"
 #include "../world/sky_cycle.h"
 #include "../world/terrain_builder.h"
+#include "../world/footprint_manager.h"
 
 using namespace godot;
 
@@ -133,6 +134,17 @@ void Hedgehog::_notification(int p_what) {
 			dir.y = 0.0f;
 			if (dir.length_squared() > 0.001f) {
 				model->set_rotation(Vector3(0.0f, std::atan2(dir.x, dir.z), 0.0f));
+			}
+			{
+				Vector3 pd = p - last_print;
+				pd.y = 0.0f;
+				if (pd.length() > 0.25f && dir.length_squared() > 0.001f && FootprintManager::get_singleton() != nullptr) {
+					last_print = p;
+					const float yaw = std::atan2(dir.x, dir.z);
+					const Vector3 side(std::cos(yaw) * 0.045f, 0.0f, -std::sin(yaw) * 0.045f);
+					FootprintManager::get_singleton()->spawn_footprint(FootprintManager::TYPE_PAW, p + Vector3(0, 0.01f, 0) + side, yaw, 0.30f);
+					FootprintManager::get_singleton()->spawn_footprint(FootprintManager::TYPE_PAW, p + Vector3(0, 0.01f, 0) - side, yaw, 0.30f);
+				}
 			}
 			if (head != nullptr) {
 				head->set_rotation(Vector3(std::sin(t * 3.0f) * 0.10f, std::sin(t * 1.1f) * 0.2f, 0.0f));

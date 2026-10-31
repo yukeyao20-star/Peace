@@ -38,6 +38,7 @@ private:
 	float pet_t = 0.0f;
 	Vector3 home;
 	Vector3 shelter;
+	Vector3 last_print;
 	float t = 0.0f;
 	float purr_fade = 0.0f;
 	bool purring = false;
