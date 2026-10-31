@@ -115,7 +115,7 @@ void CabinLife::build() {
 	smoke_mat.instantiate();
 	smoke_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
 	smoke_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
-	smoke_mat->set_albedo(Color(0.62f, 0.65f, 0.64f, 0.16f));
+	smoke_mat->set_albedo(Color(0.62f, 0.65f, 0.64f, 0.10f));
 	smoke_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
 	puff->set_material(smoke_mat);
 	smoke = memnew(CPUParticles3D);
@@ -129,7 +129,7 @@ void CabinLife::build() {
 	smoke->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.28f);
 	smoke->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.55f);
 	smoke->set_param_min(CPUParticles3D::PARAM_SCALE, 0.7f);
-	smoke->set_param_max(CPUParticles3D::PARAM_SCALE, 2.2f);
+	smoke->set_param_max(CPUParticles3D::PARAM_SCALE, 1.4f);
 	smoke->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_SPHERE);
 	smoke->set_emission_sphere_radius(0.12f);
 	smoke->set_position(chimney_base + Vector3(0, 0.95f, 0));

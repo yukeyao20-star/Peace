@@ -208,8 +208,8 @@ void Bench::build() {
 	// 夜坐时的萤火虫：一团小小的暖绿色光点从草地围到座位边
 	Ref<SphereMesh> fly;
 	fly.instantiate();
-	fly->set_radius(0.022f);
-	fly->set_height(0.044f);
+	fly->set_radius(0.016f);
+	fly->set_height(0.032f);
 	fly->set_radial_segments(6);
 	fly->set_rings(4);
 	Ref<StandardMaterial3D> fly_mat;
@@ -223,7 +223,7 @@ void Bench::build() {
 	fly->set_material(fly_mat);
 	visit = memnew(CPUParticles3D);
 	visit->set_name("BenchFireflies");
-	visit->set_amount(18);
+	visit->set_amount(14);
 	visit->set_lifetime(4.2f);
 	visit->set_mesh(fly);
 	visit->set_direction(Vector3(0.0f, 1.0f, 0.0f));

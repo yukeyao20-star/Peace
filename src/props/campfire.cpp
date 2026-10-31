@@ -269,7 +269,7 @@ void Campfire::build() {
 	smoke_mat.instantiate();
 	smoke_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
 	smoke_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
-	smoke_mat->set_albedo(Color(0.55f, 0.58f, 0.58f, 0.12f));
+	smoke_mat->set_albedo(Color(0.55f, 0.58f, 0.58f, 0.08f));
 	smoke_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
 	smoke_mesh->set_material(smoke_mat);
 	CPUParticles3D *smoke = memnew(CPUParticles3D);
@@ -283,7 +283,7 @@ void Campfire::build() {
 	smoke->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.22f);
 	smoke->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.40f);
 	smoke->set_param_min(CPUParticles3D::PARAM_SCALE, 0.8f);
-	smoke->set_param_max(CPUParticles3D::PARAM_SCALE, 1.8f);
+	smoke->set_param_max(CPUParticles3D::PARAM_SCALE, 1.25f);
 	smoke->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_SPHERE);
 	smoke->set_emission_sphere_radius(0.10f);
 	smoke->set_position(Vector3(0.0f, 0.45f, 0.0f));

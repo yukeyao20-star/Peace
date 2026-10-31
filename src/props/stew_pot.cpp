@@ -207,13 +207,13 @@ void StewPot::build() {
 	steam_mat.instantiate();
 	steam_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
 	steam_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
-	steam_mat->set_albedo(Color(0.92f, 0.90f, 0.86f, 0.10f));
+	steam_mat->set_albedo(Color(0.92f, 0.90f, 0.86f, 0.08f));
 	steam_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
 	puff->set_material(steam_mat);
 	steam = memnew(CPUParticles3D);
 	steam->set_name("Steam");
-	steam->set_amount(14);
-	steam->set_lifetime(1.7f);
+	steam->set_amount(10);
+	steam->set_lifetime(1.4f);
 	steam->set_mesh(puff);
 	steam->set_direction(Vector3(0.0f, 1.0f, 0.0f));
 	steam->set_spread(18.0f);
@@ -221,7 +221,7 @@ void StewPot::build() {
 	steam->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.18f);
 	steam->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.38f);
 	steam->set_param_min(CPUParticles3D::PARAM_SCALE, 0.6f);
-	steam->set_param_max(CPUParticles3D::PARAM_SCALE, 1.7f);
+	steam->set_param_max(CPUParticles3D::PARAM_SCALE, 1.15f);
 	steam->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_SPHERE);
 	steam->set_emission_sphere_radius(0.16f);
 	steam->set_position(Vector3(0.0f, 0.50f, 0.0f));
