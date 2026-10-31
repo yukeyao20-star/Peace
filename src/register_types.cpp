@@ -80,6 +80,7 @@
 #include "paper_plane.h"
 #include "kitchen_shelf.h"
 #include "writing_desk.h"
+#include "reading_corner.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
 #include "leaf_drift.h"
@@ -184,6 +185,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(PaperPlane);
 	GDREGISTER_CLASS(KitchenShelf);
 	GDREGISTER_CLASS(WritingDesk);
+	GDREGISTER_CLASS(ReadingCorner);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
 	GDREGISTER_CLASS(LeafDrift);
