@@ -37,6 +37,7 @@
 #include <godot_cpp/classes/sky.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
+#include <godot_cpp/classes/torus_mesh.hpp>
 #include <godot_cpp/classes/world_environment.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/math.hpp>
@@ -83,6 +84,7 @@ void SkyCycle::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_night_factor"), &SkyCycle::get_night_factor);
 	// 雨雪因子 getter 此前只有 C++ 调用方，-s 脚本摸不到（坑 17.3），补绑
 	ClassDB::bind_method(D_METHOD("get_rain_amount"), &SkyCycle::get_rain_amount);
+	ClassDB::bind_method(D_METHOD("get_rainbow_fade"), &SkyCycle::get_rainbow_fade);
 	ClassDB::bind_method(D_METHOD("get_snow_amount"), &SkyCycle::get_snow_amount);
 	// —— 天气状态快照（SaveSystem 存读用）——
 	ClassDB::bind_method(D_METHOD("set_day_count", "p_day"), &SkyCycle::set_day_count);
@@ -135,6 +137,7 @@ void SkyCycle::_notification(int p_what) {
 			build_underwater();
 			build_underwater_ambience();
 			build_storm();
+			build_rainbow();
 			// 调试：ZCODE_FORCE_METEOR=1 时首次流星提前到 0.4s（探针截图用）
 			if (OS::get_singleton() != nullptr
 					&& OS::get_singleton()->get_environment("ZCODE_FORCE_METEOR") == "1") {
@@ -166,6 +169,7 @@ void SkyCycle::_notification(int p_what) {
 			rain = Math::move_toward(rain, rain_target, (float)delta * 0.18f);
 			snow = Math::move_toward(snow, snow_target, (float)delta * 0.045f); // 积雪与消融过渡放缓3倍，从容自然
 			apply();
+			update_rainbow((float)delta);
 			// —— 暴雨闪电：厚雨云里偶尔一道白光，随后传来雷声 ——
 			{
 				static std::mt19937 storm_rng(20261101u);
@@ -1218,4 +1222,102 @@ void SkyCycle::build_storm() {
 	thunder->set_stream(snd_thunder);
 	thunder->set_volume_db(-9.0f);
 	add_child(thunder);
+}
+
+
+// —— 雨后彩虹 ——
+// 七条半透明彩带组成的大圆弧，雨停后出现在太阳正对面；太阳升高/夜雨都不会有。
+void SkyCycle::build_rainbow() {
+	const Color band[7] = {
+		Color(1.00f, 0.28f, 0.22f),
+		Color(1.00f, 0.56f, 0.18f),
+		Color(1.00f, 0.90f, 0.36f),
+		Color(0.38f, 0.86f, 0.42f),
+		Color(0.32f, 0.76f, 0.96f),
+		Color(0.36f, 0.48f, 0.92f),
+		Color(0.62f, 0.42f, 0.88f),
+	};
+	rainbow = memnew(Node3D);
+	rainbow->set_name("Rainbow");
+	add_child(rainbow);
+	rainbow->set_visible(false);
+	for (int i = 0; i < 7; i++) {
+		Ref<TorusMesh> torus;
+		torus.instantiate();
+		torus->set_inner_radius(82.0f + i * 1.9f);
+		torus->set_outer_radius(83.9f + i * 1.9f);
+		torus->set_rings(72);        // 沿大圆的切片数：少了会变成三角形
+		torus->set_ring_segments(3); // 彩带截面的细分
+		rainbow_mats[i].instantiate();
+		rainbow_mats[i]->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+		rainbow_mats[i]->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+		rainbow_mats[i]->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
+		rainbow_mats[i]->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+		rainbow_mats[i]->set_albedo(Color(band[i].r, band[i].g, band[i].b, 0.0f));
+		torus->set_material(rainbow_mats[i]);
+		MeshInstance3D *mi = memnew(MeshInstance3D);
+		mi->set_mesh(torus);
+		mi->set_rotation(Vector3(1.5707964f, 0.0f, 0.0f)); // 立起来成拱
+		rainbow->add_child(mi);
+	}
+}
+
+void SkyCycle::update_rainbow(float p_delta) {
+	if (rainbow == nullptr) {
+		return;
+	}
+	if (rainbow_player == nullptr) {
+		Node *parent = get_parent();
+		if (parent != nullptr) {
+			rainbow_player = Object::cast_to<Node3D>(parent->get_node_or_null("Player"));
+		}
+	}
+	bool force = OS::get_singleton() != nullptr
+			&& OS::get_singleton()->get_environment("ZCODE_FORCE_RAINBOW") == "1";
+	const float sun_h = std::sin((time_of_day - 0.25f) * 6.2831853f);
+	const float day = clampf(sun_h * 3.0f, 0.0f, 1.0f);
+
+	if (force && rainbow_hold <= 0.0f) {
+		rainbow_hold = 38.0f;
+	}
+	if (rain > 0.35f) {
+		was_raining = true;
+	}
+	if (was_raining && rain < 0.06f && snow < 0.08f && day > 0.18f && rainbow_hold <= 0.0f) {
+		rainbow_hold = 38.0f;
+		was_raining = false;
+	}
+	if (rainbow_hold > 0.0f) {
+		rainbow_hold -= p_delta;
+	}
+	const float target = rainbow_hold > 0.0f ? 1.0f : 0.0f;
+	const float rate = (target > rainbow_fade) ? 1.1f : 0.35f;
+	rainbow_fade = Math::move_toward(rainbow_fade, target, rate * p_delta);
+	if (rainbow_fade <= 0.005f) {
+		rainbow_fade = 0.0f;
+		rainbow->set_visible(false);
+		return;
+	}
+	rainbow->set_visible(true);
+
+	Vector3 anchor(0.0f, -6.0f, 0.0f);
+	if (rainbow_player != nullptr) {
+		anchor = rainbow_player->get_global_position();
+	}
+	Vector3 away(-sun_dir.x, 0.0f, -sun_dir.z);
+	if (away.length_squared() < 0.001f) {
+		away = Vector3(0.0f, 0.0f, -1.0f);
+	}
+	away = away.normalized();
+	rainbow->set_global_position(Vector3(anchor.x, -6.0f, anchor.z) + away * 125.0f);
+	rainbow->look_at(Vector3(anchor.x, -6.0f, anchor.z), Vector3(0, 1, 0));
+
+	const float base_alpha[7] = {0.30f, 0.34f, 0.30f, 0.32f, 0.30f, 0.28f, 0.24f};
+	for (int i = 0; i < 7; i++) {
+		if (rainbow_mats[i].is_valid()) {
+			Color c = rainbow_mats[i]->get_albedo();
+			c.a = base_alpha[i] * rainbow_fade;
+			rainbow_mats[i]->set_albedo(c);
+		}
+	}
 }

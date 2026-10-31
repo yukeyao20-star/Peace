@@ -77,6 +77,16 @@ private:
 	CPUParticles3D *snowflakes = nullptr; // 雪花层
 	CPUParticles3D *fireflies = nullptr; // 萤火虫（夜间 + 非雨雪天）
 	CPUParticles3D *fireflies_b = nullptr; // 长椅水湾的第二簇萤火虫
+
+	// —— 雨后彩虹 ——
+	Node3D *rainbow = nullptr;
+	Ref<class StandardMaterial3D> rainbow_mats[7];
+	class Node3D *rainbow_player = nullptr;
+	float rainbow_fade = 0.0f; // 0 隐藏 → 1 完全展开
+	float rainbow_hold = 0.0f; // 停留剩余秒数
+	bool was_raining = false;
+	void build_rainbow();
+	void update_rainbow(float p_delta);
 	Ref<ShaderMaterial> precip_mat;      // 雨丝材质（fixed_y = true，带屋檐遮蔽）
 	Ref<ShaderMaterial> precip_mat_snow; // 雪花材质（fixed_y = false；billboard 模式不同必须分开）
 	// —— 屋檐遮蔽体：全部在木屋局部空间描述（木屋绕 Y 转了 45°，
@@ -167,6 +177,7 @@ public:
 	float get_rain_amount() const { return rain; } // 雨强因子 0..1（供夜光/水面等系统联动）
 	float get_snow_amount() const { return snow; } // 雪强因子 0..1
 	Vector3 get_sun_dir() const { return sun_dir; } // 指向太阳/月亮的世界方向（植被透光等用）
+	float get_rainbow_fade() const { return rainbow_fade; }
 
 	// 某世界坐标点是否在屋檐下（屋里 / 檐下）。与降水粒子剔除用同一套遮蔽体，
 	// 供 Ambience 判断"人在室内就该把雨雪声压掉"。
