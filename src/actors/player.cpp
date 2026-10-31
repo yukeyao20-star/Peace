@@ -120,6 +120,7 @@ void Player::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_is_map_open"), &Player::get_is_map_open);
 	ClassDB::bind_method(D_METHOD("get_is_boating"), &Player::get_is_boating);
 	ClassDB::bind_method(D_METHOD("get_is_sitting"), &Player::get_is_sitting);
+	ClassDB::bind_method(D_METHOD("get_is_lying"), &Player::get_is_lying);
 	ClassDB::bind_method(D_METHOD("get_photo_mode"), &Player::get_photo_mode);
 	ClassDB::bind_method(D_METHOD("launch_firework"), &Player::launch_firework);
 	ClassDB::bind_method(D_METHOD("_on_map_gui_input", "event"), &Player::_on_map_gui_input);
@@ -775,6 +776,29 @@ void Player::_physics_step() {
 		return;
 	}
 
+	// 2.35 躺吊床：位置锁在网面，模型放平
+	if (is_lying) {
+		set_global_position(lie_pos);
+		set_velocity(Vector3(0.0f, 0.0f, 0.0f));
+		if (model != nullptr) {
+			model->set_scale(Vector3(1.0f, 0.62f, 1.0f));
+			model->set_basis(Basis(Vector3(0.0f, 1.0f, 0.0f), lie_yaw)
+					* Basis(Vector3(1.0f, 0.0f, 0.0f), -1.35f));
+			model->set_position(Vector3(0.0f, 0.10f, 0.0f));
+		}
+		if (prompt != nullptr) {
+			prompt->hide();
+		}
+		if (hud_prompt != nullptr) {
+			hud_prompt->hide();
+		}
+		if (target_ring != nullptr) {
+			target_ring->hide();
+		}
+		e_prev = act_pressed("interact", KEY_E);
+		return;
+	}
+
 	// 2.4 坐长椅：位置锁定在座位，模型压扁成坐姿，交互只留 E 起身
 	if (is_sitting) {
 		set_global_position(sit_pos);
@@ -1303,7 +1327,7 @@ void Player::_update_interaction() {
 	}
 
 	if (target_ring != nullptr) {
-		bool show_ring = near_target != nullptr && !photo_mode && !hud_hidden && !is_sitting && !is_boating && !is_map_open;
+		bool show_ring = near_target != nullptr && !photo_mode && !hud_hidden && !is_sitting && !is_lying && !is_boating && !is_map_open;
 		if (show_ring) {
 			Vector3 tp = near_target->get_global_position();
 			target_ring->set_global_position(Vector3(tp.x, tp.y + 0.06f, tp.z));
@@ -1549,7 +1573,7 @@ void Player::_update_camera(double delta) {
 	}
 
 	// 坐下时视点跟着落到长椅上，相机也拉近一点，像真的窝在椅子里看湖
-	const double head_h = is_sitting ? 1.05 : (is_swimming ? 0.55 : camera_height);
+	const double head_h = is_lying ? 0.72 : (is_sitting ? 1.05 : (is_swimming ? 0.55 : camera_height));
 	const Vector3 head = get_global_position() + Vector3(0.0, head_h, 0.0);
 
 	if (!cam_follow_init) {
@@ -1563,7 +1587,7 @@ void Player::_update_camera(double delta) {
 	cam_follow = cam_follow.lerp(head, factor);
 
 	double cam_dist_eff = is_swimming ? Math::min(cam_dist, 4.0) : cam_dist;
-	if (is_sitting) {
+	if (is_sitting || is_lying) {
 		cam_dist_eff = Math::min(cam_dist_eff, 4.2);
 	}
 	Vector3 off = Basis(Vector3(0.0, 1.0, 0.0), (float)cam_yaw).xform(

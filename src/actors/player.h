@@ -132,9 +132,17 @@ public:
 		set_velocity(Vector3(0, 0, 0));
 		if (propeller != nullptr) propeller->set_visible(false);
 	}
-	void stand_up() { is_sitting = false; }
+	void stand_up() { is_sitting = false; is_lying = false; }
 	void suppress_interaction(float p_seconds) { interact_lock = p_seconds; }
 	bool get_is_sitting() const { return is_sitting; }
+	bool get_is_lying() const { return is_lying; }
+	void lie_down(const Vector3 &p_pos, float p_yaw) {
+		is_lying = true;
+		is_sitting = false;
+		is_boating = false;
+		lie_pos = p_pos;
+		lie_yaw = p_yaw;
+	}
 	bool get_photo_mode() const { return photo_mode; }
 	void leave_boat() {
 		is_boating = false;
@@ -208,6 +216,9 @@ private:
 	bool was_swimming = false;
 	bool is_boating = false;   // 坐在小木船上（Rowboat 控制移动）
 	bool is_sitting = false;   // 坐在长椅上（Bench 控制起坐）
+	bool is_lying = false;     // 躺在吊床里（Hammock 控制）
+	Vector3 lie_pos;
+	float lie_yaw = 0.0f;
 	bool photo_mode = false;   // 拍照模式：隐藏 HUD/角色，只留自由机位
 	bool photo_prev = false;
 	bool f12_prev = false;

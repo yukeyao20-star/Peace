@@ -1347,6 +1347,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -18.5, 0, -20.0)
 [node name="Deer" type="DeerMeadow" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16.5, 0, -23.5)
 
+[node name="Hammock" type="Hammock" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -11.5, 0, -22.5)
+
 [node name="CampCat" type="CampCat" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.5, 0, -12.3)
 
