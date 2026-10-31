@@ -86,6 +86,7 @@ private:
 	float aurora_fade = 0.0f;
 	float aurora_hold = 0.0f;
 	float aurora_timer = 90.0f;
+	bool aurora_announced = false;
 	void build_aurora();
 	void update_aurora(float p_delta);
 

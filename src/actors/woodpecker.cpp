@@ -82,6 +82,12 @@ void Woodpecker::_notification(int p_what) {
 						voice->play(0.0f);
 					}
 					knock_t = 5.0f + (float)(rng() % 600u) * 0.01f;
+					if (pp.distance_to(home) < 26.0f && get_parent() != nullptr) {
+						Node *gd = get_parent()->get_node_or_null("GameDirector");
+						if (gd != nullptr) {
+							gd->call("on_woodpecker_heard");
+						}
+					}
 				}
 				float amp = (peck_t > 0.0f) ? std::fabs(std::sin(t * 26.0f)) * 0.07f : 0.0f;
 				bird->set_position(Vector3(0.30f - amp, 1.55f, 0.0f));

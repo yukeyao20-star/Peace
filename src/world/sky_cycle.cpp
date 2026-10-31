@@ -1391,10 +1391,18 @@ void SkyCycle::update_aurora(float p_delta) {
 	aurora_fade = Math::move_toward(aurora_fade, target, p_delta * (target > aurora_fade ? 0.20f : 0.30f));
 	if (aurora_fade <= 0.008f) {
 		aurora_fade = 0.0f;
+		aurora_announced = false;
 		aurora->set_visible(false);
 		return;
 	}
 	aurora->set_visible(true);
+	if (!aurora_announced && aurora_fade > 0.15f && get_parent() != nullptr) {
+		aurora_announced = true;
+		Node *gd = get_parent()->get_node_or_null("GameDirector");
+		if (gd != nullptr) {
+			gd->call("on_aurora_seen");
+		}
+	}
 	for (int i = 0; i < 3; i++) {
 		if (aurora_mats[i].is_valid()) {
 			aurora_mats[i]->set_shader_parameter("strength", aurora_fade);

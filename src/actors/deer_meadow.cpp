@@ -108,6 +108,12 @@ void DeerMeadow::_notification(int p_what) {
 				}
 			}
 
+			if (pp.distance_to(root->get_global_position()) < 14.0f && get_parent() != nullptr) {
+				Node *gd = get_parent()->get_node_or_null("GameDirector");
+				if (gd != nullptr) {
+					gd->call("on_deer_seen");
+				}
+			}
 			if (pp.distance_to(root->get_global_position()) < 7.0f) {
 				start_flee(pp);
 				return;

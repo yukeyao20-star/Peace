@@ -59,6 +59,9 @@ public:
 		TASK_PHOTO,     // 拍一张照片（photo_taken）
 		TASK_STEW,      // 搅一搅汤锅（stew_stirred）
 		TASK_CAT,       // 摸摸火堆边的猫（cat_petted）
+		TASK_DEER,      // 看见林缘的小鹿（deer_seen）
+		TASK_WOODPECKER,// 听见啄木鸟（woodpecker_heard）
+		TASK_AURORA,    // 仰望极光（aurora_seen）
 		TASK_KIND_COUNT
 	};
 	struct DailyTask {
@@ -145,6 +148,9 @@ public:
 	void on_photo_taken();
 	void on_stew_stirred();
 	void on_cat_petted();
+	void on_deer_seen();
+	void on_woodpecker_heard();
+	void on_aurora_seen();
 
 	int get_count() const { return count; }
 	int get_target() const { return target; }
