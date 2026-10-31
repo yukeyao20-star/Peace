@@ -124,6 +124,7 @@ protected:
 	int cur_species = FISH_QINGLIN;          // 本条鱼的鱼种
 	bool b_prev = false;                     // B 键边沿检测
 	bool book_open = false;
+	bool boat_hint_shown = false;
 	CanvasLayer *book_layer = nullptr; // 图鉴层（懒建，玻璃面板）
 	void build_book_ui();
 	void refresh_book();

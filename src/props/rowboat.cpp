@@ -212,6 +212,12 @@ void Rowboat::board(Player *p_rider) {
 	e_prev = true;
 	p_rider->board_boat(this);
 	p_rider->set_global_position(get_global_position() + Vector3(0.0f, 0.34f, -0.30f));
+	if (get_parent() != nullptr) {
+		Node *gd = get_parent()->get_node_or_null("GameDirector");
+		if (gd != nullptr) {
+			gd->call("flash_hint", String::utf8("W/S 划行 · A/D 转向 · E 下船"), 4.5f);
+		}
+	}
 }
 
 void Rowboat::exit_boat() {

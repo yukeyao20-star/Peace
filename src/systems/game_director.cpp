@@ -112,6 +112,7 @@ void GameDirector::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_target"), &GameDirector::get_target);
 	ClassDB::bind_method(D_METHOD("is_done"), &GameDirector::is_done);
 	ClassDB::bind_method(D_METHOD("get_current_day"), &GameDirector::get_current_day);
+	ClassDB::bind_method(D_METHOD("flash_hint", "text", "seconds"), &GameDirector::flash_hint);
 	// —— 存档恢复用 ——
 	ClassDB::bind_method(D_METHOD("get_daily_serial"), &GameDirector::get_daily_serial);
 	ClassDB::bind_method(D_METHOD("apply_daily_serial", "p_serial"), &GameDirector::apply_daily_serial);
@@ -769,6 +770,17 @@ void GameDirector::note_first_interaction() {
 		hint_persistent = false;
 		hint_t = HINT_FADE_INTERACT; // 走既有淡出曲线：1s 全显 + 2s 渐隐
 	}
+}
+
+void GameDirector::flash_hint(const String &p_text, float p_seconds) {
+	if (hint_panel == nullptr || hint_label == nullptr) {
+		return;
+	}
+	hint_label->set_text(p_text);
+	hint_panel->set_modulate(Color(1, 1, 1, 1));
+	hint_panel->set_visible(true);
+	hint_t = p_seconds;
+	hint_persistent = false;
 }
 
 void GameDirector::announce_center(const String &p_text, float p_seconds) {

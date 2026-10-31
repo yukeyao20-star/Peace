@@ -667,6 +667,13 @@ void FishingSystem::set_result(const String &p_text, float p_seconds) {
 
 void FishingSystem::start_cast(float p_charge) {
 	state = 1;
+	if (player != nullptr && player->get_is_boating() && !boat_hint_shown && get_parent() != nullptr) {
+		Node *gd = get_parent()->get_node_or_null("GameDirector");
+		if (gd != nullptr) {
+			gd->call("flash_hint", String::utf8("船上也能抛竿：按住 F 蓄力，松手抛出"), 4.0f);
+			boat_hint_shown = true;
+		}
+	}
 	cast_swing = 1.0f; // 起手一记前挥
 	play_sound(snd_cast, -8.0f);
 	Vector3 pp = player->get_global_position();

@@ -194,6 +194,7 @@ private:
 	bool is_swimming = false;
 	bool was_swimming = false;
 	bool is_boating = false;   // 坐在小木船上（Rowboat 控制移动）
+	bool swim_hint_shown = false; // 入水操作提示只弹一次
 	Node3D *boat = nullptr;
 	Node3D *propeller = nullptr;
 	CPUParticles3D *swim_bubbles = nullptr; // 螺旋桨气泡尾迹

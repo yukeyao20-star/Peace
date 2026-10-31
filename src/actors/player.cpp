@@ -193,7 +193,7 @@ void Player::_notification(int p_what) {
 			guide_panel->set_offset(SIDE_LEFT, -214.0f);
 			guide_panel->set_offset(SIDE_RIGHT, -16.0f);
 			guide_panel->set_offset(SIDE_TOP, 16.0f);
-			guide_panel->set_offset(SIDE_BOTTOM, 190.0f);
+			guide_panel->set_offset(SIDE_BOTTOM, 212.0f);
 
 			// 小黑板：墨绿板面 + 原木边框，粉笔字（与木牌/木屋同一材质语言）
 			guide_panel->add_theme_stylebox_override("panel", uistyle::make_blackboard_textured(0.98f));
@@ -210,10 +210,11 @@ void Player::_notification(int p_what) {
 				"[R] 翻滚 · 趣味滚地冲刺",
 				"[M] 舆图 · 苍湖全景漫游",
 				"[空格] 跳跃 · 支持凌空二段跳",
-				"[空格/Ctrl] 游泳 · 上浮 / 下潜"
+				"[空格/Ctrl] 游泳 · 上浮 / 下潜",
+				"[E] 划船 · W/S 划行 · A/D 转向"
 			};
 
-			for (int hi = 0; hi < 7; ++hi) {
+			for (int hi = 0; hi < 8; ++hi) {
 				Label *hl = memnew(Label);
 				hl->set_text(String::utf8(hints[hi]));
 				uistyle::dress_chalk_label(hl, 13, uistyle::chalk_font());
@@ -679,6 +680,13 @@ void Player::_physics_step() {
 	}
 	if (is_swimming && !was_swimming) {
 		play_land(2); // 入水水花声
+		if (!swim_hint_shown && get_parent() != nullptr) {
+			Node *gd = get_parent()->get_node_or_null("GameDirector");
+			if (gd != nullptr) {
+				gd->call("flash_hint", String::utf8("空格 上浮 · Ctrl 下潜 · 身体会自动横过来"), 4.0f);
+				swim_hint_shown = true;
+			}
+		}
 	}
 	was_swimming = is_swimming;
 	// 踏上冰面时自动穿上滑冰鞋，离开冰面时自动脱下

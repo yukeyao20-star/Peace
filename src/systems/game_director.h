@@ -62,6 +62,9 @@ public:
 		int progress = 0;
 	};
 
+	// 给别处调用的即时操作提示（上船/入水等），复用底部提示条
+	void flash_hint(const String &p_text, float p_seconds);
+
 private:
 	int cur_day = 1;              // 当前清单对应的天数（跟随 SkyCycle day_count）
 	std::vector<DailyTask> tasks; // 当日待办（第 1 天 1 项，第 2 天起 3 项）
