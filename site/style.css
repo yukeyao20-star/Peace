@@ -471,6 +471,36 @@ code {
 .ico-roof  { background: rgba(200,90,62,.12);  color: var(--roof); }
 .ico-wave  { background: rgba(27,27,29,.07);   color: #4a4a52; }
 
+/* ---------- 最近的更新 ---------- */
+.updates-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+.up-card {
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  padding: 30px 28px 32px;
+  box-shadow: var(--shadow-s);
+  transition: transform .45s var(--ease), box-shadow .45s var(--ease);
+}
+.up-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-m); }
+.up-date {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  color: var(--ink-3);
+  margin: 0;
+}
+.up-card h3 { font-size: 21px; margin: 12px 0 0; letter-spacing: -.01em; }
+.up-card p:not(.up-date) {
+  font-size: 15.5px;
+  color: var(--ink-2);
+  line-height: 1.75;
+  margin-top: 12px;
+}
+
 /* ---------- 画面 showcase ---------- */
 .show {
   display: grid;
@@ -738,7 +768,7 @@ code {
 }
 
 @media (max-width: 980px) {
-  .cards, .dl-cards { grid-template-columns: 1fr 1fr; }
+  .cards, .dl-cards, .updates-grid { grid-template-columns: 1fr 1fr; }
   .bento { grid-template-columns: repeat(2, 1fr); grid-auto-rows: 150px; }
   .specs-in { grid-template-columns: 1fr; }
   .show { grid-template-columns: 1fr; gap: 26px; }
@@ -751,7 +781,7 @@ code {
 
 @media (max-width: 620px) {
   body { font-size: 16px; }
-  .cards, .dl-cards { grid-template-columns: 1fr; }
+  .cards, .dl-cards, .updates-grid { grid-template-columns: 1fr; }
   .hero { min-height: 92svh; padding: 104px 20px 76px; }
   .shot { margin-top: -64px; padding: 0 16px; }
   .bento { grid-auto-rows: 128px; gap: 10px; }
