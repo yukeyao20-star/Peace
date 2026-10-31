@@ -4009,6 +4009,76 @@ void Player::build_map_ui() {
 	map_player_marker->add_child(p_tag);
 
 	// ─────────────────────────────────────────────────────────────────────────
+	// 地标（第 88 轮）：木屋 / 码头 / 营地 / 冰洞 —— 小圆点 + 手写地名
+	// ─────────────────────────────────────────────────────────────────────────
+	struct LandMark {
+		const char *id;
+		const char *name;
+		float x;
+		float z;
+		Color color;
+		Vector2 label_off;
+	};
+	const LandMark marks[4] = {
+		{ "Mark_Cabin", "木屋", 12.0f, 8.0f, Color(0.86f, 0.56f, 0.24f), Vector2(9.0f, -8.0f) },
+		{ "Mark_Dock", "码头", -6.0f, -9.1f, Color(0.34f, 0.55f, 0.76f), Vector2(-36.0f, -13.0f) },
+		{ "Mark_Camp", "营地", -8.6f, -13.5f, Color(0.80f, 0.36f, 0.20f), Vector2(-38.0f, 6.0f) },
+		{ "Mark_IceHole", "冰洞", -3.8f, -9.5f, Color(0.52f, 0.78f, 0.92f), Vector2(9.0f, 7.0f) },
+	};
+	for (const LandMark &mk : marks) {
+		Control *m = memnew(Control);
+		m->set_name(mk.id);
+		m->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+		const float u = Math::clamp(mk.x / 220.0f + 0.5f, 0.02f, 0.98f);
+		const float v = Math::clamp(mk.z / 220.0f + 0.5f, 0.02f, 0.98f);
+		m->set_position(Vector2(u * 440.0f, v * 440.0f));
+		map_container->add_child(m);
+		ColorRect *dot = memnew(ColorRect);
+		dot->set_color(mk.color);
+		dot->set_position(Vector2(-4.0f, -4.0f));
+		dot->set_size(Vector2(8.0f, 8.0f));
+		dot->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+		m->add_child(dot);
+		Label *lab = memnew(Label);
+		lab->set_text(String::utf8(mk.name));
+		lab->set_position(mk.label_off);
+		lab->add_theme_font_size_override("font_size", 11);
+		lab->add_theme_color_override("font_color", Color(0.24f, 0.17f, 0.10f));
+		if (cjk.is_valid()) {
+			lab->add_theme_font_override("font", cjk);
+		}
+		lab->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+		m->add_child(lab);
+	}
+
+	// 右上角指北针：四向细针 + N
+	Control *compass = memnew(Control);
+	compass->set_name("Compass");
+	compass->set_position(Vector2(396.0f, 14.0f));
+	compass->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	map_container->add_child(compass);
+	for (int ci = 0; ci < 4; ci++) {
+		ColorRect *bar = memnew(ColorRect);
+		bar->set_color(Color(0.28f, 0.20f, 0.12f, 0.55f));
+		bar->set_size(Vector2(2.0f, 22.0f));
+		bar->set_position(Vector2(-1.0f, -11.0f));
+		bar->set_pivot_offset(Vector2(1.0f, 11.0f));
+		bar->set_rotation((float)ci * 0.7853982f);
+		bar->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+		compass->add_child(bar);
+	}
+	Label *n_tag = memnew(Label);
+	n_tag->set_text(String::utf8("N"));
+	n_tag->set_position(Vector2(-5.0f, -28.0f));
+	n_tag->add_theme_font_size_override("font_size", 12);
+	n_tag->add_theme_color_override("font_color", Color(0.28f, 0.20f, 0.12f));
+	if (cjk.is_valid()) {
+		n_tag->add_theme_font_override("font", cjk);
+	}
+	n_tag->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	compass->add_child(n_tag);
+
+	// ─────────────────────────────────────────────────────────────────────────
 	// 灵动游戏风格瞄准星 UI (Game-Style Dynamic Reticle Cursor)
 	// 包含四向灵动弧形边框、中心准核、发光光环与坐标跟随
 	// ─────────────────────────────────────────────────────────────────────────
