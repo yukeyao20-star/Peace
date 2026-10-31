@@ -3,6 +3,8 @@
 #include <cmath>
 #include <random>
 
+#include <godot_cpp/classes/audio_stream_player3d.hpp>
+#include <godot_cpp/classes/audio_stream_wav.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
@@ -30,12 +32,45 @@ void DuckFlock::_notification(int p_what) {
 			build();
 			if (get_parent() != nullptr) {
 				sky_cycle = get_parent()->get_node_or_null("SkyCycle");
+				player = Object::cast_to<Node3D>(get_parent()->get_node_or_null("Player"));
+			}
+			// 嘎嘎声源（程序化合成，无外部音频依赖）
+			quack_stream = make_quack();
+			if (quack_stream.is_valid()) {
+				voice = memnew(AudioStreamPlayer3D);
+				voice->set_name("DuckVoice");
+				voice->set_stream(quack_stream);
+				voice->set_volume_db(-10.0f);
+				voice->set_max_distance(30.0f);
+				add_child(voice);
 			}
 			set_process(true);
 		} break;
 		case NOTIFICATION_PROCESS: {
 			double delta = get_process_delta_time();
 			anim_t += (float)delta;
+			// 偶尔嘎两声：玩家在 30m 内才叫，避免远处空响
+			quack_timer -= (float)delta;
+			if (quack_timer <= 0.0f && voice != nullptr && !ducks.empty()) {
+				bool near = true;
+				if (player != nullptr && ducks[0].root != nullptr) {
+					near = player->get_global_position().distance_to(
+							ducks[0].root->get_global_position()) < 30.0f;
+				}
+				if (near) {
+					static std::mt19937 qrng(424242u);
+					std::uniform_int_distribution<int> pick(0, (int)ducks.size() - 1);
+					std::uniform_real_distribution<float> wait(9.0f, 22.0f);
+					Duck &d = ducks[pick(qrng)];
+					if (d.root != nullptr) {
+						voice->set_global_position(d.root->get_global_position() + Vector3(0.0f, 0.15f, 0.0f));
+						voice->play();
+					}
+					quack_timer = wait(qrng);
+				} else {
+					quack_timer = 4.0f;
+				}
+			}
 			// 夜晚鸭子放慢巡游（贴着水面歇着漂），白天正常速度
 			float night_mul = 1.0f;
 			if (sky_cycle != nullptr) {
@@ -202,4 +237,52 @@ void DuckFlock::spawn_duck(int p_index, unsigned p_seed) {
 	d.wake = wake_mi;
 
 	ducks.push_back(d);
+}
+
+// 程序化鸭叫：「嘎-嘎」两声短促鼻音，基频下滑 + 共振峰加权（免滤波器，稳定）。
+Ref<AudioStreamWAV> DuckFlock::make_quack() {
+	const int sr = 22050;
+	const float dur = 0.55f;
+	const int n = (int)(dur * sr);
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+	static std::mt19937 rng(909090u);
+	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
+	for (int i = 0; i < n; i++) {
+		float t = (float)i / sr;
+		float samp = 0.0f;
+		for (int b = 0; b < 2; b++) {
+			float bt = t - b * 0.24f;
+			if (bt < 0.0f || bt > 0.19f) {
+				continue;
+			}
+			// 基频下滑：第一声 520→330，第二声略低
+			float f0 = (b == 0 ? 520.0f : 470.0f) * (1.0f - 0.36f * (bt / 0.19f));
+			float env = Math::clamp(bt / 0.012f, 0.0f, 1.0f)
+					* Math::exp(-bt * 14.0f);
+			float ph = Math::TAU * f0 * bt;
+			// 加法合成：谐波按共振峰 F1≈1250 / F2≈2500 加权
+			float v = 0.0f;
+			for (int k = 1; k <= 10; k++) {
+				float fk = f0 * (float)k;
+				float w1 = Math::exp(-Math::pow((fk - 1250.0f) / 700.0f, 2.0f));
+				float w2 = Math::exp(-Math::pow((fk - 2500.0f) / 900.0f, 2.0f));
+				float amp = (0.25f / (float)k) + w1 * 0.55f + w2 * 0.25f;
+				v += amp * Math::sin(ph * (float)k);
+			}
+			float breath = (d01(rng) - 0.5f) * 0.10f * env;
+			samp += (v * 0.7f + breath) * env;
+		}
+		int16_t q = (int16_t)Math::clamp(samp * 26000.0f, -32000.0f, 32000.0f);
+		w[i * 2] = (uint8_t)(q & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
+	}
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_data(bytes);
+	return wav;
 }

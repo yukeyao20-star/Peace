@@ -17,6 +17,9 @@
 
 namespace godot {
 
+class AudioStreamPlayer3D;
+class AudioStreamWAV;
+
 class DuckFlock : public Node3D {
 	GDCLASS(DuckFlock, Node3D)
 
@@ -39,11 +42,16 @@ private:
 	std::vector<Duck> ducks;
 	float anim_t = 0.0f;
 	Node *sky_cycle = nullptr; // 夜里放慢巡游
+	Node3D *player = nullptr;
+	AudioStreamPlayer3D *voice = nullptr; // 嘎嘎声源
+	Ref<AudioStreamWAV> quack_stream;
+	float quack_timer = 6.0f;
 	bool first_frame = true;
 	std::vector<Vector3> last_pos;
 
 	void build();
 	void spawn_duck(int p_index, unsigned p_seed);
+	Ref<AudioStreamWAV> make_quack();
 
 protected:
 	static void _bind_methods();
