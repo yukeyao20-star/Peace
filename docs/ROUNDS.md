@@ -114,7 +114,8 @@
 | 101 | 鱼群 AI 升级（调研 boids 开源实现后：分离/对齐/聚合、同种成群异种避让、sqrt 逃逸、浅水回游、邻居表性能） | 8ee2e53 |
 | 102 | 门廊八音盒（调研程序化旋律参考后：五声+LCG 游走/最大跳进/拱形轮廓/八音盒音色/摇柄与音符粒子/每日待办） | a9feffd |
 | 103 | 窗玻璃雨痕（调研雨窗 shader 后：网格水滴屏幕折射/雨强渐显/四窗共享材质/雪天让位霜花） | 25552a0 |
-| 104 | 银河星尘带（调研星野参考后：倾斜大圆 900 星点/MultiMesh 单 draw call/颜色温度/随星穹旋转/昼夜显隐） | 本轮提交 |
+| 104 | 银河星尘带（调研星野参考后：倾斜大圆 900 星点/MultiMesh 单 draw call/颜色温度/随星穹旋转/昼夜显隐） | a621ab3 |
+| 105 | 拍照模式升级（调研 CameraAttributesPractical 后：景深/三分网格/暗角/层级/退出恢复） | 本轮提交 |
 
 ## 编号对账
 
@@ -145,6 +146,7 @@
 - mujtaba-io/Godot_rain_shader（湿润材质与雨痕参考）
 - tiffany352/godot-starlight（MultiMesh 星野、恒星颜色温度）
 - godotshaders.com「Volumetric Cosmic Dust」（FBM/倾斜大圆星云带思路）
+- Godot 官方文档 CameraAttributesPractical（dof_blur_far_distance/transition/amount）
 
 ## 收尾
 

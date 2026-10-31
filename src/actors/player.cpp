@@ -50,6 +50,8 @@
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
+#include <godot_cpp/classes/camera_attributes.hpp>
+#include <godot_cpp/classes/camera_attributes_practical.hpp>
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
@@ -237,6 +239,63 @@ void Player::_notification(int p_what) {
 			}
 			photo_filter_rect->set_visible(false);
 			photo_layer->add_child(photo_filter_rect);
+
+			// 暗角（边缘压暗）
+			photo_vignette = memnew(ColorRect);
+			photo_vignette->set_name("PhotoVignette");
+			photo_vignette->set_anchors_preset(Control::PRESET_FULL_RECT);
+			photo_vignette->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+			{
+				Ref<Shader> vsh = ResourceLoader::get_singleton()->load("res://assets/photo_vignette.gdshader");
+				if (vsh.is_valid()) {
+					Ref<ShaderMaterial> vmat;
+					vmat.instantiate();
+					vmat->set_shader(vsh);
+					photo_vignette->set_material(vmat);
+				}
+			}
+			photo_vignette->set_visible(false);
+			photo_layer->add_child(photo_vignette);
+
+			// 三分构图网格
+			photo_grid = memnew(Control);
+			photo_grid->set_name("PhotoGrid");
+			photo_grid->set_anchors_preset(Control::PRESET_FULL_RECT);
+			photo_grid->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+			photo_grid->set_visible(false);
+			photo_layer->add_child(photo_grid);
+			auto add_grid_line = [&](bool p_vertical, float p_t) {
+				ColorRect *line = memnew(ColorRect);
+				line->set_color(Color(1.0f, 1.0f, 1.0f, 0.22f));
+				line->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+				if (p_vertical) {
+					line->set_anchor(SIDE_LEFT, p_t);
+					line->set_anchor(SIDE_RIGHT, p_t);
+					line->set_anchor(SIDE_TOP, 0.0f);
+					line->set_anchor(SIDE_BOTTOM, 1.0f);
+					line->set_offset(SIDE_LEFT, -0.5f);
+					line->set_offset(SIDE_RIGHT, 0.5f);
+				} else {
+					line->set_anchor(SIDE_TOP, p_t);
+					line->set_anchor(SIDE_BOTTOM, p_t);
+					line->set_anchor(SIDE_LEFT, 0.0f);
+					line->set_anchor(SIDE_RIGHT, 1.0f);
+					line->set_offset(SIDE_TOP, -0.5f);
+					line->set_offset(SIDE_BOTTOM, 0.5f);
+				}
+				photo_grid->add_child(line);
+			};
+			add_grid_line(true, 1.0f / 3.0f);
+			add_grid_line(true, 2.0f / 3.0f);
+			add_grid_line(false, 1.0f / 3.0f);
+			add_grid_line(false, 2.0f / 3.0f);
+
+			// 拍照景深：远处轻虚（Forward+ 支持）
+			photo_attrs.instantiate();
+			photo_attrs->set_dof_blur_far_enabled(true);
+			photo_attrs->set_dof_blur_far_distance(16.0f);
+			photo_attrs->set_dof_blur_far_transition(9.0f);
+			photo_attrs->set_dof_blur_amount(0.06f);
 			photo_toast = memnew(Label);
 			photo_toast->set_name("PhotoToast");
 			photo_toast->set_anchors_preset(Control::PRESET_BOTTOM_WIDE);
@@ -1640,6 +1699,16 @@ void Player::set_photo_mode(bool p_on) {
 	}
 	set_hud_visible(!p_on && !hud_hidden);
 	if (p_on) {
+		if (camera != nullptr && photo_attrs.is_valid()) {
+			photo_prev_attrs = camera->get_attributes();
+			camera->set_attributes(photo_attrs);
+		}
+		if (photo_grid != nullptr) {
+			photo_grid->set_visible(true);
+		}
+		if (photo_vignette != nullptr) {
+			photo_vignette->set_visible(true);
+		}
 		show_photo_toast(String::utf8("拍照模式 · 鼠标转视角 · 滚轮缩放 · F12 保存 · P 退出"), 5.0f);
 		if (prompt != nullptr) {
 			prompt->hide();
@@ -1653,6 +1722,16 @@ void Player::set_photo_mode(bool p_on) {
 		photo_filter = 0;
 		if (photo_filter_rect != nullptr) {
 			photo_filter_rect->set_visible(false);
+		}
+		if (camera != nullptr) {
+			camera->set_attributes(photo_prev_attrs);
+			photo_prev_attrs = Ref<CameraAttributes>();
+		}
+		if (photo_grid != nullptr) {
+			photo_grid->set_visible(false);
+		}
+		if (photo_vignette != nullptr) {
+			photo_vignette->set_visible(false);
 		}
 		show_photo_toast(String::utf8("已退出拍照模式"), 1.6f);
 	}

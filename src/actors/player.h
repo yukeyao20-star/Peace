@@ -25,6 +25,8 @@ class AudioStreamPlayer;
 class AudioStreamWAV;
 class CanvasLayer;
 class ColorRect;
+class CameraAttributes;
+class CameraAttributesPractical;
 class Control;
 class CPUParticles3D;
 class Label;
@@ -248,6 +250,10 @@ private:
 	godot::CanvasLayer *photo_layer = nullptr;
 	godot::ColorRect *photo_filter_rect = nullptr;
 	godot::Ref<ShaderMaterial> photo_filter_mat;
+	godot::Ref<godot::CameraAttributesPractical> photo_attrs;
+	godot::Ref<godot::CameraAttributes> photo_prev_attrs;
+	godot::ColorRect *photo_vignette = nullptr;
+	godot::Control *photo_grid = nullptr;
 	int photo_filter = 0; // 0 原色 / 1 暖 / 2 冷 / 3 黑白
 	bool key1_prev = false;
 	bool key2_prev = false;
