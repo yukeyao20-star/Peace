@@ -4,11 +4,13 @@
 
 #include <godot_cpp/classes/audio_stream_player3d.hpp>
 #include <godot_cpp/classes/audio_stream_wav.hpp>
+#include <godot_cpp/classes/cpu_particles3d.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
+#include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 
 #include "../systems/mesh_util.h"
@@ -25,7 +27,47 @@ bool CampCat::get_at_shelter() const {
 	return get_global_position().distance_to(shelter) < 0.45f;
 }
 
+bool CampCat::get_hearts_emitting() const {
+	return hearts != nullptr && hearts->is_emitting();
+}
+
+String CampCat::get_prompt() const {
+	return String::utf8("按 E 摸摸猫");
+}
+
+Vector3 CampCat::get_interact_pos() const {
+	return get_global_position() + Vector3(0.0f, 0.35f, 0.0f);
+}
+
+float CampCat::get_interact_distance() const {
+	return 2.4f;
+}
+
+void CampCat::interact(const Vector3 &p_player_pos) {
+	(void)p_player_pos;
+	pet_t = 2.4f;
+	if (hearts != nullptr) {
+		hearts->restart();
+	}
+	if (purr != nullptr) {
+		purr->play(0.0f);
+	}
+	if (get_parent() != nullptr) {
+		Node *gd = get_parent()->get_node_or_null("GameDirector");
+		if (gd != nullptr) {
+			gd->call("flash_hint", String::utf8("猫咪眯起眼睛 · 呼噜声更响了"), 3.0f);
+		}
+	}
+}
+
 void CampCat::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("get_prompt"), &CampCat::get_prompt);
+	ClassDB::bind_method(D_METHOD("get_interact_pos"), &CampCat::get_interact_pos);
+	ClassDB::bind_method(D_METHOD("get_interact_distance"), &CampCat::get_interact_distance);
+	ClassDB::bind_method(D_METHOD("requires_line_of_sight"), &CampCat::requires_line_of_sight);
+	ClassDB::bind_method(D_METHOD("interact", "player_pos"), &CampCat::interact);
+	ClassDB::bind_method(D_METHOD("get_pet_time"), &CampCat::get_pet_time);
+	ClassDB::bind_method(D_METHOD("get_hearts_emitting"), &CampCat::get_hearts_emitting);
 	ClassDB::bind_method(D_METHOD("get_purr_ready"), &CampCat::get_purr_ready);
 	ClassDB::bind_method(D_METHOD("get_purr_playing"), &CampCat::get_purr_playing);
 	ClassDB::bind_method(D_METHOD("get_at_shelter"), &CampCat::get_at_shelter);
@@ -64,13 +106,18 @@ void CampCat::_notification(int p_what) {
 				shelter = home;
 			}
 			set_global_position(home);
+			add_to_group("interactables");
 			build();
 			make_purr();
+			make_hearts();
 			set_process(true);
 		} break;
 		case NOTIFICATION_PROCESS: {
 			const float delta = (float)get_process_delta_time();
 			t += delta;
+			if (pet_t > 0.0f) {
+				pet_t = Math::max(0.0f, pet_t - delta);
+			}
 			const float rain = (sky != nullptr) ? sky->get_rain_amount() : 0.0f;
 			const float snow = (sky != nullptr) ? sky->get_snow_amount() : 0.0f;
 			const bool seek_shelter = rain > 0.42f || snow > 0.7f;
@@ -81,13 +128,13 @@ void CampCat::_notification(int p_what) {
 
 			const Vector3 pp = (player != nullptr) ? player->get_global_position() : Vector3(0, -999, 0);
 			const float near = pos.distance_to(pp);
-			const bool alert = near < 3.6f;
+			const bool alert = near < 3.6f || pet_t > 0.0f;
 			if (body != nullptr) {
 				float breathe = 1.0f + 0.035f * std::sin(t * 1.35f);
 				body->set_scale(Vector3(1.0f, breathe, 1.0f));
 			}
 			if (head != nullptr) {
-				float lift = alert ? -0.38f : 0.0f;
+				float lift = (pet_t > 0.0f) ? -0.50f : (alert ? -0.38f : 0.0f);
 				head->set_rotation(Vector3(Math::lerp(head->get_rotation().x, lift, 1.0f - std::exp(-5.0f * delta)),
 						std::sin(t * 0.35f) * 0.06f, 0.0f));
 			}
@@ -104,14 +151,15 @@ void CampCat::_notification(int p_what) {
 			}
 
 			// 呼噜：玩家蹲在近处才响，走远渐隐
-			const bool want_purr = near < 4.2f && rain < 0.5f;
+			const bool want_purr = (near < 4.2f || pet_t > 0.0f) && rain < 0.5f;
 			purr_fade = Math::lerp(purr_fade, want_purr ? 1.0f : 0.0f, 1.0f - std::exp(-2.5f * delta));
+			float boost = (pet_t > 0.0f) ? 1.0f : 0.0f;
 			if (purr != nullptr) {
 				if (purr_fade > 0.03f) {
 					if (!purr->is_playing()) {
 						purr->play(0.0f);
 					}
-					purr->set_volume_db(-30.0f + 10.0f * purr_fade);
+					purr->set_volume_db(-30.0f + 10.0f * purr_fade + 4.0f * boost);
 					purring = true;
 				} else {
 					if (purr->is_playing()) {
@@ -124,6 +172,43 @@ void CampCat::_notification(int p_what) {
 		default:
 			break;
 	}
+}
+
+void CampCat::make_hearts() {
+	Ref<SphereMesh> heart;
+	heart.instantiate();
+	heart->set_radius(0.045f);
+	heart->set_height(0.07f);
+	heart->set_radial_segments(7);
+	heart->set_rings(4);
+	Ref<StandardMaterial3D> mat;
+	mat.instantiate();
+	mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	mat->set_albedo(Color(1.0f, 0.55f, 0.62f, 0.9f));
+	mat->set("emission_enabled", true);
+	mat->set("emission", Color(1.0f, 0.42f, 0.52f));
+	mat->set("emission_energy_multiplier", 1.2f);
+	mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	heart->set_material(mat);
+	hearts = memnew(CPUParticles3D);
+	hearts->set_name("Hearts");
+	hearts->set_amount(10);
+	hearts->set_lifetime(1.5f);
+	hearts->set_one_shot(true);
+	hearts->set("explosiveness", 0.7f);
+	hearts->set_mesh(heart);
+	hearts->set_direction(Vector3(0.0f, 1.0f, 0.0f));
+	hearts->set_spread(28.0f);
+	hearts->set_gravity(Vector3(0.05f, 0.18f, 0.02f));
+	hearts->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.25f);
+	hearts->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.55f);
+	hearts->set_param_min(CPUParticles3D::PARAM_SCALE, 0.6f);
+	hearts->set_param_max(CPUParticles3D::PARAM_SCALE, 1.3f);
+	hearts->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_SPHERE);
+	hearts->set_emission_sphere_radius(0.12f);
+	hearts->set_position(Vector3(0.0f, 0.55f, 0.0f));
+	hearts->set_emitting(false);
+	add_child(hearts);
 }
 
 void CampCat::build() {
