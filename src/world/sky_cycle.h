@@ -138,6 +138,10 @@ private:
 	float star_dur = 0.9f;
 	Vector3 star_vel;
 	MeshInstance3D *moon = nullptr;          // 月盘（夜空可见，高度跟随 -sun_h）
+	MeshInstance3D *moon_path = nullptr;     // 夜间湖面上的月光带
+	Ref<StandardMaterial3D> moon_path_mat;
+	float moon_path_t = 0.0f;
+	void build_moon_path();
 	Ref<StandardMaterial3D> moon_mat;        // 月盘兜底材质（着色器加载失败时用，每帧只调透明度）
 	Ref<ShaderMaterial> moon_shader_mat;     // 月盘月相材质（moon.gdshader：陨石坑+相位+地照）
 	int moon_phase_day = -1;                 // 已写入相位的 day_count（只在跨天时更新 phase uniform）

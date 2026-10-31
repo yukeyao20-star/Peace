@@ -143,6 +143,7 @@ void SkyCycle::_notification(int p_what) {
 			build_precip_shelter(); // 必须在两份降水材质都建好之后
 			build_stars();
 			build_moon();
+			build_moon_path();
 			build_underwater();
 			build_underwater_ambience();
 			build_storm();
@@ -526,6 +527,25 @@ void SkyCycle::apply() {
 		if (stars != nullptr) {
 			stars->set_visible(alpha > 0.004f); // 白天/浓云整组隐藏，省一次 draw call
 		}
+	}
+
+	// —— 湖面月光带：跟着月盘方位、随夜色渐显、云雨时淡出 ——
+	if (moon_path != nullptr && moon_path_mat.is_valid()) {
+		const float night_now = get_night_factor();
+		const float vis = night_now * Math::clamp(1.0f - cloud * 1.10f, 0.0f, 1.0f);
+		moon_path_mat->set_albedo(Color(1.0f, 1.0f, 1.0f, 0.70f * vis));
+		moon_path->set_visible(vis > 0.02f);
+		if (moon != nullptr) {
+			const Vector3 mp = moon->get_position();
+			const Vector2 dir(mp.x + 6.0f, mp.z - 26.0f);
+			if (dir.length_squared() > 0.01f) {
+				const float ang = std::atan2(dir.x, dir.y);
+				moon_path->set_position(Vector3(-6.0f + std::sin(ang) * 9.0f, -0.52f, 26.0f + std::cos(ang) * 9.0f));
+				moon_path->set_rotation(Vector3(0.0f, ang, 0.0f));
+			}
+		}
+		moon_path_t += (float)get_process_delta_time();
+		moon_path_mat->set_uv1_offset(Vector3(0.0f, -moon_path_t * 0.06f, 0.0f));
 	}
 
 	// —— 月盘：太阳落下它升起（高度跟随 -sun_h），方位与夜里的月光灯一致（az 2.2rad）；
@@ -1146,6 +1166,44 @@ void SkyCycle::build_constellations() {
 			{ Vector2(-10, 3), Vector2(-5, -4), Vector2(0, 2.5f),
 					Vector2(5, -4), Vector2(10, 3) },
 			{ 0, 1, 1, 2, 2, 3, 3, 4 });
+}
+
+// 夜间湖面月光带：一条横跨水面的加色光带，纹理是程序生成的粼光条纹，
+// 位置与朝向跟着月盘走，云厚/下雨时淡出，白天隐藏。
+void SkyCycle::build_moon_path() {
+	const int S = 96;
+	Ref<Image> img = Image::create(S, S, false, Image::FORMAT_RGBA8);
+	for (int y = 0; y < S; y++) {
+		for (int x = 0; x < S; x++) {
+			const float u = ((float)x + 0.5f) / (float)S * 2.0f - 1.0f;
+			const float v = ((float)y + 0.5f) / (float)S;
+			const float across = std::pow(Math::clamp(1.0f - std::abs(u), 0.0f, 1.0f), 1.6f);
+			const float stripe = 0.55f + 0.45f * std::sin(v * 54.0f + std::sin(u * 7.0f + v * 12.0f) * 1.6f);
+			const float a = across * (0.30f + 0.70f * stripe);
+			img->set_pixel(x, y, Color(0.86f, 0.92f, 1.0f, a));
+		}
+	}
+	Ref<ImageTexture> tex = ImageTexture::create_from_image(img);
+
+	moon_path_mat.instantiate();
+	moon_path_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	moon_path_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	moon_path_mat->set_blend_mode(BaseMaterial3D::BLEND_MODE_ADD);
+	moon_path_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	moon_path_mat->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, tex);
+	moon_path_mat->set_uv1_scale(Vector3(1.0f, 5.0f, 1.0f));
+	moon_path_mat->set_albedo(Color(1.0f, 1.0f, 1.0f, 0.0f));
+
+	Ref<PlaneMesh> plane;
+	plane.instantiate();
+	plane->set_size(Vector2(5.2f, 32.0f));
+	plane->set_material(Ref<Material>(moon_path_mat));
+	moon_path = memnew(MeshInstance3D);
+	moon_path->set_name("MoonPath");
+	moon_path->set_mesh(plane);
+	moon_path->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+	moon_path->set_visible(false);
+	add_child(moon_path);
 }
 
 void SkyCycle::build_moon() {
