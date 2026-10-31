@@ -77,6 +77,7 @@
 #include "flower_bed.h"
 #include "birdbath.h"
 #include "pinwheels.h"
+#include "paper_plane.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
 #include "leaf_drift.h"
@@ -178,6 +179,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(FlowerBed);
 	GDREGISTER_CLASS(Birdbath);
 	GDREGISTER_CLASS(Pinwheels);
+	GDREGISTER_CLASS(PaperPlane);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
 	GDREGISTER_CLASS(LeafDrift);

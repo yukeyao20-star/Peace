@@ -137,7 +137,8 @@
 | 124 | 门边伞架（调研伞架/滴水后：木桶伞架+红蓝两把收拢伞/风里轻晃/雨天伞尖滴水/雪积桶沿） | 1e8e1e5 |
 | 125 | 门前花圃（调研花卉批量渲染后：木板花床 12 朵郁金香/白日开夜里合/晨露/两只蜜蜂/雪盖） | ec691e5 |
 | 126 | 石鸟浴盆（调研水面涟漪后：石座浅盆/水会蒸发按 E 添水/小鸟落沿饮水扑翅/涟漪/雪天结冰） | f1e5915 |
-| 127 | 三支小风车（调研转轮后：木签+四瓣彩纸/晴天慢转雨天加速/雪天停住） | 本轮提交 |
+| 127 | 三支小风车（调研转轮后：木签+四瓣彩纸/晴天慢转雨天加速/雪天停住） | c8c77bd |
+| 128 | 纸飞机（调研滑翔物理后：门廊便签按 E 折纸飞机/缓降滑翔/风里侧移/落地静置/可再折） | 本轮提交 |
 
 ## 编号对账
 
@@ -316,6 +317,11 @@ FPS 基本不变：当前场景主要瓶颈仍在整片地形/植被的三角形
 - gamedev.stackexchange「spin the wheel」—— 角速度 + 阻尼驱动转轮
 - Godot Essentials Rotator Component —— 恒定角速度旋转的环境道具
 - godotshaders「Radial Motion Blur for Propellers and Wheels」—— 高速旋转的径向模糊思路
+
+第 128 轮补充参考：
+- NikShaw/PaperPlaneGlider —— 多阻力点计算风力（本作用简化滑翔速度模型）
+- addmix/godot_aerodynamic_physics Glider example —— 质心/升力中心摆放
+- Cerulean player_glide.gd —— 速度长度修正与转向力
 
 ## 收尾
 
