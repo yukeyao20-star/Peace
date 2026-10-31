@@ -307,14 +307,14 @@ void Player::_notification(int p_what) {
 			const char *hints[] = {
 				"[E] 交互 · 门窗 / 床 / 箱",
 				"[F] 钓鱼 · 湖畔甩竿提竿",
-				"[G] 烟花 · 升空绚烂燃放",
+				"[G] 许愿 · 流星夜许愿 / 放烟花",
 				"[R] 翻滚 · 趣味滚地冲刺",
 				"[M] 舆图 · 苍湖全景漫游",
 				"[空格] 跳跃 · 支持凌空二段跳",
 				"[空格/Ctrl] 游泳 · 上浮 / 下潜",
 				"[E] 划船 · W/S 划行 · A/D 转向",
 				"[E] 坐下 · 长椅 / 秋千",
-				"[P] 拍照 · [H] 隐藏界面 · F12 保存",
+				"[P] 拍照 · 1/2/3 滤镜 · F12 保存",
 				"[F11] 全屏 · [V] 镜头远近",
 				"[F3] 调试 · [ - / = ] 音量",
 				"[O] 相册 · 浏览湖畔照片",
@@ -1744,6 +1744,16 @@ void Player::build_help_ui() {
 	}
 	box->add_child(title);
 
+	help_info = memnew(Label);
+	help_info->set_name("HelpInfo");
+	help_info->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+	help_info->add_theme_font_size_override("font_size", 14);
+	help_info->add_theme_color_override("font_color", Color(0.93f, 0.86f, 0.68f, 0.95f));
+	if (cjk.is_valid()) {
+		help_info->add_theme_font_override("font", cjk);
+	}
+	box->add_child(help_info);
+
 	HBoxContainer *cols = memnew(HBoxContainer);
 	cols->add_theme_constant_override("separation", 36);
 	cols->set_alignment(BoxContainer::ALIGNMENT_CENTER);
@@ -1785,6 +1795,16 @@ void Player::build_help_ui() {
 		String::utf8(" - / = · 音量"),
 		String::utf8("F1 · 关闭这页手札"),
 	});
+	make_col("HelpColC", {
+		String::utf8("E · 火堆烤棉花糖（金黄时再按 E）"),
+		String::utf8("E · 冰洞里冰钓（封冻后）"),
+		String::utf8("E · 门前信箱读当日来信"),
+		String::utf8("E · 壁炉添柴 / 门廊拉铃"),
+		String::utf8("G · 流星划过时许愿"),
+		String::utf8("夜里抬头 · 北斗 / 猎户 / 仙后"),
+		String::utf8("靠近日晷鸟台 · 看山雀啄食"),
+		String::utf8("E · 篝火边坐下，猫会来脚边"),
+	});
 
 	Button *close = memnew(Button);
 	close->set_name("HelpClose");
@@ -1813,6 +1833,18 @@ void Player::toggle_help() {
 		build_help_ui();
 	}
 	help_open = true;
+	if (help_info != nullptr) {
+		SkyCycle *sc = (get_parent() != nullptr)
+				? Object::cast_to<SkyCycle>(get_parent()->get_node_or_null("SkyCycle"))
+				: nullptr;
+		if (sc != nullptr) {
+			help_info->set_text(String::utf8("第 ") + String::num_int64(sc->get_day_count())
+					+ String::utf8(" 天 · ") + sc->get_phase_name()
+					+ String::utf8(" · 冰钓 / 烤棉花糖 / 信箱 / 流星许愿都在这页"));
+		} else {
+			help_info->set_text(String::utf8("湖畔的慢日子 · 想到什么就去试试"));
+		}
+	}
 	help_layer->set_visible(true);
 	mouse_captured = false;
 	mouse_rel = Vector2();

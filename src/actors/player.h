@@ -276,6 +276,7 @@ private:
 
 	// —— F1 操作手札 ——
 	godot::CanvasLayer *help_layer = nullptr;
+	godot::Label *help_info = nullptr;
 	bool help_open = false;
 	bool help_key_prev = false;
 	void build_help_ui();
