@@ -475,6 +475,84 @@ void CabinLife::build() {
 	}
 	wreath_mount->add_child(wreath);
 
+	// —— 室内陈设（第 97 轮）：窗帘 / 挂钩斗篷 / 木靴 / 窗台陶灯 / 编织地毯 ——
+	const Color linen(0.86f, 0.81f, 0.70f);
+	const Color linen_shadow(0.72f, 0.66f, 0.55f);
+	const Color cloak_col(0.30f, 0.38f, 0.30f);
+	// 前窗两侧的亚麻窗帘
+	for (int wi = 0; wi < 2; wi++) {
+		const float wx = (wi == 0) ? -2.4f : 2.6f;
+		for (int side = 0; side < 2; side++) {
+			const float dx = (side == 0) ? -0.62f : 0.62f;
+			MeshInstance3D *curtain = meshutil::add_box(host, toon, Vector3(0.20f, 0.98f, 0.025f),
+					Vector3(wx + dx, 2.0f, 3.54f), (side == 0) ? linen : linen_shadow,
+					Vector3(0.0f, 0.0f, (side == 0 ? -0.05f : 0.05f)));
+			curtain->set_name(String("Curtain") + String::num_int64(wi * 2 + side));
+			meshutil::add_box(host, toon, Vector3(0.24f, 0.05f, 0.06f),
+					Vector3(wx + dx, 2.50f, 3.54f), Color(0.44f, 0.31f, 0.18f));
+		}
+	}
+	// 门边的挂钩与斗篷
+	meshutil::add_box(host, toon, Vector3(0.06f, 0.06f, 0.10f), Vector3(0.78f, 2.22f, 3.42f), Color(0.36f, 0.24f, 0.13f));
+	MeshInstance3D *cloak = meshutil::add_box(host, toon, Vector3(0.42f, 0.72f, 0.07f), Vector3(0.78f, 1.82f, 3.46f), cloak_col, Vector3(-0.06f, 0.0f, 0.0f));
+	cloak->set_name("DoorCloak");
+	meshutil::add_box(host, toon, Vector3(0.12f, 0.10f, 0.06f), Vector3(0.78f, 2.16f, 3.46f), Color(0.24f, 0.30f, 0.24f));
+	// 门口的一双木靴
+	MeshInstance3D *boot_l = meshutil::add_box(host, toon, Vector3(0.14f, 0.20f, 0.26f), Vector3(-0.82f, 0.11f, 3.62f), Color(0.32f, 0.22f, 0.13f));
+	boot_l->set_name("BootL");
+	MeshInstance3D *boot_r = meshutil::add_box(host, toon, Vector3(0.14f, 0.20f, 0.26f), Vector3(-0.56f, 0.11f, 3.62f), Color(0.32f, 0.22f, 0.13f));
+	boot_r->set_name("BootR");
+	// 前窗窗台上的小陶灯
+	{
+		Ref<CylinderMesh> pot;
+		pot.instantiate();
+		pot->set_top_radius(0.10f);
+		pot->set_bottom_radius(0.07f);
+		pot->set_height(0.14f);
+		pot->set_radial_segments(10);
+		pot->set_material(meshutil::toon_material(toon, Color(0.56f, 0.38f, 0.22f), 0.2f));
+		MeshInstance3D *pmi = memnew(MeshInstance3D);
+		pmi->set_name("SillLampPot");
+		pmi->set_mesh(pot);
+		pmi->set_position(Vector3(2.10f, 1.62f, 3.52f));
+		host->add_child(pmi);
+		Ref<SphereMesh> flame;
+		flame.instantiate();
+		flame->set_radius(0.045f);
+		flame->set_height(0.09f);
+		flame->set_radial_segments(8);
+		flame->set_rings(4);
+		Ref<StandardMaterial3D> flame_mat;
+		flame_mat.instantiate();
+		flame_mat->set_albedo(Color(1.0f, 0.80f, 0.45f));
+		flame_mat->set("emission_enabled", true);
+		flame_mat->set("emission", Color(1.0f, 0.62f, 0.28f));
+		flame_mat->set("emission_energy_multiplier", 1.6f);
+		flame->set_material(Ref<Material>(flame_mat));
+		MeshInstance3D *fmi = memnew(MeshInstance3D);
+		fmi->set_name("SillLampFlame");
+		fmi->set_mesh(flame);
+		fmi->set_position(Vector3(2.10f, 1.80f, 3.52f));
+		host->add_child(fmi);
+	}
+	// 火炉前的编织地毯
+	{
+		Ref<CylinderMesh> rug;
+		rug.instantiate();
+		rug->set_top_radius(0.95f);
+		rug->set_bottom_radius(0.95f);
+		rug->set_height(0.02f);
+		rug->set_radial_segments(24);
+		rug->set_rings(1);
+		rug->set_material(meshutil::toon_material(toon, Color(0.66f, 0.46f, 0.30f), 0.15f));
+		MeshInstance3D *rmi = memnew(MeshInstance3D);
+		rmi->set_name("HearthRug");
+		rmi->set_mesh(rug);
+		rmi->set_position(Vector3(-2.55f, 0.21f, -0.55f));
+		rmi->set_scale(Vector3(1.25f, 1.0f, 0.9f));
+		host->add_child(rmi);
+	}
+
 	// —— 冬日 5：墙根被风吹拢的雪堆 ——
 	drifts = memnew(Node3D);
 	drifts->set_name("SnowDrifts");
