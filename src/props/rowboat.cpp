@@ -26,6 +26,7 @@
 
 #include "../actors/player.h"
 #include "../systems/mesh_util.h"
+#include "../world/sky_cycle.h"
 #include "../world/terrain_builder.h"
 
 using namespace godot;
@@ -50,6 +51,9 @@ void Rowboat::_notification(int p_what) {
 			set_global_position(home);
 			build_dock();
 			build_hull();
+			if (get_parent() != nullptr) {
+				sky = get_parent()->get_node_or_null("SkyCycle");
+			}
 			snd_oar = make_oar_splash();
 			if (snd_oar.is_valid()) {
 				oar_voice = memnew(AudioStreamPlayer3D);
@@ -59,6 +63,7 @@ void Rowboat::_notification(int p_what) {
 				oar_voice->set_max_distance(20.0f);
 				hull->add_child(oar_voice);
 			}
+			// 雨天特效等 Dock（deferred 挂到世界）就位后再建
 			if (get_parent() != nullptr) {
 				terrain = Object::cast_to<TerrainBuilder>(get_parent()->get_node_or_null("Terrain"));
 				if (terrain == nullptr) {
@@ -70,6 +75,13 @@ void Rowboat::_notification(int p_what) {
 		case NOTIFICATION_PHYSICS_PROCESS: {
 			float delta = (float)get_physics_process_delta_time();
 			bob_t += delta;
+			if (!rain_fx_built && get_parent() != nullptr) {
+				Node *dock = get_parent()->get_node_or_null("Dock");
+				if (dock != nullptr) {
+					build_rain_fx(dock);
+					rain_fx_built = true;
+				}
+			}
 			Input *in = Input::get_singleton();
 			InputMap *im = InputMap::get_singleton();
 			auto act = [&](const char *p_action, Key p_key) {
@@ -147,6 +159,27 @@ void Rowboat::_notification(int p_what) {
 				wake->set_emitting(occupied && std::fabs(speed) > 0.2f);
 				wake->set_speed_scale(0.7f + Math::min(1.2f, std::fabs(speed) * 0.35f));
 			}
+			// 雨天：甲板/船板上溅起细小水花
+			float rain_amt = 0.0f;
+			if (sky != nullptr) {
+				SkyCycle *scc = Object::cast_to<SkyCycle>(sky);
+				if (scc != nullptr) {
+					rain_amt = scc->get_rain_amount();
+				}
+			}
+			if (dock_splash != nullptr) {
+				dock_splash->set_emitting(rain_amt > 0.25f);
+			}
+			if (boat_splash != nullptr) {
+				boat_splash->set_emitting(rain_amt > 0.25f);
+			}
+			if (dock_patter != nullptr) {
+				dock_patter->set_volume_db(-60.0f + rain_amt * 38.0f);
+			}
+			if (boat_patter != nullptr) {
+				boat_patter->set_volume_db(-60.0f + rain_amt * 38.0f);
+			}
+
 			// 灯箱微闪，像真的烛火
 			if (bow_lamp != nullptr) {
 				bow_lamp->set_param(Light3D::PARAM_ENERGY, 1.3f * (0.94f + 0.06f * std::sin(bob_t * 9.3f)));
@@ -535,5 +568,107 @@ Ref<AudioStreamWAV> Rowboat::make_oar_splash() {
 	wav->set_mix_rate(sr);
 	wav->set_stereo(false);
 	wav->set_data(bytes);
+	return wav;
+}
+
+void Rowboat::build_rain_fx(Node *p_dock) {
+	Ref<SphereMesh> drop;
+	drop.instantiate();
+	drop->set_radius(0.010f);
+	drop->set_height(0.020f);
+	drop->set_radial_segments(5);
+	drop->set_rings(3);
+	Ref<StandardMaterial3D> dmat;
+	dmat.instantiate();
+	dmat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	dmat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	dmat->set_albedo(Color(0.92f, 0.97f, 1.0f, 0.5f));
+	dmat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	drop->set_material(dmat);
+
+	auto make_splash = [&](const Vector3 &extents, int amount) {
+		CPUParticles3D *ps = memnew(CPUParticles3D);
+		ps->set_amount(amount);
+		ps->set_lifetime(0.38f);
+		ps->set_mesh(drop);
+		ps->set_direction(Vector3(0.0f, 1.0f, 0.0f));
+		ps->set_spread(38.0f);
+		ps->set_gravity(Vector3(0.0f, -7.5f, 0.0f));
+		ps->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.25f);
+		ps->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.75f);
+		ps->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_BOX);
+		ps->set_emission_box_extents(extents);
+		ps->set_emitting(false);
+		return ps;
+	};
+
+	if (p_dock != nullptr) {
+		dock_splash = make_splash(Vector3(0.85f, 0.04f, 2.6f), 36);
+		dock_splash->set_name("DockRainSplash");
+		dock_splash->set_position(Vector3(-6.0f, -0.25f, -9.1f));
+		p_dock->add_child(dock_splash);
+		dock_patter = memnew(AudioStreamPlayer3D);
+		dock_patter->set_name("DockRainPatter");
+		snd_patter = make_patter();
+		dock_patter->set_stream(snd_patter);
+		dock_patter->set_volume_db(-60.0f);
+		dock_patter->set_max_distance(18.0f);
+		dock_patter->set_position(Vector3(-6.0f, -0.1f, -9.1f));
+		p_dock->add_child(dock_patter);
+		dock_patter->play();
+	}
+
+	boat_splash = make_splash(Vector3(0.42f, 0.03f, 0.9f), 20);
+	boat_splash->set_name("BoatRainSplash");
+	boat_splash->set_position(Vector3(0.0f, 0.16f, 0.0f));
+	hull->add_child(boat_splash);
+	boat_patter = memnew(AudioStreamPlayer3D);
+	boat_patter->set_name("BoatRainPatter");
+	boat_patter->set_stream(snd_patter);
+	boat_patter->set_volume_db(-60.0f);
+	boat_patter->set_max_distance(14.0f);
+	boat_patter->set_position(Vector3(0.0f, 0.3f, 0.0f));
+	hull->add_child(boat_patter);
+	boat_patter->play();
+}
+
+// 雨打木板：3 秒可循环的细碎敲击 + 柔底噪
+Ref<AudioStreamWAV> Rowboat::make_patter() {
+	const int sr = 22050;
+	const float dur = 3.0f;
+	const int n = (int)(dur * sr);
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+	std::mt19937 rng(929292u);
+	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
+	std::vector<float> hits(n, 0.0f);
+	for (int i = 0; i < 70; i++) {
+		int at = (int)(d01(rng) * (float)(n - 600));
+		float amp = 0.2f + d01(rng) * 0.5f;
+		for (int k = 0; k < 300; k++) {
+			hits[at + k] += amp * std::exp(-(float)k / 65.0f) * ((k % 2 == 0) ? 1.0f : -0.55f);
+		}
+	}
+	float lp = 0.0f;
+	for (int i = 0; i < n; i++) {
+		lp += 0.08f * ((d01(rng) - 0.5f) - lp);
+		float samp = lp * 0.55f + hits[i] * 0.35f;
+		float edge = Math::min(1.0f, Math::min((float)i / (float)sr / 0.04f,
+				(dur - (float)i / (float)sr) / 0.04f));
+		samp *= Math::clamp(edge, 0.0f, 1.0f);
+		int16_t q = (int16_t)Math::clamp(samp * 14000.0f, -32000.0f, 32000.0f);
+		w[i * 2] = (uint8_t)(q & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
+	}
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_data(bytes);
+	wav->set_loop_mode(AudioStreamWAV::LOOP_FORWARD);
+	wav->set_loop_begin(0);
+	wav->set_loop_end(n);
 	return wav;
 }

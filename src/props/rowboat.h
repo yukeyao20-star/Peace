@@ -41,6 +41,15 @@ private:
 	OmniLight3D *bow_lamp = nullptr;
 	OmniLight3D *dock_lamp = nullptr;
 	float oar_phase = 0.0f;
+	CPUParticles3D *dock_splash = nullptr;
+	CPUParticles3D *boat_splash = nullptr;
+	AudioStreamPlayer3D *dock_patter = nullptr;
+	AudioStreamPlayer3D *boat_patter = nullptr;
+	Ref<AudioStreamWAV> snd_patter;
+	Node *sky = nullptr;
+	bool rain_fx_built = false;
+	void build_rain_fx(Node *p_dock);
+	Ref<AudioStreamWAV> make_patter();
 	Ref<AudioStreamWAV> snd_oar;
 	float oar_t = 0.0f;
 	int oar_side = 1;
