@@ -962,6 +962,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 13.8, 0, 21.5)
 [node name="Birdhouse" type="Birdhouse" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.5, 0, 20.5)
 
+[node name="RoseArch" type="RoseArch" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15, 0, 22)
+
 [node name="DogFetch" type="DogFetch" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 0, 16.5)
 
