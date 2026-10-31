@@ -27,6 +27,10 @@ inline float lerpf(float a, float b, float t) { return a + (b - a) * t; }
 
 } // namespace
 
+void Rabbit::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("get_snow_coat"), &Rabbit::get_snow_coat);
+}
+
 void Rabbit::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_READY: {
@@ -59,6 +63,15 @@ void Rabbit::_notification(int p_what) {
 			float wet = 0.0f;
 			if (sky != nullptr) {
 				wet = Math::clamp(sky->get_rain_amount() + sky->get_snow_amount(), 0.0f, 1.0f);
+			}
+			// 冬季换毛：雪一落下毛色就慢慢变白，雪化再退回灰褐
+			const float snow_amt = (sky != nullptr) ? sky->get_snow_amount() : 0.0f;
+			snow_coat = Math::lerp(snow_coat, snow_amt > 0.25f ? 1.0f : 0.0f, 1.0f - std::exp(-0.8f * (float)delta));
+			if (coat_mat.is_valid()) {
+				coat_mat->set_shader_parameter("albedo", Color(0.70f, 0.63f, 0.55f).lerp(Color(0.95f, 0.96f, 0.98f), 0.88f * snow_coat));
+			}
+			if (coat_dark_mat.is_valid()) {
+				coat_dark_mat->set_shader_parameter("albedo", Color(0.58f, 0.51f, 0.44f).lerp(Color(0.86f, 0.88f, 0.92f), 0.70f * snow_coat));
 			}
 
 			bool is_night = (night > 0.45f);
@@ -198,6 +211,8 @@ void Rabbit::build() {
 	const Color ear_in(0.85f, 0.65f, 0.65f);  // 耳内粉
 
 	Ref<Shader> shader = meshutil::load_toon_shader();
+	coat_mat = meshutil::toon_material(shader, fur);
+	coat_dark_mat = meshutil::toon_material(shader, fur_dark);
 	model = memnew(Node3D);
 	model->set_name("Model");
 	add_child(model);
@@ -210,7 +225,7 @@ void Rabbit::build() {
 		body->set_height(0.28f);
 		body->set_radial_segments(9);
 		body->set_rings(4);
-		body->set_material(meshutil::toon_material(shader, fur));
+		body->set_material(coat_mat);
 		MeshInstance3D *mi = memnew(MeshInstance3D);
 		mi->set_mesh(body);
 		Transform3D t;
@@ -221,7 +236,8 @@ void Rabbit::build() {
 		mi->set_transform(t);
 		model->add_child(mi);
 	}
-	meshutil::add_box(model, shader, Vector3(0.19f, 0.18f, 0.19f), Vector3(0.0f, 0.24f, -0.16f), fur);
+	MeshInstance3D *head_mi = meshutil::add_box(model, shader, Vector3(0.19f, 0.18f, 0.19f), Vector3(0.0f, 0.24f, -0.16f), fur);
+	head_mi->set_material_override(coat_mat);
 	{
 		Ref<SphereMesh> tail;
 		tail.instantiate();
@@ -236,17 +252,21 @@ void Rabbit::build() {
 		model->add_child(mi);
 	}
 	// 长耳朵：两片竖板，微微外撇
-	meshutil::add_box(model, shader, Vector3(0.045f, 0.22f, 0.02f), Vector3(-0.055f, 0.42f, -0.14f),
+	MeshInstance3D *ear_l_mi = meshutil::add_box(model, shader, Vector3(0.045f, 0.22f, 0.02f), Vector3(-0.055f, 0.42f, -0.14f),
 			fur_dark, Vector3(-0.15f, 0.0f, -0.12f));
-	meshutil::add_box(model, shader, Vector3(0.045f, 0.22f, 0.02f), Vector3(0.055f, 0.42f, -0.14f),
+	ear_l_mi->set_material_override(coat_dark_mat);
+	MeshInstance3D *ear_r_mi = meshutil::add_box(model, shader, Vector3(0.045f, 0.22f, 0.02f), Vector3(0.055f, 0.42f, -0.14f),
 			fur_dark, Vector3(-0.15f, 0.0f, 0.12f));
+	ear_r_mi->set_material_override(coat_dark_mat);
 	meshutil::add_box(model, shader, Vector3(0.02f, 0.16f, 0.01f), Vector3(-0.053f, 0.42f, -0.128f),
 			ear_in, Vector3(-0.15f, 0.0f, -0.12f));
 	meshutil::add_box(model, shader, Vector3(0.02f, 0.16f, 0.01f), Vector3(0.053f, 0.42f, -0.128f),
 			ear_in, Vector3(-0.15f, 0.0f, 0.12f));
 	// 前爪一对
-	meshutil::add_box(model, shader, Vector3(0.05f, 0.06f, 0.05f), Vector3(-0.07f, 0.04f, -0.16f), fur);
-	meshutil::add_box(model, shader, Vector3(0.05f, 0.06f, 0.05f), Vector3(0.07f, 0.04f, -0.16f), fur);
+	MeshInstance3D *paw_l = meshutil::add_box(model, shader, Vector3(0.05f, 0.06f, 0.05f), Vector3(-0.07f, 0.04f, -0.16f), fur);
+	paw_l->set_material_override(coat_mat);
+	MeshInstance3D *paw_r = meshutil::add_box(model, shader, Vector3(0.05f, 0.06f, 0.05f), Vector3(0.07f, 0.04f, -0.16f), fur);
+	paw_r->set_material_override(coat_mat);
 
 	// 物理碰撞体：挂载在 model 节点下，随朝向实时旋转；设置在 Layer 2
 	collider_body = memnew(AnimatableBody3D);

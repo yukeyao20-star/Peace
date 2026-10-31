@@ -10,6 +10,7 @@
 // 院子平台是压平的（高 0.35），所以直接用 home.y 当地面高度。
 
 #include <godot_cpp/classes/node3d.hpp>
+#include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
 namespace godot {
@@ -34,12 +35,18 @@ private:
 	bool is_sleeper = true; // 夜间是否处于卧睡倾向（错开节律，一部分睡觉一部分走动）
 	float sleep_cycle_t = 0.0f; // 昼夜动态睡眠轮换时钟
 
+	// —— 冬季换毛：雪天毛色渐白，雪化恢复灰褐 ——
+	Ref<ShaderMaterial> coat_mat;
+	Ref<ShaderMaterial> coat_dark_mat;
+	float snow_coat = 0.0f;
+
 	void build();
 
 protected:
-	static void _bind_methods() {}
+	static void _bind_methods();
 
 public:
+	float get_snow_coat() const { return snow_coat; }
 	void _notification(int p_what);
 };
 
