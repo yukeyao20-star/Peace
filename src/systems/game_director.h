@@ -63,6 +63,7 @@ public:
 		TASK_WOODPECKER,// 听见啄木鸟（woodpecker_heard）
 		TASK_AURORA,    // 仰望极光（aurora_seen）
 		TASK_HAMMOCK,   // 在吊床上躺一会儿（hammock_lay）
+		TASK_WISH,      // 放一盏河灯（wish_lantern）
 		TASK_KIND_COUNT
 	};
 	struct DailyTask {
@@ -153,6 +154,7 @@ public:
 	void on_woodpecker_heard();
 	void on_aurora_seen();
 	void on_hammock_lay();
+	void on_wish_lantern();
 
 	int get_count() const { return count; }
 	int get_target() const { return target; }

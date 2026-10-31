@@ -128,6 +128,7 @@ void WishLanternDock::interact(const Vector3 &p_player_pos) {
 	if (get_parent() != nullptr) {
 		Node *gd = get_parent()->get_node_or_null("GameDirector");
 		if (gd != nullptr) {
+			gd->call("on_wish_lantern");
 			gd->call("flash_hint", String::utf8("放下一盏河灯 · 愿今夜好梦"), 3.2f);
 		}
 	}
