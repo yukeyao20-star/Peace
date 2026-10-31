@@ -807,6 +807,7 @@ void SkyCycle::build_stars() {
 		const float s = lerpf(0.45f, 1.6f, rnd(rng)); // 大小错落
 		xf.basis = Basis().scaled(Vector3(s, s, s));
 		const float b = lerpf(0.35f, 1.0f, rnd(rng)); // 亮度错落，微偏冷白
+		mm->set_instance_transform(placed, xf); // 此前只算 xf 未写入 → 220 颗星全堆在原点
 		mm->set_instance_color(placed, Color(b, b, clampf(b * 1.08f, 0.0f, 1.0f)));
 		placed++;
 	}
