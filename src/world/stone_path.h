@@ -54,6 +54,8 @@ private:
 	};
 
 	Ref<ShaderMaterial> stone_mat;
+	Node3D *winter_snow = nullptr;
+	std::vector<MeshInstance3D *> lamp_snow_caps;
 	Ref<StandardMaterial3D> lamp_glass[3];
 	OmniLight3D *lamp_light[3] = {nullptr, nullptr, nullptr};
 	Node3D *lamp_pivot[3] = {nullptr, nullptr, nullptr};

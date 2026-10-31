@@ -139,6 +139,9 @@ void StonePath::_notification(int p_what) {
 				}
 				sky = Object::cast_to<SkyCycle>(get_parent()->get_node_or_null("SkyCycle"));
 			}
+			winter_snow = memnew(Node3D);
+			winter_snow->set_name("WinterSnow");
+			add_child(winter_snow);
 			build_path();
 			build_lamps();
 			build_gate();
@@ -160,12 +163,21 @@ void StonePath::_notification(int p_what) {
 				stone_mat->set_shader_parameter("albedo", dry.lerp(soaked, wet));
 				stone_mat->set_shader_parameter("roughness_value", 0.9f - 0.55f * wet);
 			}
+			const float snow_now = (sky != nullptr) ? sky->get_snow_amount() : 0.0f;
+			if (winter_snow != nullptr) {
+				winter_snow->set_visible(snow_now > 0.15f);
+			}
+			for (MeshInstance3D *cap : lamp_snow_caps) {
+				if (cap != nullptr) {
+					cap->set_visible(snow_now > 0.35f);
+				}
+			}
 			const float night = (sky != nullptr) ? sky->get_night_factor() : 0.0f;
 			const float on = Math::clamp((night - 0.22f) / 0.45f, 0.0f, 1.0f);
 			for (int i = 0; i < 3; i++) {
 				if (lamp_light[i] != nullptr) {
 					float flick = 0.92f + 0.05f * std::sin(t * 7.7f + (float)i * 2.1f) + 0.03f * std::sin(t * 17.3f + (float)i);
-					lamp_light[i]->set_param(Light3D::PARAM_ENERGY, 1.1f * on * flick);
+					lamp_light[i]->set_param(Light3D::PARAM_ENERGY, 1.1f * on * flick * (1.0f + 0.25f * snow_now));
 					lamp_light[i]->set_visible(on > 0.02f);
 				}
 				if (lamp_glass[i].is_valid()) {
@@ -181,7 +193,7 @@ void StonePath::_notification(int p_what) {
 				}
 				if (light_pool_mat[i].is_valid()) {
 					Color c = light_pool_mat[i]->get_albedo();
-					c.a = 0.11f * on * (1.0f + 0.4f * wet);
+					c.a = 0.11f * on * (1.0f + 0.4f * wet + 0.5f * snow_now);
 					light_pool_mat[i]->set_albedo(c);
 				}
 			}
@@ -324,6 +336,21 @@ void StonePath::build_path() {
 		mi->set_rotation(Vector3(0.0f, (float)(rng() % 628u) * 0.01f, (float)(rng() % 100u) * 0.0008f - 0.03f));
 		add_child(mi);
 		stone_count++;
+		if (i % 3 == 0 && winter_snow != nullptr) {
+			Ref<CylinderMesh> cap;
+			cap.instantiate();
+			cap->set_top_radius(r * 0.78f);
+			cap->set_bottom_radius(r * 0.78f);
+			cap->set_height(0.02f);
+			cap->set_radial_segments(8);
+			cap->set_rings(1);
+			cap->set_material(meshutil::toon_material(toon, Color(0.92f, 0.95f, 1.0f), 0.1f));
+			MeshInstance3D *ci = memnew(MeshInstance3D);
+			ci->set_name(String("StoneSnow") + String::num_int64(i));
+			ci->set_mesh(cap);
+			ci->set_position(p + Vector3(0.0f, 0.045f, 0.0f));
+			winter_snow->add_child(ci);
+		}
 		prev = p;
 	}
 }
@@ -377,6 +404,26 @@ void StonePath::build_lamps() {
 		glass->set_position(Vector3(0, -0.16f, 0));
 		pivot->add_child(glass);
 
+		// 冬日：灯顶雪帽 + 灯柱脚下霜圈
+		MeshInstance3D *cap = meshutil::add_box(pivot, toon, Vector3(0.24f, 0.035f, 0.24f), Vector3(0.0f, 0.040f, 0.0f), Color(0.92f, 0.95f, 1.0f));
+		cap->set_name(String("LampSnow") + String::num_int64(i));
+		lamp_snow_caps.push_back(cap);
+		if (winter_snow != nullptr) {
+			Ref<TorusMesh> ring;
+			ring.instantiate();
+			ring->set_inner_radius(0.11f);
+			ring->set_outer_radius(0.17f);
+			ring->set_rings(18);
+			ring->set_ring_segments(5);
+			ring->set_material(meshutil::toon_material(toon, Color(0.88f, 0.93f, 1.0f), 0.2f));
+			MeshInstance3D *rmi = memnew(MeshInstance3D);
+			rmi->set_name(String("FrostRing") + String::num_int64(i));
+			rmi->set_mesh(ring);
+			rmi->set_position(p + Vector3(0.0f, 0.02f, 0.0f));
+			rmi->set_scale(Vector3(1.0f, 0.6f, 1.0f));
+			winter_snow->add_child(rmi);
+		}
+
 		OmniLight3D *light = memnew(OmniLight3D);
 		light->set_name(String("LampLight") + String::num_int64(i));
 		light->set_position(Vector3(0, -0.14f, 0));
@@ -406,6 +453,7 @@ void StonePath::build_gate() {
 	meshutil::add_box(this, toon, Vector3(0.12f, 2.35f, 0.12f), base - side * 0.95f + Vector3(0, 1.17f, 0), bark);
 	meshutil::add_box(this, toon, Vector3(2.1f, 0.14f, 0.12f), base + Vector3(0, 2.30f, 0), bark);
 	meshutil::add_box(this, toon, Vector3(1.55f, 0.42f, 0.07f), base + Vector3(0, 2.02f, 0), Color(0.62f, 0.47f, 0.29f));
+	meshutil::add_box(winter_snow, toon, Vector3(2.16f, 0.04f, 0.16f), base + Vector3(0, 2.38f, 0), Color(0.92f, 0.95f, 1.0f));
 
 	Ref<Font> cjk = ResourceLoader::get_singleton()->load("res://assets/fonts/NotoSansSC-Regular.ttf");
 	Label3D *sign = memnew(Label3D);
