@@ -65,6 +65,7 @@ public:
 		TASK_HAMMOCK,   // 在吊床上躺一会儿（hammock_lay）
 		TASK_WISH,      // 放一盏河灯（wish_lantern）
 		TASK_KITE,      // 放一次风筝（kite_launched）
+		TASK_MARSHMALLOW, // 在火堆边烤一串棉花糖（marshmallow_roasted）
 		TASK_KIND_COUNT
 	};
 	struct DailyTask {
@@ -157,6 +158,7 @@ public:
 	void on_hammock_lay();
 	void on_wish_lantern();
 	void on_kite_launched();
+	void on_marshmallow_roasted();
 
 	int get_count() const { return count; }
 	int get_target() const { return target; }

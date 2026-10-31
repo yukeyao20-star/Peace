@@ -15,6 +15,7 @@
 #include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
+#include <godot_cpp/variant/quaternion.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 
 #include "mesh_util.h"
@@ -29,10 +30,34 @@ void Campfire::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_interact_distance"), &Campfire::get_interact_distance);
 	ClassDB::bind_method(D_METHOD("requires_line_of_sight"), &Campfire::requires_line_of_sight);
 	ClassDB::bind_method(D_METHOD("interact", "player_pos"), &Campfire::interact);
+	ClassDB::bind_method(D_METHOD("get_roast_state"), &Campfire::get_roast_state);
+	ClassDB::bind_method(D_METHOD("get_roast_time"), &Campfire::get_roast_time);
+	ClassDB::bind_method(D_METHOD("get_roast_stage"), &Campfire::get_roast_stage);
+	ClassDB::bind_method(D_METHOD("get_golden_count"), &Campfire::get_golden_count);
+	ClassDB::bind_method(D_METHOD("get_burnt_count"), &Campfire::get_burnt_count);
+	ClassDB::bind_method(D_METHOD("get_roast_visible"), &Campfire::get_roast_visible);
+}
+
+int Campfire::get_roast_stage() const {
+	if (roast_t < 3.0f) {
+		return 0; // 还生
+	}
+	return roast_t < 6.5f ? 1 : 2; // 金黄 / 焦
+}
+
+bool Campfire::get_roast_visible() const {
+	return roast_root != nullptr && roast_root->is_visible();
 }
 
 String Campfire::get_prompt() const {
-	return String::utf8("按 E 添柴");
+	if (roast_state == 1) {
+		const int stage = get_roast_stage();
+		if (stage == 1) {
+			return String::utf8("按 E 吃掉棉花糖");
+		}
+		return stage == 0 ? String::utf8("按 E 取下棉花糖") : String::utf8("按 E 取下烤糊的棉花糖");
+	}
+	return String::utf8("按 E 烤棉花糖");
 }
 
 Vector3 Campfire::get_interact_pos() const {
@@ -44,7 +69,11 @@ float Campfire::get_interact_distance() const {
 }
 
 void Campfire::interact(const Vector3 &p_player_pos) {
-	(void)p_player_pos;
+	if (roast_state == 1) {
+		stop_roast();
+		return;
+	}
+	start_roast(p_player_pos);
 	boost = 0.9f;
 	if (embers != nullptr) {
 		embers->restart();
@@ -52,11 +81,134 @@ void Campfire::interact(const Vector3 &p_player_pos) {
 	if (crackle != nullptr) {
 		crackle->set_volume_db(-8.0f);
 	}
+}
+
+void Campfire::start_roast(const Vector3 &p_player_pos) {
+	if (roast_root == nullptr) {
+		return;
+	}
+	roast_state = 1;
+	roast_t = 0.0f;
+	roast_root->set_visible(true);
+	if (roast_smoke != nullptr) {
+		roast_smoke->set_emitting(false);
+	}
+	if (marshmallow_mat.is_valid()) {
+		marshmallow_mat->set_albedo(Color(0.97f, 0.94f, 0.86f));
+	}
+	(void)p_player_pos;
+	if (get_parent() != nullptr) {
+		player_node = Object::cast_to<Node3D>(get_parent()->get_node_or_null("Player"));
+		Node *gd = get_parent()->get_node_or_null("GameDirector");
+		if (gd != nullptr) {
+			gd->call("flash_hint", String::utf8("串上棉花糖 · 在火苗上慢慢转，金黄时按 E 吃掉"), 3.6f);
+		}
+	}
+}
+
+void Campfire::stop_roast() {
+	if (roast_state == 0) {
+		return;
+	}
+	const int stage = get_roast_stage();
+	const float was = roast_t;
+	roast_state = 0;
+	roast_t = 0.0f;
+	if (roast_root != nullptr) {
+		roast_root->set_visible(false);
+	}
+	if (roast_smoke != nullptr) {
+		roast_smoke->set_emitting(false);
+	}
+	if (eat_voice != nullptr && snd_crunch.is_valid()) {
+		eat_voice->set_pitch_scale(stage == 2 ? 0.68f : 1.0f);
+		eat_voice->play(0.0f);
+	}
+	String msg;
+	if (stage == 1) {
+		golden_count++;
+		msg = String::utf8("外焦里软，甜！");
+	} else if (stage == 0) {
+		msg = String::utf8("还有点生，奶香奶香的");
+	} else {
+		burnt_count++;
+		msg = String::utf8("烤糊了，苦……");
+	}
+	(void)was;
 	if (get_parent() != nullptr) {
 		Node *gd = get_parent()->get_node_or_null("GameDirector");
 		if (gd != nullptr) {
-			gd->call("flash_hint", String::utf8("柴火添上了 · 火光一下子暖起来"), 3.0f);
+			gd->call("flash_hint", msg, 2.8f);
+			if (stage == 1) {
+				gd->call("on_marshmallow_roasted");
+			}
 		}
+	}
+}
+
+// 每帧把棉花糖摆在火苗上方，木棍朝玩家胸口延伸；颜色按时间从奶白→金黄→焦黑。
+void Campfire::update_roast(float p_delta) {
+	if (roast_state != 1 || roast_root == nullptr) {
+		return;
+	}
+	roast_t += p_delta;
+	const Vector3 fire = get_global_position() + Vector3(0.0f, 1.12f, 0.0f);
+	Vector3 chest = fire + Vector3(0.0f, 0.4f, 1.0f);
+	if (player_node == nullptr && get_parent() != nullptr) {
+		player_node = Object::cast_to<Node3D>(get_parent()->get_node_or_null("Player"));
+	}
+	Vector3 to_player = Vector3(0.0f, 0.0f, 1.0f);
+	if (player_node != nullptr) {
+		chest = player_node->get_global_position() + Vector3(0.0f, 1.15f, 0.0f);
+		to_player = chest - fire;
+		if (to_player.length() > 5.0f) {
+			// 走远就把棉花糖留在火里，省得举着跟人跑
+			roast_state = 0;
+			roast_t = 0.0f;
+			roast_root->set_visible(false);
+			if (roast_smoke != nullptr) {
+				roast_smoke->set_emitting(false);
+			}
+			if (get_parent() != nullptr) {
+				Node *gd = get_parent()->get_node_or_null("GameDirector");
+				if (gd != nullptr) {
+					gd->call("flash_hint", String::utf8("你走远了，棉花糖掉进火里"), 2.4f);
+				}
+			}
+			return;
+		}
+	}
+	if (to_player.length_squared() < 0.04f) {
+		to_player = Vector3(0.0f, 0.2f, 1.0f);
+	}
+	roast_root->set_global_position(fire);
+	const Vector3 sdir = to_player.normalized();
+	const float slen = Math::clamp(to_player.length() - 0.18f, 0.45f, 1.6f);
+	if (stick != nullptr) {
+		Transform3D st;
+		st.set_basis(Basis(Quaternion(Vector3(0.0f, 1.0f, 0.0f), sdir)).scaled(Vector3(1.0f, slen, 1.0f)));
+		st.set_origin(sdir * slen * 0.5f);
+		stick->set_transform(st);
+	}
+	if (marshmallow != nullptr) {
+		marshmallow->set_position(Vector3(0.0f, 0.015f * std::sin(t * 5.3f), 0.0f));
+		const float puff = 1.0f + 0.10f * Math::clamp(roast_t / 3.0f, 0.0f, 1.0f);
+		marshmallow->set_scale(Vector3(puff, puff * 0.9f, puff));
+	}
+	if (marshmallow_mat.is_valid()) {
+		const Color raw(0.97f, 0.94f, 0.86f);
+		const Color golden(0.86f, 0.58f, 0.28f);
+		const Color burnt(0.17f, 0.12f, 0.09f);
+		if (roast_t < 3.0f) {
+			marshmallow_mat->set_albedo(raw.lerp(golden, roast_t / 3.0f));
+		} else if (roast_t < 6.5f) {
+			marshmallow_mat->set_albedo(golden);
+		} else {
+			marshmallow_mat->set_albedo(golden.lerp(burnt, Math::clamp((roast_t - 6.5f) / 2.0f, 0.0f, 1.0f)));
+		}
+	}
+	if (roast_smoke != nullptr) {
+		roast_smoke->set_emitting(roast_t > 5.6f);
 	}
 }
 
@@ -85,6 +237,7 @@ void Campfire::_notification(int p_what) {
 		case NOTIFICATION_PROCESS: {
 			t += (float)get_process_delta_time();
 			const float dt = (float)get_process_delta_time();
+			update_roast(dt);
 			if (boost > 0.0f) {
 				boost = Math::max(0.0f, boost - dt);
 			}
@@ -352,6 +505,116 @@ void Campfire::build() {
 	hiss->set_volume_db(-60.0f);
 	hiss->set_max_distance(14.0f);
 	add_child(hiss);
+
+	build_roast();
+}
+
+void Campfire::build_roast() {
+	roast_root = memnew(Node3D);
+	roast_root->set_name("MarshmallowRoast");
+	roast_root->set_visible(false);
+	add_child(roast_root);
+
+	Ref<CylinderMesh> stick_mesh;
+	stick_mesh.instantiate();
+	stick_mesh->set_top_radius(0.012f);
+	stick_mesh->set_bottom_radius(0.010f);
+	stick_mesh->set_height(1.0f);
+	stick_mesh->set_radial_segments(6);
+	Ref<StandardMaterial3D> stick_mat;
+	stick_mat.instantiate();
+	stick_mat->set_albedo(Color(0.42f, 0.28f, 0.15f));
+	stick_mat->set_roughness(0.9f);
+	stick_mesh->set_material(stick_mat);
+	stick = memnew(MeshInstance3D);
+	stick->set_name("Stick");
+	stick->set_mesh(stick_mesh);
+	roast_root->add_child(stick);
+
+	marshmallow_mat.instantiate();
+	marshmallow_mat->set_albedo(Color(0.97f, 0.94f, 0.86f));
+	marshmallow_mat->set_roughness(0.95f);
+	Ref<SphereMesh> mm;
+	mm.instantiate();
+	mm->set_radius(0.085f);
+	mm->set_height(0.17f);
+	mm->set_radial_segments(14);
+	mm->set_rings(8);
+	mm->set_material(Ref<Material>(marshmallow_mat));
+	marshmallow = memnew(MeshInstance3D);
+	marshmallow->set_name("Marshmallow");
+	marshmallow->set_mesh(mm);
+	marshmallow->set_scale(Vector3(1.0f, 0.9f, 1.0f));
+	roast_root->add_child(marshmallow);
+
+	Ref<SphereMesh> smoke_mesh;
+	smoke_mesh.instantiate();
+	smoke_mesh->set_radius(0.05f);
+	smoke_mesh->set_height(0.10f);
+	smoke_mesh->set_radial_segments(6);
+	smoke_mesh->set_rings(4);
+	Ref<StandardMaterial3D> smoke_mat;
+	smoke_mat.instantiate();
+	smoke_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	smoke_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	smoke_mat->set_albedo(Color(0.24f, 0.22f, 0.20f, 0.34f));
+	smoke_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	smoke_mesh->set_material(smoke_mat);
+	roast_smoke = memnew(CPUParticles3D);
+	roast_smoke->set_name("RoastSmoke");
+	roast_smoke->set_amount(12);
+	roast_smoke->set_lifetime(1.3f);
+	roast_smoke->set_mesh(smoke_mesh);
+	roast_smoke->set_direction(Vector3(0.0f, 1.0f, 0.0f));
+	roast_smoke->set_spread(30.0f);
+	roast_smoke->set_gravity(Vector3(0.05f, 0.10f, 0.02f));
+	roast_smoke->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.10f);
+	roast_smoke->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.24f);
+	roast_smoke->set_param_min(CPUParticles3D::PARAM_SCALE, 0.6f);
+	roast_smoke->set_param_max(CPUParticles3D::PARAM_SCALE, 1.2f);
+	roast_smoke->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_SPHERE);
+	roast_smoke->set_emission_sphere_radius(0.05f);
+	roast_smoke->set_position(Vector3(0.0f, 0.10f, 0.0f));
+	roast_smoke->set_emitting(false);
+	roast_root->add_child(roast_smoke);
+
+	snd_crunch = make_crunch();
+	eat_voice = memnew(AudioStreamPlayer3D);
+	eat_voice->set_name("EatVoice");
+	eat_voice->set_stream(snd_crunch);
+	eat_voice->set_volume_db(-6.0f);
+	eat_voice->set_max_distance(12.0f);
+	roast_root->add_child(eat_voice);
+}
+
+// 0.22 秒的"咔嚓"：脆壳碎裂的白噪 + 低频闷响，音量快速衰减。
+Ref<AudioStreamWAV> Campfire::make_crunch() {
+	const int sr = 22050;
+	const int n = (int)(0.22f * sr);
+	PackedByteArray bytes;
+	bytes.resize(n * 2);
+	uint8_t *w = bytes.ptrw();
+	std::mt19937 rng(91732u);
+	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
+	float lp = 0.0f;
+	for (int i = 0; i < n; i++) {
+		const float tsec = (float)i / (float)sr;
+		const float env = std::exp(-tsec * 16.0f);
+		const float white = d01(rng) - 0.5f;
+		lp += (white - lp) * 0.18f;
+		float samp = (white * 0.55f + lp * 1.4f + std::sin(tsec * 6.2831853f * 140.0f) * 0.15f) * env;
+		samp = Math::clamp(samp, -1.0f, 1.0f);
+		const int16_t q = (int16_t)(samp * 12000.0f);
+		w[i * 2] = (uint8_t)(q & 0xFF);
+		w[i * 2 + 1] = (uint8_t)((q >> 8) & 0xFF);
+	}
+	Ref<AudioStreamWAV> wav;
+	wav.instantiate();
+	wav->set_format(AudioStreamWAV::FORMAT_16_BITS);
+	wav->set_mix_rate(sr);
+	wav->set_stereo(false);
+	wav->set_data(bytes);
+	return wav;
 }
 
 // 2 秒可循环的嗞声：高通白噪声 + 稀疏爆点，像雨滴砸在炭上

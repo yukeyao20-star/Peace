@@ -93,6 +93,8 @@ float marker_height(int p_type) {
 			return 1.0f;
 		case GameDirector::TASK_KITE:
 			return 1.4f;
+		case GameDirector::TASK_MARSHMALLOW:
+			return 1.2f;
 		default:
 			return 2.0f;
 	}
@@ -136,6 +138,8 @@ const char *task_name(int p_type) {
 			return "放一盏河灯";
 		case GameDirector::TASK_KITE:
 			return "放一次风筝";
+		case GameDirector::TASK_MARSHMALLOW:
+			return "烤一串棉花糖";
 		default:
 			return "?";
 	}
@@ -163,6 +167,7 @@ void GameDirector::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("on_hammock_lay"), &GameDirector::on_hammock_lay);
 	ClassDB::bind_method(D_METHOD("on_wish_lantern"), &GameDirector::on_wish_lantern);
 	ClassDB::bind_method(D_METHOD("on_kite_launched"), &GameDirector::on_kite_launched);
+	ClassDB::bind_method(D_METHOD("on_marshmallow_roasted"), &GameDirector::on_marshmallow_roasted);
 	ClassDB::bind_method(D_METHOD("get_count"), &GameDirector::get_count);
 	ClassDB::bind_method(D_METHOD("get_target"), &GameDirector::get_target);
 	ClassDB::bind_method(D_METHOD("is_done"), &GameDirector::is_done);
@@ -565,8 +570,8 @@ void GameDirector::roll_day_tasks(int p_day) {
 		berry.type = TASK_BERRY;
 		berry.target = 2 + (int)(rng() % 3);
 		tasks.push_back(berry);
-		int others[17] = { TASK_FISH, TASK_GOAL, TASK_WELL, TASK_CHEST, TASK_HARVEST, TASK_FEED, TASK_SHELL, TASK_SWING, TASK_PHOTO, TASK_STEW, TASK_CAT, TASK_DEER, TASK_WOODPECKER, TASK_AURORA, TASK_HAMMOCK, TASK_WISH, TASK_KITE };
-		for (int i = 16; i > 0; i--) { // Fisher-Yates 洗牌
+		int others[18] = { TASK_FISH, TASK_GOAL, TASK_WELL, TASK_CHEST, TASK_HARVEST, TASK_FEED, TASK_SHELL, TASK_SWING, TASK_PHOTO, TASK_STEW, TASK_CAT, TASK_DEER, TASK_WOODPECKER, TASK_AURORA, TASK_HAMMOCK, TASK_WISH, TASK_KITE, TASK_MARSHMALLOW };
+		for (int i = 17; i > 0; i--) { // Fisher-Yates 洗牌
 			int j = (int)(rng() % (unsigned)(i + 1));
 			int tmp = others[i];
 			others[i] = others[j];
@@ -770,6 +775,9 @@ Node3D *GameDirector::resolve_marker_target(int p_type) {
 	}
 	if (p_type == TASK_KITE) {
 		return Object::cast_to<Node3D>(root->find_child("Kite", true, false));
+	}
+	if (p_type == TASK_MARSHMALLOW) {
+		return Object::cast_to<Node3D>(root->find_child("Campfire", true, false));
 	}
 	if (p_type == TASK_FEED) {
 		// 就近挑一只农场动物
@@ -1027,6 +1035,11 @@ void GameDirector::on_wish_lantern() {
 void GameDirector::on_kite_launched() {
 	note_first_interaction();
 	mark_task_progress(TASK_KITE);
+}
+
+void GameDirector::on_marshmallow_roasted() {
+	note_first_interaction();
+	mark_task_progress(TASK_MARSHMALLOW);
 }
 
 void GameDirector::on_chest_looted() {

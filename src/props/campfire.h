@@ -15,8 +15,11 @@ namespace godot {
 class AudioStreamPlayer3D;
 class AudioStreamWAV;
 class CPUParticles3D;
+class MeshInstance3D;
+class Node3D;
 class OmniLight3D;
 class SkyCycle;
+class StandardMaterial3D;
 class TerrainBuilder;
 
 class Campfire : public Interactable {
@@ -36,6 +39,26 @@ private:
 	float boost = 0.0f; // 添柴后的火势余韵（秒）
 	float wet = 0.0f;   // 雨强平滑值
 
+	// —— 烤棉花糖 ——
+	Node3D *roast_root = nullptr;
+	MeshInstance3D *marshmallow = nullptr;
+	MeshInstance3D *stick = nullptr;
+	Ref<StandardMaterial3D> marshmallow_mat;
+	CPUParticles3D *roast_smoke = nullptr;
+	AudioStreamPlayer3D *eat_voice = nullptr;
+	Ref<AudioStreamWAV> snd_crunch;
+	Node3D *player_node = nullptr;
+	int roast_state = 0; // 0 空闲 / 1 正在烤
+	float roast_t = 0.0f;
+	int golden_count = 0;
+	int burnt_count = 0;
+
+	void build_roast();
+	void start_roast(const Vector3 &p_player_pos);
+	void stop_roast();
+	void update_roast(float p_delta);
+	Ref<AudioStreamWAV> make_crunch();
+
 	void build();
 	Ref<AudioStreamWAV> make_crackle();
 	Ref<AudioStreamWAV> make_hiss();
@@ -51,6 +74,13 @@ public:
 	float get_interact_distance() const override;
 	bool requires_line_of_sight() const override { return false; }
 	void interact(const Vector3 &p_player_pos) override;
+
+	int get_roast_state() const { return roast_state; }
+	float get_roast_time() const { return roast_t; }
+	int get_roast_stage() const; // 0 生 / 1 金黄 / 2 焦
+	int get_golden_count() const { return golden_count; }
+	int get_burnt_count() const { return burnt_count; }
+	bool get_roast_visible() const;
 };
 
 } // namespace godot
