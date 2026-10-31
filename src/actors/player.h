@@ -262,6 +262,14 @@ private:
 	void refresh_album();
 	void album_prev_page();
 	void album_next_page();
+
+	// —— F1 操作手札 ——
+	godot::CanvasLayer *help_layer = nullptr;
+	bool help_open = false;
+	bool help_key_prev = false;
+	void build_help_ui();
+	void toggle_help();
+	void close_help();
 	void set_photo_mode(bool p_on);
 	void set_hud_visible(bool p_visible);
 	void save_photo();

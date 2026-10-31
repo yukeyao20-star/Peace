@@ -130,6 +130,8 @@ void Player::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("close_album"), &Player::close_album);
 	ClassDB::bind_method(D_METHOD("album_prev_page"), &Player::album_prev_page);
 	ClassDB::bind_method(D_METHOD("album_next_page"), &Player::album_next_page);
+	ClassDB::bind_method(D_METHOD("toggle_help"), &Player::toggle_help);
+	ClassDB::bind_method(D_METHOD("close_help"), &Player::close_help);
 	ClassDB::bind_method(D_METHOD("launch_firework"), &Player::launch_firework);
 	ClassDB::bind_method(D_METHOD("_on_map_gui_input", "event"), &Player::_on_map_gui_input);
 	ClassDB::bind_method(D_METHOD("_on_map_bg_gui_input", "event"), &Player::_on_map_bg_gui_input);
@@ -244,6 +246,7 @@ void Player::_notification(int p_what) {
 			debug_overlay->hide();
 			photo_layer->add_child(debug_overlay);
 			build_album_ui();
+			build_help_ui();
 			load_settings();
 			settings_apply_t = 0.35f;
 			hud_prompt = memnew(Label);
@@ -270,7 +273,7 @@ void Player::_notification(int p_what) {
 			guide_panel->set_offset(SIDE_LEFT, -214.0f);
 			guide_panel->set_offset(SIDE_RIGHT, -16.0f);
 			guide_panel->set_offset(SIDE_TOP, 16.0f);
-			guide_panel->set_offset(SIDE_BOTTOM, 330.0f);
+			guide_panel->set_offset(SIDE_BOTTOM, 352.0f);
 
 			// 小黑板：墨绿板面 + 原木边框，粉笔字（与木牌/木屋同一材质语言）
 			guide_panel->add_theme_stylebox_override("panel", uistyle::make_blackboard_textured(0.98f));
@@ -293,7 +296,8 @@ void Player::_notification(int p_what) {
 				"[P] 拍照 · [H] 隐藏界面 · F12 保存",
 				"[F11] 全屏 · [V] 镜头远近",
 				"[F3] 调试 · [ - / = ] 音量",
-				"[O] 相册 · 浏览湖畔照片"
+				"[O] 相册 · 浏览湖畔照片",
+				"[F1] 手札 · 全部操作"
 			};
 
 			const int hint_count = (int)(sizeof(hints) / sizeof(hints[0]));
@@ -574,7 +578,7 @@ void Player::_notification(int p_what) {
 
 		case NOTIFICATION_PROCESS: {
 			float p_delta = get_process_delta_time();
-			if (!is_sleeping && !is_map_open && !album_open) {
+			if (!is_sleeping && !is_map_open && !album_open && !help_open) {
 				_update_look(p_delta); // 睡觉 / 大地图 / 相册打开时鼠标不转动视角
 			}
 			_update_camera(p_delta);
@@ -691,6 +695,18 @@ void Player::_physics_step() {
 
 	// 1. 全局大地图状态阻断（M 在 _input 事件驱动，Esc 关地图归 PauseMenu 统一处理）
 	if (is_map_open) {
+		set_velocity(Vector3(0, 0, 0));
+		move_and_slide();
+		return;
+	}
+
+	// 1.4 操作手札（F1）
+	bool f1_down = input->is_key_pressed(KEY_F1);
+	if (f1_down && !help_key_prev && !photo_mode && !album_open) {
+		toggle_help();
+	}
+	help_key_prev = f1_down;
+	if (help_open) {
 		set_velocity(Vector3(0, 0, 0));
 		move_and_slide();
 		return;
@@ -1511,6 +1527,9 @@ void Player::set_hud_visible(bool p_visible) {
 	if (!p_visible && album_open) {
 		close_album();
 	}
+	if (!p_visible && help_open) {
+		close_help();
+	}
 	if (hud_layer != nullptr) {
 		hud_layer->set_visible(p_visible);
 	}
@@ -1596,6 +1615,133 @@ void Player::save_settings() {
 			|| ds->window_get_mode() == DisplayServer::WINDOW_MODE_EXCLUSIVE_FULLSCREEN;
 	cf->set_value("settings", "fullscreen", fs);
 	cf->save("user://settings.cfg");
+}
+
+void Player::build_help_ui() {
+	help_layer = memnew(CanvasLayer);
+	help_layer->set_name("HelpLayer");
+	help_layer->set_layer(10);
+	add_child(help_layer);
+	help_layer->set_visible(false);
+
+	ColorRect *dim = memnew(ColorRect);
+	dim->set_anchors_preset(Control::PRESET_FULL_RECT);
+	dim->set_color(Color(0.0f, 0.0f, 0.0f, 0.55f));
+	dim->set_mouse_filter(Control::MOUSE_FILTER_STOP);
+	help_layer->add_child(dim);
+
+	PanelContainer *panel = memnew(PanelContainer);
+	panel->set_name("HelpPanel");
+	panel->set_anchors_preset(Control::PRESET_CENTER);
+	panel->set_offset(SIDE_LEFT, -420.0f);
+	panel->set_offset(SIDE_RIGHT, 420.0f);
+	panel->set_offset(SIDE_TOP, -240.0f);
+	panel->set_offset(SIDE_BOTTOM, 240.0f);
+	panel->add_theme_stylebox_override("panel", uistyle::make_wood_textured(16.0f, 0.97f));
+	help_layer->add_child(panel);
+
+	VBoxContainer *box = memnew(VBoxContainer);
+	box->add_theme_constant_override("separation", 12);
+	panel->add_child(box);
+
+	Ref<Font> cjk = ResourceLoader::get_singleton()->load("res://assets/fonts/NotoSansSC-Regular.ttf");
+	Label *title = memnew(Label);
+	title->set_text(String::utf8("湖 畔 手 札 · 操 作"));
+	title->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+	title->add_theme_font_size_override("font_size", 28);
+	title->add_theme_color_override("font_color", uistyle::wood_text());
+	title->add_theme_color_override("font_outline_color", uistyle::wood_dark());
+	title->add_theme_constant_override("outline_size", 2);
+	if (cjk.is_valid()) {
+		title->add_theme_font_override("font", cjk);
+	}
+	box->add_child(title);
+
+	HBoxContainer *cols = memnew(HBoxContainer);
+	cols->add_theme_constant_override("separation", 36);
+	cols->set_alignment(BoxContainer::ALIGNMENT_CENTER);
+	box->add_child(cols);
+
+	auto make_col = [&](const char *p_name, const std::vector<String> &p_lines) -> void {
+		VBoxContainer *col = memnew(VBoxContainer);
+		col->set_name(p_name);
+		col->add_theme_constant_override("separation", 6);
+		cols->add_child(col);
+		for (const String &line : p_lines) {
+			Label *l = memnew(Label);
+			l->set_text(line);
+			l->add_theme_font_size_override("font_size", 15);
+			l->add_theme_color_override("font_color", uistyle::wood_text());
+			if (cjk.is_valid()) {
+				l->add_theme_font_override("font", cjk);
+			}
+			col->add_child(l);
+		}
+	};
+	make_col("HelpColL", {
+		String::utf8("WASD · 移动 / Shift 加速"),
+		String::utf8("空格 · 跳跃 / 二段跳"),
+		String::utf8("空格 / Ctrl · 游泳上浮下潜"),
+		String::utf8("E · 交互 / 坐下 / 划船"),
+		String::utf8("F · 钓鱼（按住蓄力）"),
+		String::utf8("G · 夜晚放烟花"),
+		String::utf8("R · 翻滚冲刺"),
+		String::utf8("M · 湖图 / 传送"),
+	});
+	make_col("HelpColR", {
+		String::utf8("P · 拍照 / F12 保存截图"),
+		String::utf8("O · 相册 / 浏览照片"),
+		String::utf8("B · 鱼获图鉴"),
+		String::utf8("H · 收起界面"),
+		String::utf8("V · 镜头远近 / F11 全屏"),
+		String::utf8("F3 · 调试信息"),
+		String::utf8(" - / = · 音量"),
+		String::utf8("F1 · 关闭这页手札"),
+	});
+
+	Button *close = memnew(Button);
+	close->set_name("HelpClose");
+	close->set_text(String::utf8("收起 (F1)"));
+	close->add_theme_stylebox_override("normal", uistyle::make_button_style(false, 0));
+	close->add_theme_stylebox_override("hover", uistyle::make_button_style(false, 1));
+	close->add_theme_stylebox_override("pressed", uistyle::make_button_style(false, 2));
+	close->add_theme_font_size_override("font_size", 16);
+	close->add_theme_color_override("font_color", uistyle::wood_text());
+	if (cjk.is_valid()) {
+		close->add_theme_font_override("font", cjk);
+	}
+	close->connect("pressed", Callable(this, "close_help"));
+	HBoxContainer *foot = memnew(HBoxContainer);
+	foot->set_alignment(BoxContainer::ALIGNMENT_CENTER);
+	box->add_child(foot);
+	foot->add_child(close);
+}
+
+void Player::toggle_help() {
+	if (help_open) {
+		close_help();
+		return;
+	}
+	if (help_layer == nullptr) {
+		build_help_ui();
+	}
+	help_open = true;
+	help_layer->set_visible(true);
+	mouse_captured = false;
+	mouse_rel = Vector2();
+	Input::get_singleton()->set_mouse_mode(Input::MOUSE_MODE_VISIBLE);
+}
+
+void Player::close_help() {
+	help_open = false;
+	if (help_layer != nullptr) {
+		help_layer->set_visible(false);
+	}
+	if (!is_map_open && !is_sleeping && !album_open) {
+		mouse_captured = true;
+		mouse_rel = Vector2();
+		Input::get_singleton()->set_mouse_mode(Input::MOUSE_MODE_CAPTURED);
+	}
 }
 
 void Player::build_album_ui() {
