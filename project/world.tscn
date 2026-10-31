@@ -956,6 +956,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 13.5, 0, 17.8)
 [node name="RainChain" type="RainChain" parent="Homestead"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.75, 2.8, 5.3)
 
+[node name="WritingDesk" type="WritingDesk" parent="Homestead"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 0.2, -0.4)
+
 [node name="KitchenShelf" type="KitchenShelf" parent="Homestead"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.85, 0.95, -1.0)
 
