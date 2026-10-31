@@ -83,6 +83,7 @@
 #include "reading_corner.h"
 #include "path_trinkets.h"
 #include "window_sill.h"
+#include "dock_trinkets.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
 #include "leaf_drift.h"
@@ -190,6 +191,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(ReadingCorner);
 	GDREGISTER_CLASS(PathTrinkets);
 	GDREGISTER_CLASS(WindowSill);
+	GDREGISTER_CLASS(DockTrinkets);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
 	GDREGISTER_CLASS(LeafDrift);
