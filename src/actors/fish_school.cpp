@@ -1,6 +1,7 @@
 #include "fish_school.h"
 
 #include "../world/sky_cycle.h"
+#include "../world/terrain_builder.h"
 
 #include <cmath>
 #include <random>
@@ -19,6 +20,16 @@
 using namespace godot;
 
 void FishSchool::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("get_fish_position", "index"), &FishSchool::get_fish_position);
+	ClassDB::bind_method(D_METHOD("get_neighbor_checks"), &FishSchool::get_neighbor_checks);
+	ClassDB::bind_method(D_METHOD("get_school_size"), &FishSchool::get_school_size);
+}
+
+Vector2 FishSchool::get_fish_position(int p_index) const {
+	if (p_index < 0 || p_index >= (int)fish.size()) {
+		return Vector2();
+	}
+	return fish[p_index].pos;
 }
 
 void FishSchool::_notification(int p_what) {
@@ -36,48 +47,114 @@ void FishSchool::_notification(int p_what) {
 		case NOTIFICATION_PROCESS: {
 			float delta = (float)get_process_delta_time();
 			anim_t += delta;
+			Vector3 ppos(0.0f, -999.0f, 0.0f);
+			bool near_water = true;
 			if (player != nullptr) {
-				// 玩家靠近任一片水域才显示
-				Vector3 pp = player->get_global_position();
-				bool near = pp.distance_to(Vector3(lake_center.x, water_level, lake_center.y)) < 60.0f
-						|| pp.distance_to(Vector3(-14.0f, water_level, 66.0f)) < 60.0f;
-				set_visible(near);
+				ppos = player->get_global_position();
+				near_water = ppos.distance_to(Vector3(lake_center.x, water_level, lake_center.y)) < 60.0f
+						|| ppos.distance_to(Vector3(-14.0f, water_level, 66.0f)) < 60.0f;
+				set_visible(near_water);
+			}
+			if (!near_water) {
+				return; // 玩家很远：整群冻结，不做邻居查询与转向，省算力
 			}
 			if (sky == nullptr && get_parent() != nullptr) {
 				sky = Object::cast_to<SkyCycle>(get_parent()->get_node_or_null("SkyCycle"));
 			}
+			if (terrain == nullptr && get_parent() != nullptr) {
+				terrain = Object::cast_to<TerrainBuilder>(get_parent()->get_node_or_null("Terrain"));
+			}
 			const float snow_now = (sky != nullptr) ? sky->get_snow_amount() : 0.0f;
 			ice_mix = Math::lerp(ice_mix, snow_now > 0.82f ? 1.0f : 0.0f, 1.0f - std::exp(-0.8f * delta));
-			for (Fish &f : fish) {
+
+			// 邻居表：每帧只算一次，半径截断（参考 sergioabreu-g/boids 的 _detectNeighbors）
+			neighbors.assign(fish.size(), {});
+			neighbor_checks = 0;
+			const float visual_r2 = 4.0f * 4.0f;
+			for (size_t i = 0; i < fish.size(); i++) {
+				for (size_t j = i + 1; j < fish.size(); j++) {
+					neighbor_checks++;
+					const Vector2 d = fish[i].pos - fish[j].pos;
+					if (d.length_squared() < visual_r2) {
+						neighbors[i].push_back((int)j);
+						neighbors[j].push_back((int)i);
+					}
+				}
+			}
+
+			const Vector2 ppos2(ppos.x, ppos.z);
+			const float max_speed = 1.55f * (1.0f - 0.45f * ice_mix);
+			for (size_t i = 0; i < fish.size(); i++) {
+				Fish &f = fish[i];
 				if (f.root == nullptr) {
 					continue;
 				}
-				// 玩家贴近时鱼会加速窜开
-				float near = 0.0f;
-				if (player != nullptr) {
-					Vector3 pp = player->get_global_position();
-					Vector3 fish_pos(f.center.x + std::cos(f.angle) * f.radius,
-							water_level - Math::lerp(f.depth, 0.45f, ice_mix), f.center.y + std::sin(f.angle) * f.radius);
-					if (pp.distance_to(fish_pos) < 3.6f) {
-						near = 1.0f;
+				// —— 分离 / 对齐 / 聚合（同种） + 异种避让 ——
+				Vector2 sep(0.0f, 0.0f);
+				Vector2 cross(0.0f, 0.0f);
+				Vector2 avg_pos(0.0f, 0.0f);
+				Vector2 avg_vel(0.0f, 0.0f);
+				int same = 0;
+				for (int j : neighbors[i]) {
+					const Fish &o = fish[j];
+					const Vector2 d = f.pos - o.pos;
+					const float dist = d.length();
+					if (dist < 0.001f) {
+						continue;
+					}
+					if (dist < 0.9f) {
+						sep += d / dist * (1.0f - dist / 0.9f);
+					}
+					if (o.species == f.species) {
+						avg_pos += o.pos;
+						avg_vel += o.vel;
+						same++;
+					} else if (dist < 1.6f) {
+						cross += d / dist * (1.0f - dist / 1.6f);
 					}
 				}
-				f.urge = Math::min(1.0f, f.urge + (near > 0.5f ? delta * 3.5f : -delta * 0.8f));
-				f.urge = Math::max(0.0f, f.urge);
-				f.angle += f.speed * (1.0f + f.urge * 2.2f) * (1.0f - 0.45f * ice_mix) * delta;
-				float bob = std::sin(anim_t * f.bob_w + f.bob_phase) * 0.04f
-						+ f.urge * 0.10f;
-				Vector3 pos(f.center.x + std::cos(f.angle) * f.radius,
-						water_level - Math::lerp(f.depth, 0.45f, ice_mix) + bob,
-						f.center.y + std::sin(f.angle) * f.radius);
-				f.root->set_global_position(pos);
-				float sgn = f.speed >= 0.0f ? 1.0f : -1.0f;
-				Vector3 tangent(-std::sin(f.angle) * sgn, 0.0f, std::cos(f.angle) * sgn);
-				float yaw = std::atan2(tangent.x, tangent.z) + f.yaw_offset;
-				Vector3 dir(std::sin(yaw), 0.0f, std::cos(yaw));
-				f.root->look_at(pos + dir, Vector3(0.0f, 1.0f, 0.0f));
+				Vector2 acc(0.0f, 0.0f);
+				acc += sep * 6.0f;
+				acc += cross * 2.4f;
+				if (same > 0) {
+					const Vector2 coh = avg_pos / (float)same - f.pos;
+					acc += avg_vel / (float)same * 0.55f + coh * 0.6f;
+				}
+				// 玩家靠近：sqrt 衰减的斥力（参考 Flock._escapePredator）
+				const Vector2 away = f.pos - ppos2;
+				const float pd = away.length();
+				if (pd < 4.5f && pd > 0.01f) {
+					acc += away / pd * std::sqrt(1.0f - pd / 4.5f) * 9.0f;
+				}
+				// 湖岸 / 浅水 / 离群：回到自家水域中心（参考 Flock._borders）
+				const Vector2 ahead = f.pos + f.vel * 0.6f;
+				const float depth_ahead = (terrain != nullptr) ? terrain->water_depth_at(ahead.x, ahead.y) : 3.0f;
+				const Vector2 to_center = f.center - f.pos;
+				const float dc = to_center.length();
+				if (dc > 13.0f || depth_ahead < 0.9f) {
+					acc += to_center.normalized() * ((depth_ahead < 0.9f) ? 7.0f : 3.0f);
+				}
+
+				f.vel += acc * delta;
+				float sp = f.vel.length();
+				if (sp > max_speed) {
+					f.vel = f.vel / sp * max_speed;
+					sp = max_speed;
+				} else if (sp < 0.25f) {
+					f.vel = (sp > 0.001f ? f.vel / sp : Vector2(1.0f, 0.0f)) * 0.25f;
+					sp = 0.25f;
+				}
+				f.pos += f.vel * delta;
+
+				const float bob = std::sin(anim_t * f.bob_w + f.bob_phase) * 0.04f;
+				const Vector3 wpos(f.pos.x, water_level - Math::lerp(f.depth, 0.45f, ice_mix) + bob, f.pos.y);
+				f.root->set_global_position(wpos);
+				const float yaw = std::atan2(f.vel.x, f.vel.y) + f.yaw_offset;
+				const Vector3 dir(std::sin(yaw), 0.0f, std::cos(yaw));
+				f.root->look_at(wpos + dir, Vector3(0.0f, 1.0f, 0.0f));
 				if (f.tail != nullptr) {
-					f.tail->set_rotation(Vector3(0.0f, std::sin(anim_t * 7.5f + f.bob_phase) * 0.55f, 0.0f));
+					const float wag = 4.0f + sp * 6.0f;
+					f.tail->set_rotation(Vector3(0.0f, std::sin(anim_t * wag + f.bob_phase) * 0.55f, 0.0f));
 				}
 			}
 		} break;
@@ -102,9 +179,12 @@ void FishSchool::spawn_fish(int p_index, unsigned p_seed) {
 
 	Fish f;
 	f.center = (p_index < 10) ? lake_center : Vector2(-14.0f, 66.0f);
-	f.angle = rnd(0.0f, 6.2831853f);
-	f.radius = (p_index < 10) ? rnd(2.8f, 8.0f) : rnd(4.0f, 14.0f);
-	f.speed = rnd(0.05f, 0.13f) * (rnd(0.0f, 1.0f) < 0.5f ? -1.0f : 1.0f);
+	f.species = p_index % 3;
+	const float a0 = rnd(0.0f, 6.2831853f);
+	const float radius = (p_index < 10) ? rnd(2.8f, 8.0f) : rnd(4.0f, 14.0f);
+	f.pos = f.center + Vector2(std::cos(a0), std::sin(a0)) * radius;
+	const float course = rnd(0.0f, 6.2831853f);
+	f.vel = Vector2(std::cos(course), std::sin(course)) * rnd(0.35f, 0.65f);
 	f.depth = rnd(0.8f, 2.3f); // 湖底 -5.2，留足净空
 	f.bob_w = rnd(0.9f, 1.8f);
 	f.bob_phase = rnd(0.0f, 6.2831853f);
@@ -153,7 +233,6 @@ void FishSchool::spawn_fish(int p_index, unsigned p_seed) {
 	f.tail->add_child(tmi);
 
 	// 首帧就位（避免建成瞬间堆在原点闪一帧）
-	f.root->set_global_position(Vector3(f.center.x + std::cos(f.angle) * f.radius,
-			water_level - f.depth, f.center.y + std::sin(f.angle) * f.radius));
+	f.root->set_global_position(Vector3(f.pos.x, water_level - f.depth, f.pos.y));
 	fish.push_back(f);
 }
