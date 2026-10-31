@@ -906,6 +906,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.15, 0.18, 4.9)
 [node name="Pumpkins" type="Pumpkins" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11, 0, 27)
 
+[node name="UmbrellaStand" type="UmbrellaStand" parent="Homestead"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.85, 0.2, 3.45)
+
 [node name="HayBales" type="HayBales" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14, 0, 26)
 
