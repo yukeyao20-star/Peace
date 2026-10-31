@@ -89,6 +89,7 @@
 #include "plant_stand.h"
 #include "rain_gear.h"
 #include "garden_tools.h"
+#include "crate_stack.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
 #include "leaf_drift.h"
@@ -202,6 +203,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(PlantStand);
 	GDREGISTER_CLASS(RainGear);
 	GDREGISTER_CLASS(GardenTools);
+	GDREGISTER_CLASS(CrateStack);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
 	GDREGISTER_CLASS(LeafDrift);
