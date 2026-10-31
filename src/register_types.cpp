@@ -50,6 +50,7 @@
 #include "camp_tent.h"
 #include "hedgehog.h"
 #include "kite.h"
+#include "snowman.h"
 #include "dock_moths.h"
 #include "heron_pond.h"
 #include "campfire.h"
@@ -124,6 +125,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(CampTent);
 	GDREGISTER_CLASS(Hedgehog);
 	GDREGISTER_CLASS(Kite);
+	GDREGISTER_CLASS(Snowman);
 	GDREGISTER_CLASS(DockMoths);
 	GDREGISTER_CLASS(HeronPond);
 	GDREGISTER_CLASS(Campfire);

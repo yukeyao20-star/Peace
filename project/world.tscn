@@ -1371,6 +1371,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0, -19.5)
 [node name="Kite" type="Kite" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -14.5, 0, -20.0)
 
+[node name="Snowman" type="Snowman" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.0, 0, -17.5)
+
 [node name="RockingChair" type="RockingChair" parent="."]
 transform = Transform3D(0.707, 0, -0.707, 0, 1, 0, 0.707, 0, 0.707, 8.04, 0.53, 9.98)
 
