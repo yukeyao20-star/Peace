@@ -107,6 +107,7 @@
 #include "garden_gnome.h"
 #include "checkers_table.h"
 #include "tabletop_games.h"
+#include "picnic_food.h"
 #include "beach_finds.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
@@ -239,6 +240,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(GardenGnome);
 	GDREGISTER_CLASS(CheckersTable);
 	GDREGISTER_CLASS(TabletopGames);
+	GDREGISTER_CLASS(PicnicFood);
 	GDREGISTER_CLASS(BeachFinds);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
