@@ -22,6 +22,8 @@
 #include <godot_cpp/classes/immediate_mesh.hpp>
 #include <godot_cpp/classes/panel.hpp>
 #include <godot_cpp/classes/panel_container.hpp>
+#include <godot_cpp/classes/button.hpp>
+#include <godot_cpp/classes/v_box_container.hpp>
 #include <godot_cpp/classes/input.hpp>
 #include <godot_cpp/classes/label.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
@@ -40,10 +42,12 @@ using namespace godot;
 
 void FishingSystem::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_state"), &FishingSystem::get_state);
+	ClassDB::bind_method(D_METHOD("close_book"), &FishingSystem::close_book);
 	ClassDB::bind_method(D_METHOD("is_charging"), &FishingSystem::is_charging);
 	ClassDB::bind_method(D_METHOD("is_near_shore"), &FishingSystem::is_near_shore);
 	ClassDB::bind_method(D_METHOD("get_caught_count"), &FishingSystem::get_caught_count);
 	ClassDB::bind_method(D_METHOD("get_state"), &FishingSystem::get_state);
+	ClassDB::bind_method(D_METHOD("close_book"), &FishingSystem::close_book);
 	ClassDB::bind_method(D_METHOD("get_bobber_light_energy"), &FishingSystem::get_bobber_light_energy);
 	ClassDB::bind_method(D_METHOD("get_bobber_light_visible"), &FishingSystem::get_bobber_light_visible);
 
@@ -1231,8 +1235,16 @@ void FishingSystem::tick_leaping(float p_delta) {
 
 // —— 鱼获图鉴（B 键）——
 
+void FishingSystem::close_book() {
+	book_open = false;
+	if (book_layer != nullptr) {
+		book_layer->set_visible(false);
+	}
+}
+
 void FishingSystem::build_book_ui() {
 	book_layer = memnew(CanvasLayer);
+	book_layer->set_name("FishBookUI");
 	book_layer->set_layer(8); // 在钓鱼 HUD(7) 之上、时钟之下
 	add_child(book_layer);
 
@@ -1240,8 +1252,13 @@ void FishingSystem::build_book_ui() {
 	panel->set_name("FishBookPanel");
 	panel->set_anchors_preset(Control::PRESET_CENTER_RIGHT);
 	panel->set_offset(Side::SIDE_RIGHT, -24.0f);
+	panel->set_custom_minimum_size(Vector2(342.0f, 0.0f));
 	panel->add_theme_stylebox_override("panel", uistyle::make_wood_textured(14.0f, 0.96f));
 	book_layer->add_child(panel);
+
+	VBoxContainer *book_box = memnew(VBoxContainer);
+	book_box->add_theme_constant_override("separation", 8);
+	panel->add_child(book_box);
 
 	book_label = memnew(Label);
 	Ref<Font> cjk = uistyle::load_cjk();
@@ -1252,7 +1269,22 @@ void FishingSystem::build_book_ui() {
 	book_label->add_theme_color_override("font_color", uistyle::wood_text());
 	book_label->add_theme_color_override("font_outline_color", uistyle::wood_dark());
 	book_label->add_theme_constant_override("outline_size", 2);
-	panel->add_child(book_label);
+	book_box->add_child(book_label);
+
+	Button *close = memnew(Button);
+	close->set_name("BookClose");
+	close->set_text(String::utf8("收起（B）"));
+	close->add_theme_stylebox_override("normal", uistyle::make_button_style(false, 0));
+	close->add_theme_stylebox_override("hover", uistyle::make_button_style(false, 1));
+	close->add_theme_stylebox_override("pressed", uistyle::make_button_style(false, 2));
+	close->add_theme_font_size_override("font_size", 16);
+	close->add_theme_color_override("font_color", uistyle::wood_text());
+	close->add_theme_color_override("font_hover_color", Color(1.0f, 0.98f, 0.9f));
+	if (cjk.is_valid()) {
+		close->add_theme_font_override("font", cjk);
+	}
+	close->connect("pressed", Callable(this, "close_book"));
+	book_box->add_child(close);
 	refresh_book();
 }
 
@@ -1260,7 +1292,14 @@ void FishingSystem::refresh_book() {
 	if (book_label == nullptr) {
 		return;
 	}
-	String s = String::utf8("🎣 鱼获图鉴\n");
+	int kinds = 0;
+	for (int k = 0; k < FISH_KIND_COUNT; k++) {
+		if (rec_count[k] > 0) {
+			kinds++;
+		}
+	}
+	String s = String::utf8("🎣 鱼获图鉴 · 已收集 ") + String::num_int64(kinds)
+			+ String::utf8(" / ") + String::num_int64(FISH_KIND_COUNT) + String::utf8(" 种\n");
 	for (int sp = 0; sp < FISH_KIND_COUNT; sp++) {
 		s += String::utf8("  ");
 		if (rec_count[sp] > 0) {

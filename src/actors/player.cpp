@@ -1464,6 +1464,9 @@ void Player::set_hud_visible(bool p_visible) {
 			if (flayer != nullptr) {
 				flayer->set_visible(p_visible);
 			}
+			if (!p_visible) {
+				fishing->call("close_book");
+			}
 		}
 		Node *shells = get_parent()->get_node_or_null("Shells");
 		if (shells != nullptr) {

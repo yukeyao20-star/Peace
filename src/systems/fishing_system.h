@@ -56,6 +56,7 @@ public:
 	int get_state() const { return state; }
 	float get_bobber_light_energy() const;
 	bool get_bobber_light_visible() const;
+	void close_book();
 
 protected:
 
