@@ -58,6 +58,10 @@ void BirdFeeder::_notification(int p_what) {
 			if (snow_cap != nullptr) {
 				snow_cap->set_visible(snow > 0.35f);
 			}
+			if (drifts != nullptr) {
+				drifts->set_visible(snow > 0.2f);
+				drifts->set_scale(Vector3(1.0f, 0.35f + 0.65f * Math::clamp(snow, 0.0f, 1.0f), 1.0f));
+			}
 			const Vector3 pp = (player != nullptr) ? player->get_global_position() : Vector3(0, -999, 0);
 			const Vector3 pp_local = get_global_transform().affine_inverse().xform(pp);
 
@@ -201,6 +205,16 @@ void BirdFeeder::build() {
 	voice->set_volume_db(-16.0f);
 	voice->set_max_distance(18.0f);
 	add_child(voice);
+
+	// —— 冬日：木柱脚下的积雪堆 ——
+	drifts = memnew(Node3D);
+	drifts->set_name("SnowDrifts");
+	add_child(drifts);
+	MeshInstance3D *d0 = meshutil::add_sphere(drifts, toon, 0.30f, Vector3(0.02f, 0.02f, 0.02f), Color(0.92f, 0.95f, 1.0f));
+	d0->set_scale(Vector3(1.0f, 0.5f, 0.9f));
+	MeshInstance3D *d1 = meshutil::add_sphere(drifts, toon, 0.22f, Vector3(-0.26f, 0.02f, 0.14f), Color(0.92f, 0.95f, 1.0f));
+	d1->set_scale(Vector3(0.9f, 0.45f, 0.8f));
+	drifts->set_visible(false);
 }
 
 void BirdFeeder::build_bird(int p_index, const Vector3 &p_perch, unsigned p_seed, bool p_left) {

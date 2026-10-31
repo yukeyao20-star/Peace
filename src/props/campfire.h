@@ -32,6 +32,7 @@ private:
 	AudioStreamPlayer3D *crackle = nullptr;
 	AudioStreamPlayer3D *hiss = nullptr; // 雨点落进火堆的嗞声
 	CPUParticles3D *steam = nullptr;     // 雨中被蒸起的白汽
+	Node3D *drifts = nullptr;            // 石圈外的积雪堆
 	Ref<AudioStreamWAV> snd_crackle;
 	Ref<AudioStreamWAV> snd_hiss;
 	SkyCycle *sky = nullptr;

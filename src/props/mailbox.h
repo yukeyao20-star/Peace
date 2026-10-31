@@ -26,6 +26,7 @@ private:
 	Node3D *door = nullptr;       // 箱门枢轴（底部铰链）
 	Node3D *flag_pivot = nullptr; // 小红旗
 	MeshInstance3D *envelope = nullptr;
+	Node3D *drifts = nullptr;
 	AudioStreamPlayer3D *voice = nullptr;
 	Ref<AudioStreamWAV> snd_paper;
 	CanvasLayer *ui_layer = nullptr;

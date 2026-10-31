@@ -44,6 +44,8 @@ private:
 	Ref<StandardMaterial3D> frost_mat;
 	Ref<ShaderMaterial> wreath_mat;
 	Node3D *wreath = nullptr;
+	Node3D *drifts = nullptr; // 墙根的积雪堆
+	float drift_level = 0.0f;
 	float cold = 0.0f;        // 平滑后的"冷度"（雪 + 夜）
 	float snow_cover = 0.0f;  // 屋顶积雪量 0..1
 	float frost_level = 0.0f; // 窗霜浓度 0..1

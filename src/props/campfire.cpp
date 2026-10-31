@@ -259,6 +259,11 @@ void Campfire::_notification(int p_what) {
 			if (steam != nullptr) {
 				steam->set_emitting(wet > 0.28f);
 			}
+			if (drifts != nullptr) {
+				const float snow_now = (sky != nullptr) ? sky->get_snow_amount() : 0.0f;
+				drifts->set_visible(snow_now > 0.2f);
+				drifts->set_scale(Vector3(1.0f, 0.35f + 0.65f * Math::clamp(snow_now, 0.0f, 1.0f), 1.0f));
+			}
 			if (crackle != nullptr) {
 				float target_db = (boost > 0.0f) ? -8.0f - 7.0f * rain_k : -20.0f + 7.0f * rain_k;
 				crackle->set_volume_db(Math::lerp((float)crackle->get_volume_db(), target_db, 1.0f - std::exp(-6.0f * dt)));
@@ -507,6 +512,19 @@ void Campfire::build() {
 	add_child(hiss);
 
 	build_roast();
+
+	// —— 冬日：石圈外被踩拢的雪堆 ——
+	drifts = memnew(Node3D);
+	drifts->set_name("SnowDrifts");
+	add_child(drifts);
+	for (int i = 0; i < 3; i++) {
+		const float a = 0.35f + (float)i * 2.1f;
+		MeshInstance3D *m = meshutil::add_sphere(drifts, meshutil::load_toon_shader(), 0.45f,
+				Vector3(std::cos(a) * 1.25f, 0.02f, std::sin(a) * 1.25f), Color(0.92f, 0.95f, 1.0f));
+		m->set_scale(Vector3(1.5f, 0.42f, 0.9f));
+		m->set_rotation(Vector3(0.0f, a, 0.0f));
+	}
+	drifts->set_visible(false);
 }
 
 void Campfire::build_roast() {

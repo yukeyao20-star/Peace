@@ -116,6 +116,12 @@ void CabinLife::_notification(int p_what) {
 					roof_snow[i]->set_scale(Vector3(1.0f, roof_s, 1.0f));
 				}
 			}
+			if (drifts != nullptr) {
+				const float snow_now = (sky != nullptr) ? sky->get_snow_amount() : 0.0f;
+				drift_level = Math::lerp(drift_level, snow_now, 1.0f - std::exp(-1.4f * delta));
+				drifts->set_visible(drift_level > 0.12f);
+				drifts->set_scale(Vector3(1.0f, 0.35f + 0.65f * Math::clamp(drift_level, 0.0f, 1.0f), 1.0f));
+			}
 			for (size_t i = 0; i < icicles.size(); i++) {
 				const float h = icicle_scale[i].y * icicle_level;
 				icicles[i]->set_visible(icicle_level > 0.03f);
@@ -468,4 +474,20 @@ void CabinLife::build() {
 		wreath->set_position(Vector3(0.0f, 1.52f, 3.55f));
 	}
 	wreath_mount->add_child(wreath);
+
+	// —— 冬日 5：墙根被风吹拢的雪堆 ——
+	drifts = memnew(Node3D);
+	drifts->set_name("SnowDrifts");
+	host->add_child(drifts);
+	const struct { Vector3 pos; Vector3 scale; } drift_defs[3] = {
+		{ Vector3(2.2f, 0.05f, 3.55f), Vector3(2.2f, 0.42f, 0.55f) },
+		{ Vector3(-4.15f, 0.05f, -0.6f), Vector3(0.55f, 0.40f, 2.0f) },
+		{ Vector3(1.2f, 0.05f, -3.55f), Vector3(1.6f, 0.38f, 0.50f) },
+	};
+	for (int i = 0; i < 3; i++) {
+		MeshInstance3D *m = meshutil::add_sphere(drifts, toon, 0.5f, drift_defs[i].pos, snow_col);
+		m->set_scale(drift_defs[i].scale);
+		m->set_name(String("Drift") + String::num_int64(i));
+	}
+	drifts->set_visible(false);
 }

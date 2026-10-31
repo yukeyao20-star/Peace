@@ -31,6 +31,7 @@ private:
 	StandardMaterial3D *lantern_glass = nullptr;
 	SkyCycle *sky = nullptr;
 	CPUParticles3D *visit = nullptr; // 坐下后围过来的萤火虫
+	Node3D *drifts = nullptr;       // 长椅背后的积雪堆
 	bool visit_hint = false;
 	float lamp_t = 0.0f;
 

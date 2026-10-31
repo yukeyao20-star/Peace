@@ -88,6 +88,11 @@ void Bench::_notification(int p_what) {
 					}
 				}
 			}
+			if (drifts != nullptr) {
+				const float snow_now = (sky != nullptr) ? sky->get_snow_amount() : 0.0f;
+				drifts->set_visible(snow_now > 0.2f);
+				drifts->set_scale(Vector3(1.0f, 0.35f + 0.65f * Math::clamp(snow_now, 0.0f, 1.0f), 1.0f));
+			}
 			if (seated == nullptr) {
 				return;
 			}
@@ -238,4 +243,14 @@ void Bench::build() {
 	visit->set_position(Vector3(0.0f, 0.7f, 0.0f));
 	visit->set_emitting(false);
 	add_child(visit);
+
+	// —— 冬日：长椅背后的积雪堆 ——
+	drifts = memnew(Node3D);
+	drifts->set_name("SnowDrifts");
+	add_child(drifts);
+	MeshInstance3D *d0 = meshutil::add_sphere(drifts, toon, 0.45f, Vector3(-0.55f, 0.02f, 0.0f), Color(0.92f, 0.95f, 1.0f));
+	d0->set_scale(Vector3(0.55f, 0.35f, 1.1f));
+	MeshInstance3D *d1 = meshutil::add_sphere(drifts, toon, 0.35f, Vector3(-0.42f, 0.02f, 0.95f), Color(0.92f, 0.95f, 1.0f));
+	d1->set_scale(Vector3(0.45f, 0.3f, 0.5f));
+	drifts->set_visible(false);
 }

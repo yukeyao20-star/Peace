@@ -107,6 +107,11 @@ void Mailbox::_notification(int p_what) {
 				const Vector3 r = flag_pivot->get_rotation();
 				flag_pivot->set_rotation(Vector3(r.x, r.y, Math::lerp(r.z, target, 1.0f - std::exp(-6.0f * delta))));
 			}
+			if (drifts != nullptr) {
+				const float snow_now = (sky != nullptr) ? sky->get_snow_amount() : 0.0f;
+				drifts->set_visible(snow_now > 0.2f);
+				drifts->set_scale(Vector3(1.0f, 0.35f + 0.65f * Math::clamp(snow_now, 0.0f, 1.0f), 1.0f));
+			}
 			if (ui_open && player != nullptr) {
 				if (player->get_global_position().distance_to(get_global_position()) > 3.2f) {
 					close_ui();
@@ -155,6 +160,16 @@ void Mailbox::build() {
 	voice->set_volume_db(-8.0f);
 	voice->set_max_distance(10.0f);
 	add_child(voice);
+
+	// —— 冬日：信箱柱脚的积雪堆 ——
+	drifts = memnew(Node3D);
+	drifts->set_name("SnowDrifts");
+	add_child(drifts);
+	MeshInstance3D *d0 = meshutil::add_sphere(drifts, toon, 0.30f, Vector3(0.02f, 0.02f, 0.02f), Color(0.92f, 0.95f, 1.0f));
+	d0->set_scale(Vector3(1.0f, 0.5f, 0.9f));
+	MeshInstance3D *d1 = meshutil::add_sphere(drifts, toon, 0.22f, Vector3(0.28f, 0.02f, -0.12f), Color(0.92f, 0.95f, 1.0f));
+	d1->set_scale(Vector3(0.9f, 0.45f, 0.8f));
+	drifts->set_visible(false);
 }
 
 // 0.3 秒的纸声：几簇细碎的高频噪声，像把信纸从信封里抽出来。

@@ -41,6 +41,7 @@ private:
 	};
 	std::vector<Bird> birds;
 	Node3D *snow_cap = nullptr;
+	Node3D *drifts = nullptr;
 	AudioStreamPlayer3D *voice = nullptr;
 	Ref<AudioStreamWAV> snd_chirp;
 	SkyCycle *sky = nullptr;
