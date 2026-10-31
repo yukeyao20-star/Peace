@@ -164,6 +164,7 @@ void SwingSet::interact(const Vector3 &p_player_pos) {
 	vel = 0.6f;
 	Node *gd = get_parent()->get_node_or_null("GameDirector");
 	if (gd != nullptr) {
+		gd->call("on_swing_ridden");
 		gd->call("flash_hint", String::utf8("荡起来了 · 再按 E 下来"), 3.0f);
 	}
 }

@@ -36,6 +36,7 @@ void BeachShell::_bind_methods() {
 void BeachShell::_notification(int p_what) {
 	if (p_what == NOTIFICATION_READY && !Engine::get_singleton()->is_editor_hint()) {
 		add_to_group("interactables");
+		add_to_group("beach_shells");
 	}
 }
 
@@ -44,8 +45,10 @@ void BeachShell::mark_taken(bool p_taken) {
 	set_visible(!taken);
 	if (taken) {
 		remove_from_group("interactables");
+		remove_from_group("beach_shells");
 	} else {
 		add_to_group("interactables");
+		add_to_group("beach_shells");
 	}
 }
 
@@ -238,6 +241,7 @@ void ShellField::collect(int p_index, const Vector3 &p_player_pos) {
 	if (get_parent() != nullptr) {
 		Node *gd = get_parent()->get_node_or_null("GameDirector");
 		if (gd != nullptr) {
+			gd->call("on_shell_collected");
 			if (got >= total) {
 				build_reward();
 				gd->call("flash_hint", String::utf8("十枚贝壳集齐了 · 长椅旁挂起一串贝壳风铃"), 5.0f);
@@ -259,6 +263,7 @@ void ShellField::update_counter() {
 		PanelContainer *panel = memnew(PanelContainer);
 		panel->set_name("ShellCounterPanel");
 		panel->set_position(Vector2(12.0f, 96.0f));
+		panel->set_custom_minimum_size(Vector2(118.0f, 0.0f));
 		panel->add_theme_stylebox_override("panel", uistyle::make_wood_textured(9.0f, 0.95f));
 		hud->add_child(panel);
 		counter = memnew(Label);
