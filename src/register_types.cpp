@@ -68,6 +68,7 @@
 #include "bookshelf.h"
 #include "picnic_spot.h"
 #include "sunflowers.h"
+#include "fairy_ring.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
 #include "leaf_drift.h"
@@ -160,6 +161,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(Bookshelf);
 	GDREGISTER_CLASS(PicnicSpot);
 	GDREGISTER_CLASS(Sunflowers);
+	GDREGISTER_CLASS(FairyRing);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
 	GDREGISTER_CLASS(LeafDrift);
