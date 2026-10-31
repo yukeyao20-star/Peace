@@ -147,7 +147,8 @@
 | 134 | 窗台陈设（调研窗台盆栽后：三盆香草/海玻璃罐/蜡烛火苗，夜里映暖光） | 866b76f |
 | 135 | 码头小物（调研码头道具后：三圈缆绳/橙白救生圈/油灯夜亮/木箱/蟹笼） | d9e9451 |
 | 136 | 谷仓农具（调研奶罐/木桶后：木水桶/矮凳/铁皮奶罐/饲料袋/旧马蹄铁） | fb0cdb5 |
-| 137 | 营地小物（调研露营道具后：圆木凳/搪瓷杯/提灯夜亮/折地图/指南针） | 本轮提交 |
+| 137 | 营地小物（调研露营道具后：圆木凳/搪瓷杯/提灯夜亮/折地图/指南针） | 1e7d21c |
+| 138 | 门廊花架（调研多层花架后：三层木架/蕨类/垂藤随风/开花盆栽/多肉排/顶层大叶） | 本轮提交 |
 
 ## 编号对账
 
@@ -386,6 +387,11 @@ FPS 基本不变：当前场景主要瓶颈仍在整片地形/植被的三角形
 - CGTrader「Wayfarers Low-Poly Campsite Pack」—— 铁艺提灯与地图指示牌
 - edwardgreen.dev「Camping prototype」（Godot 4）—— 露营场景道具组织
 - gamedevacademy「Lighting in Godot」—— 提灯 + 发光罩做法
+
+第 138 轮补充参考：
+- CGTrader「Wooden Planter Box Pack」Tiered Pyramid Plant Stand
+- pixor.art / Kenney 低模盆栽（花盆 + 叶簇）
+- Cozy Low-Poly Plants & Pots —— 陶盆与叶片配色
 
 ## 收尾
 
