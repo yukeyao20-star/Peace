@@ -38,6 +38,7 @@
 #include "dock_gull.h"
 #include "wind_charms.h"
 #include "stew_pot.h"
+#include "woodpecker.h"
 #include "dock_moths.h"
 #include "heron_pond.h"
 #include "campfire.h"
@@ -100,6 +101,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(DockGull);
 	GDREGISTER_CLASS(WindCharms);
 	GDREGISTER_CLASS(StewPot);
+	GDREGISTER_CLASS(Woodpecker);
 	GDREGISTER_CLASS(DockMoths);
 	GDREGISTER_CLASS(HeronPond);
 	GDREGISTER_CLASS(Campfire);
