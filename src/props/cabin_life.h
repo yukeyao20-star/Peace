@@ -43,6 +43,9 @@ private:
 	MeshInstance3D *frost[4] = { nullptr, nullptr, nullptr, nullptr };
 	Ref<StandardMaterial3D> frost_mat;
 	Ref<ShaderMaterial> wreath_mat;
+	MeshInstance3D *rain_glass[4] = { nullptr, nullptr, nullptr, nullptr };
+	Ref<ShaderMaterial> rain_glass_mat;
+	float rain_level = 0.0f;
 	Node3D *wreath = nullptr;
 	Node3D *drifts = nullptr; // 墙根的积雪堆
 	float drift_level = 0.0f;

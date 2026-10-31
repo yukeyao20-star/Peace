@@ -112,7 +112,8 @@
 | 99 | 存档 v8（许愿次数/信箱已读日/汤碗余数，读写后正确恢复） | 3ab2ba6 |
 | 100 | 第 100 天庆典（中央纪念横幅/夜间三束烟花/第一百封来信/台账收尾） | bdd440d |
 | 101 | 鱼群 AI 升级（调研 boids 开源实现后：分离/对齐/聚合、同种成群异种避让、sqrt 逃逸、浅水回游、邻居表性能） | 8ee2e53 |
-| 102 | 门廊八音盒（调研程序化旋律参考后：五声+LCG 游走/最大跳进/拱形轮廓/八音盒音色/摇柄与音符粒子/每日待办） | 本轮提交 |
+| 102 | 门廊八音盒（调研程序化旋律参考后：五声+LCG 游走/最大跳进/拱形轮廓/八音盒音色/摇柄与音符粒子/每日待办） | a9feffd |
+| 103 | 窗玻璃雨痕（调研雨窗 shader 后：网格水滴屏幕折射/雨强渐显/四窗共享材质/雪天让位霜花） | 本轮提交 |
 
 ## 编号对账
 
@@ -138,6 +139,9 @@
 - chicomcastro/procedural-music-generator（五声音阶量化）
 - aleatoric（最大跳进约束 / 拱形轮廓）
 - monome/crow First.lua（五声音阶 + LCG 随机旋律）
+- godotshaders.com「Raindrops glass」（hint_screen_texture 折射）
+- GehirnEimer「Godot 4: Rainy window shader」的 drop_layer 网格水滴思路
+- mujtaba-io/Godot_rain_shader（湿润材质与雨痕参考）
 
 ## 收尾
 

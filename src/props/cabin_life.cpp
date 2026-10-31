@@ -109,6 +109,17 @@ void CabinLife::_notification(int p_what) {
 					frost[i]->set_visible(frost_level > 0.02f);
 				}
 			}
+			const float rain_now = (sky != nullptr) ? sky->get_rain_amount() : 0.0f;
+			rain_level = Math::lerp(rain_level, rain_now, 1.0f - std::exp(-1.6f * delta));
+			if (rain_glass_mat.is_valid()) {
+				rain_glass_mat->set_shader_parameter("wet", rain_level);
+			}
+			const bool show_rain = rain_level > 0.06f && frost_level < 0.45f;
+			for (int i = 0; i < 4; i++) {
+				if (rain_glass[i] != nullptr) {
+					rain_glass[i]->set_visible(show_rain);
+				}
+			}
 			const float roof_s = 0.15f + 0.85f * Math::clamp(snow_cover * 1.15f, 0.0f, 1.0f);
 			for (int i = 0; i < 5; i++) {
 				if (roof_snow[i] != nullptr) {
@@ -396,6 +407,37 @@ void CabinLife::build() {
 		frost[i]->set_position(panes[i] + off);
 		frost[i]->set_visible(false);
 		host->add_child(frost[i]);
+	}
+
+	// —— 雨痕：四扇窗共享一个屏幕折射材质（第 103 轮） ——
+	rain_glass_mat.instantiate();
+	{
+		Ref<Shader> rsh = ResourceLoader::get_singleton()->load("res://assets/rain_glass.gdshader");
+		if (rsh.is_valid()) {
+			rain_glass_mat->set_shader(rsh);
+			rain_glass_mat->set_shader_parameter("wet", 0.0f);
+		}
+	}
+	for (int i = 0; i < 4; i++) {
+		const bool side = pane_size[i].x < pane_size[i].z;
+		Ref<BoxMesh> rm;
+		rm.instantiate();
+		rm->set_size(side ? Vector3(0.02f, 0.90f, 1.03f) : Vector3(1.03f, 0.90f, 0.02f));
+		rm->set_material(Ref<Material>(rain_glass_mat));
+		Vector3 off;
+		if (i < 2) {
+			off = Vector3(0.0f, 0.0f, 0.045f);
+		} else if (i == 2) {
+			off = Vector3(-0.045f, 0.0f, 0.0f);
+		} else {
+			off = Vector3(0.0f, 0.0f, -0.045f);
+		}
+		rain_glass[i] = memnew(MeshInstance3D);
+		rain_glass[i]->set_name(String("WindowRain") + String::num_int64(i));
+		rain_glass[i]->set_mesh(rm);
+		rain_glass[i]->set_position(panes[i] + off);
+		rain_glass[i]->set_visible(false);
+		host->add_child(rain_glass[i]);
 	}
 
 	// —— 冬日 2：屋顶积雪（主屋两面坡 + 屋脊 + 侧棚 + 门廊棚） ——
