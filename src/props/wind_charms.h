@@ -13,8 +13,10 @@ namespace godot {
 
 class AudioStreamPlayer3D;
 class AudioStreamWAV;
+class MeshInstance3D;
 class Node3D;
 class SkyCycle;
+class StandardMaterial3D;
 
 class WindCharms : public Node3D {
 	GDCLASS(WindCharms, Node3D)
@@ -24,6 +26,9 @@ private:
 	Node3D *vane = nullptr;
 	Node3D *chime = nullptr;
 	Node3D *tube[5] = {nullptr, nullptr, nullptr, nullptr, nullptr};
+	Node3D *bulb_pivot[9] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+	MeshInstance3D *bulb[9] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+	Ref<StandardMaterial3D> bulb_mat;
 	AudioStreamPlayer3D *voice = nullptr;
 	Ref<AudioStreamWAV> snd_chime;
 	float t = 0.0f;
@@ -46,6 +51,8 @@ public:
 	int get_tube_count() const;
 	bool get_chime_ready() const { return snd_chime.is_valid(); }
 	bool get_chime_playing() const;
+	int get_bulb_count() const;
+	float get_bulb_energy() const;
 };
 
 } // namespace godot

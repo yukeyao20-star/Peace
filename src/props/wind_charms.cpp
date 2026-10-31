@@ -9,6 +9,7 @@
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
+#include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 
 #include "../systems/mesh_util.h"
@@ -34,12 +35,28 @@ bool WindCharms::get_chime_playing() const {
 	return voice != nullptr && voice->is_playing();
 }
 
+int WindCharms::get_bulb_count() const {
+	int n = 0;
+	for (int i = 0; i < 9; i++) {
+		if (bulb[i] != nullptr && bulb[i]->is_visible()) {
+			n++;
+		}
+	}
+	return n;
+}
+
+float WindCharms::get_bulb_energy() const {
+	return bulb_mat.is_valid() ? (float)bulb_mat->get("emission_energy_multiplier") : 0.0f;
+}
+
 void WindCharms::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_wind"), &WindCharms::get_wind);
 	ClassDB::bind_method(D_METHOD("get_vane_rotation"), &WindCharms::get_vane_rotation);
 	ClassDB::bind_method(D_METHOD("get_tube_count"), &WindCharms::get_tube_count);
 	ClassDB::bind_method(D_METHOD("get_chime_ready"), &WindCharms::get_chime_ready);
 	ClassDB::bind_method(D_METHOD("get_chime_playing"), &WindCharms::get_chime_playing);
+	ClassDB::bind_method(D_METHOD("get_bulb_count"), &WindCharms::get_bulb_count);
+	ClassDB::bind_method(D_METHOD("get_bulb_energy"), &WindCharms::get_bulb_energy);
 }
 
 void WindCharms::_notification(int p_what) {
@@ -88,6 +105,20 @@ void WindCharms::_notification(int p_what) {
 				}
 				float a = std::sin(t * (2.4f + (float)i * 0.13f) + (float)i * 1.3f) * (0.02f + wind * 0.06f);
 				tube[i]->set_rotation(Vector3(0.0f, 0.0f, a));
+			}
+			if (bulb_mat.is_valid()) {
+				float night = (sky != nullptr) ? sky->get_night_factor() : 0.0f;
+				float on = Math::clamp((night - 0.22f) / 0.4f, 0.0f, 1.0f);
+				bulb_mat->set("emission_energy_multiplier", 0.22f + 2.0f * on);
+				for (int i = 0; i < 9; i++) {
+					if (bulb_pivot[i] == nullptr) {
+						continue;
+					}
+					bulb_pivot[i]->set_rotation(Vector3(
+							std::sin(t * 1.3f + (float)i * 0.9f) * wind * 0.10f,
+							0.0f,
+							std::sin(t * 1.05f + (float)i * 1.4f) * wind * 0.08f));
+				}
 			}
 			chime_t -= delta;
 			if (chime_t <= 0.0f) {
@@ -185,6 +216,55 @@ void WindCharms::build() {
 		bm->set_mesh(bar);
 		bm->set_position(Vector3(0, -0.10f - (float)(i % 3) * 0.025f, 0));
 		tube[i]->add_child(bm);
+	}
+
+	// —— 门廊小串灯：两根柱子之间一条下垂的灯线 ——
+	const Vector3 lp(-1.6f, 2.64f, 4.9f);
+	const Vector3 rp(1.6f, 2.64f, 4.9f);
+	for (int i = 0; i < 10; i++) {
+		float u0 = (float)i / 10.0f;
+		float u1 = (float)(i + 1) / 10.0f;
+		Vector3 a = lp.lerp(rp, u0);
+		Vector3 b = lp.lerp(rp, u1);
+		a.y -= std::sin(u0 * 3.1415926f) * 0.22f;
+		b.y -= std::sin(u1 * 3.1415926f) * 0.22f;
+		Vector3 mid = (a + b) * 0.5f;
+		Vector3 dir = b - a;
+		float len = dir.length();
+		MeshInstance3D *seg = memnew(MeshInstance3D);
+		Ref<BoxMesh> segm;
+		segm.instantiate();
+		segm->set_size(Vector3(len, 0.008f, 0.008f));
+		segm->set_material(meshutil::toon_material(toon, Color(0.20f, 0.20f, 0.18f)));
+		seg->set_mesh(segm);
+		seg->set_position(mid);
+		seg->set_rotation(Vector3(0.0f, 0.0f, std::atan2(dir.y, dir.x)));
+		host->add_child(seg);
+	}
+	bulb_mat.instantiate();
+	bulb_mat->set_albedo(Color(1.0f, 0.86f, 0.55f));
+	bulb_mat->set("emission_enabled", true);
+	bulb_mat->set("emission", Color(1.0f, 0.72f, 0.36f));
+	bulb_mat->set("emission_energy_multiplier", 0.22f);
+	Ref<SphereMesh> bulb_mesh;
+	bulb_mesh.instantiate();
+	bulb_mesh->set_radius(0.035f);
+	bulb_mesh->set_height(0.07f);
+	bulb_mesh->set_radial_segments(8);
+	bulb_mesh->set_rings(5);
+	bulb_mesh->set_material(Ref<Material>(bulb_mat));
+	for (int i = 0; i < 9; i++) {
+		float u = (float)(i + 1) / 10.0f;
+		Vector3 p = lp.lerp(rp, u);
+		p.y -= std::sin(u * 3.1415926f) * 0.22f;
+		bulb_pivot[i] = memnew(Node3D);
+		bulb_pivot[i]->set_name(String("StringBulb") + String::num_int64(i));
+		bulb_pivot[i]->set_position(p);
+		host->add_child(bulb_pivot[i]);
+		bulb[i] = memnew(MeshInstance3D);
+		bulb[i]->set_mesh(bulb_mesh);
+		bulb[i]->set_position(Vector3(0.0f, -0.07f, 0.0f));
+		bulb_pivot[i]->add_child(bulb[i]);
 	}
 }
 
