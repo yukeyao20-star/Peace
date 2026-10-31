@@ -26,6 +26,7 @@
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/os.hpp>
+#include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/classes/multi_mesh.hpp>
 #include <godot_cpp/classes/multi_mesh_instance3d.hpp>
 #include <godot_cpp/classes/primitive_mesh.hpp>
@@ -144,6 +145,7 @@ void SkyCycle::_notification(int p_what) {
 			build_stars();
 			build_moon();
 			build_moon_path();
+			build_snow_glints();
 			build_underwater();
 			build_underwater_ambience();
 			build_storm();
@@ -546,6 +548,25 @@ void SkyCycle::apply() {
 		}
 		moon_path_t += (float)get_process_delta_time();
 		moon_path_mat->set_uv1_offset(Vector3(0.0f, -moon_path_t * 0.06f, 0.0f));
+	}
+
+	// —— 雪地夜光：夜里 + 有雪时，玩家脚边浮起细碎反光 ——
+	if (snow_glints != nullptr && glint_mat.is_valid()) {
+		const float night_g = get_night_factor();
+		const float snow_g = get_snow_amount();
+		const float g = Math::clamp(night_g * 1.1f - 0.25f, 0.0f, 1.0f) * Math::clamp((snow_g - 0.15f) * 1.6f, 0.0f, 1.0f);
+		const float twinkle = 0.75f + 0.25f * std::sin((float)Time::get_singleton()->get_ticks_msec() * 0.0031f);
+		glint_mat->set_albedo(Color(0.88f, 0.94f, 1.0f, 0.34f * g * twinkle));
+		snow_glints->set_visible(g > 0.02f);
+		if (g > 0.02f) {
+			Node3D *pl = player;
+			if (pl == nullptr && get_parent() != nullptr) {
+				pl = Object::cast_to<Node3D>(get_parent()->get_node_or_null("Player"));
+			}
+			if (pl != nullptr) {
+				snow_glints->set_global_position(pl->get_global_position() + Vector3(0.0f, 0.10f, 0.0f));
+			}
+		}
 	}
 
 	// —— 月盘：太阳落下它升起（高度跟随 -sun_h），方位与夜里的月光灯一致（az 2.2rad）；
@@ -1204,6 +1225,44 @@ void SkyCycle::build_moon_path() {
 	moon_path->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 	moon_path->set_visible(false);
 	add_child(moon_path);
+}
+
+// 雪地夜光：跟随玩家的一小片雪面上，浮着几乎看不见的细碎反光，
+// 只在夜里 + 有雪时显形；像月光落在冰晶上。
+void SkyCycle::build_snow_glints() {
+	glint_mat.instantiate();
+	glint_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	glint_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	glint_mat->set_blend_mode(BaseMaterial3D::BLEND_MODE_ADD);
+	glint_mat->set_billboard_mode(BaseMaterial3D::BILLBOARD_ENABLED);
+	glint_mat->set_flag(BaseMaterial3D::FLAG_BILLBOARD_KEEP_SCALE, true);
+	glint_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	glint_mat->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, star_texture);
+	glint_mat->set_albedo(Color(0.88f, 0.94f, 1.0f, 0.0f));
+
+	Ref<QuadMesh> quad;
+	quad.instantiate();
+	quad->set_size(Vector2(0.10f, 0.10f));
+	quad->set_material(Ref<Material>(glint_mat));
+
+	snow_glints = memnew(CPUParticles3D);
+	snow_glints->set_name("SnowGlints");
+	snow_glints->set_amount(44);
+	snow_glints->set_lifetime(2.6f);
+	snow_glints->set_mesh(quad);
+	snow_glints->set_direction(Vector3(0.0f, 0.02f, 0.0f));
+	snow_glints->set_spread(180.0f);
+	snow_glints->set_gravity(Vector3(0.0f, 0.0f, 0.0f));
+	snow_glints->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.0f);
+	snow_glints->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.05f);
+	snow_glints->set_param_min(CPUParticles3D::PARAM_SCALE, 0.4f);
+	snow_glints->set_param_max(CPUParticles3D::PARAM_SCALE, 1.3f);
+	snow_glints->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_BOX);
+	snow_glints->set_emission_box_extents(Vector3(13.0f, 0.12f, 13.0f));
+	snow_glints->set_position(Vector3(0.0f, 0.08f, 0.0f));
+	snow_glints->set_emitting(true);
+	snow_glints->set_visible(false);
+	add_child(snow_glints);
 }
 
 void SkyCycle::build_moon() {

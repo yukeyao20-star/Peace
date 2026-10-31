@@ -139,6 +139,9 @@ private:
 	Vector3 star_vel;
 	MeshInstance3D *moon = nullptr;          // 月盘（夜空可见，高度跟随 -sun_h）
 	MeshInstance3D *moon_path = nullptr;     // 夜间湖面上的月光带
+	CPUParticles3D *snow_glints = nullptr;   // 雪地夜里的细碎反光
+	Ref<StandardMaterial3D> glint_mat;
+	void build_snow_glints();
 	Ref<StandardMaterial3D> moon_path_mat;
 	float moon_path_t = 0.0f;
 	void build_moon_path();
