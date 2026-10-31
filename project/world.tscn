@@ -1300,6 +1300,8 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.2, 0, -8.8)
 
 [node name="Dandelions" type="DandelionField" parent="."]
 
+[node name="Icicles" type="IcicleField" parent="."]
+
 [node name="Swing" type="SwingSet" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15.0, 0, -17.5)
 

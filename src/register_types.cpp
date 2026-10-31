@@ -33,6 +33,7 @@
 #include "cabin_life.h"
 #include "dandelion_field.h"
 #include "swing_set.h"
+#include "icicle_field.h"
 #include "dock_moths.h"
 #include "heron_pond.h"
 #include "campfire.h"
@@ -90,6 +91,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(CabinLife);
 	GDREGISTER_CLASS(DandelionField);
 	GDREGISTER_CLASS(SwingSet);
+	GDREGISTER_CLASS(IcicleField);
 	GDREGISTER_CLASS(DockMoths);
 	GDREGISTER_CLASS(HeronPond);
 	GDREGISTER_CLASS(Campfire);
