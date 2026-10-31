@@ -122,6 +122,7 @@
 #include "stone_cairn.h"
 #include "entryway_shelf.h"
 #include "jar_lights.h"
+#include "hand_pump.h"
 #include "beach_finds.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
@@ -269,6 +270,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(StoneCairn);
 	GDREGISTER_CLASS(EntrywayShelf);
 	GDREGISTER_CLASS(JarLights);
+	GDREGISTER_CLASS(HandPump);
 	GDREGISTER_CLASS(BeachFinds);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
