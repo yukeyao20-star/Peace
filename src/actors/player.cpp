@@ -50,6 +50,8 @@
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
+#include <godot_cpp/classes/shader.hpp>
+#include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/classes/style_box_flat.hpp>
 #include <godot_cpp/classes/panel.hpp>
@@ -134,6 +136,7 @@ void Player::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("close_help"), &Player::close_help);
 	ClassDB::bind_method(D_METHOD("launch_firework"), &Player::launch_firework);
 	ClassDB::bind_method(D_METHOD("get_star_wishes"), &Player::get_star_wishes);
+	ClassDB::bind_method(D_METHOD("get_photo_filter"), &Player::get_photo_filter);
 	ClassDB::bind_method(D_METHOD("_on_map_gui_input", "event"), &Player::_on_map_gui_input);
 	ClassDB::bind_method(D_METHOD("_on_map_bg_gui_input", "event"), &Player::_on_map_bg_gui_input);
 	ClassDB::bind_method(D_METHOD("_on_map_mouse_exited"), &Player::_on_map_mouse_exited);
@@ -216,6 +219,23 @@ void Player::_notification(int p_what) {
 			photo_layer->set_name("PhotoLayer");
 			photo_layer->set_layer(9);
 			add_child(photo_layer);
+
+			// 拍照滤镜：一整屏屏幕纹理后处理（暖/冷/黑白），只在拍照模式里显形
+			photo_filter_rect = memnew(ColorRect);
+			photo_filter_rect->set_name("PhotoFilter");
+			photo_filter_rect->set_anchors_preset(Control::PRESET_FULL_RECT);
+			photo_filter_rect->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+			{
+				Ref<Shader> fsh = ResourceLoader::get_singleton()->load("res://assets/photo_filter.gdshader");
+				if (fsh.is_valid()) {
+					photo_filter_mat.instantiate();
+					photo_filter_mat->set_shader(fsh);
+					photo_filter_mat->set_shader_parameter("mode", 0);
+					photo_filter_rect->set_material(photo_filter_mat);
+				}
+			}
+			photo_filter_rect->set_visible(false);
+			photo_layer->add_child(photo_filter_rect);
 			photo_toast = memnew(Label);
 			photo_toast->set_name("PhotoToast");
 			photo_toast->set_anchors_preset(Control::PRESET_BOTTOM_WIDE);
@@ -829,6 +849,16 @@ void Player::_physics_step() {
 			save_photo();
 		}
 		f12_prev = f12;
+		const bool k1 = input->is_key_pressed(KEY_1);
+		const bool k2 = input->is_key_pressed(KEY_2);
+		const bool k3 = input->is_key_pressed(KEY_3);
+		if ((k1 && !key1_prev) || (k2 && !key2_prev) || (k3 && !key3_prev)) {
+			photo_filter = k1 ? 1 : (k2 ? 2 : 3);
+			apply_photo_filter();
+		}
+		key1_prev = k1;
+		key2_prev = k2;
+		key3_prev = k3;
 		e_prev = act_pressed("interact", KEY_E);
 		return;
 	}
@@ -1616,9 +1646,26 @@ void Player::set_photo_mode(bool p_on) {
 		if (hud_prompt != nullptr) {
 			hud_prompt->hide();
 		}
+		photo_filter = 0;
+		apply_photo_filter();
 	} else {
+		photo_filter = 0;
+		if (photo_filter_rect != nullptr) {
+			photo_filter_rect->set_visible(false);
+		}
 		show_photo_toast(String::utf8("已退出拍照模式"), 1.6f);
 	}
+}
+
+void Player::apply_photo_filter() {
+	if (photo_filter_mat.is_valid()) {
+		photo_filter_mat->set_shader_parameter("mode", photo_filter);
+	}
+	if (photo_filter_rect != nullptr) {
+		photo_filter_rect->set_visible(photo_mode && photo_filter > 0);
+	}
+	static const char *names[4] = { "原色", "暖调", "冷调", "黑白" };
+	show_photo_toast(String::utf8("滤镜 · ") + String::utf8(names[photo_filter]), 1.6f);
 }
 
 void Player::show_photo_toast(const String &p_text, float p_seconds) {

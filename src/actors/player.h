@@ -31,6 +31,7 @@ class Label;
 class OmniLight3D;
 class MeshInstance3D;
 class StandardMaterial3D;
+class ShaderMaterial;
 class SkyCycle;
 class TextureRect;
 class GridContainer;
@@ -152,6 +153,7 @@ public:
 	}
 	bool get_photo_mode() const { return photo_mode; }
 	int get_star_wishes() const { return star_wishes; }
+	int get_photo_filter() const { return photo_filter; }
 	void leave_boat() {
 		is_boating = false;
 		boat = nullptr;
@@ -243,6 +245,13 @@ private:
 	void load_settings();
 	void save_settings();
 	godot::CanvasLayer *photo_layer = nullptr;
+	godot::ColorRect *photo_filter_rect = nullptr;
+	godot::Ref<ShaderMaterial> photo_filter_mat;
+	int photo_filter = 0; // 0 原色 / 1 暖 / 2 冷 / 3 黑白
+	bool key1_prev = false;
+	bool key2_prev = false;
+	bool key3_prev = false;
+	void apply_photo_filter();
 	godot::Label *photo_toast = nullptr;
 	godot::Label *debug_overlay = nullptr;
 	float photo_toast_t = 0.0f;
