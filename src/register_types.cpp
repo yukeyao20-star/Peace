@@ -27,6 +27,7 @@
 #include "kelp_field.h"
 #include "lily_pond.h"
 #include "squirrel_field.h"
+#include "shells.h"
 #include "dock_moths.h"
 #include "heron_pond.h"
 #include "campfire.h"
@@ -77,6 +78,8 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(KelpField);
 	GDREGISTER_CLASS(LilyPond);
 	GDREGISTER_CLASS(SquirrelField);
+	GDREGISTER_CLASS(BeachShell);
+	GDREGISTER_CLASS(ShellField);
 	GDREGISTER_CLASS(DockMoths);
 	GDREGISTER_CLASS(HeronPond);
 	GDREGISTER_CLASS(Campfire);

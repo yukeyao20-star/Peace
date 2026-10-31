@@ -29,6 +29,7 @@ class SkyCycle;
 class Chest;
 class CabinDoor;
 class ShutterWindow;
+class ShellField;
 
 class SaveSystem : public Node {
 	GDCLASS(SaveSystem, Node)
@@ -58,12 +59,15 @@ private:
 
 	String door_state;   // 木门 "0"关 / "1"推 / "-1"拉（v5 增量键，旧档缺省=关）
 	String windows_open; // 百叶窗定位序 "1,0,0,1"×4 FL,FR,L,B（v5 增量键，旧档缺省=全关）
+	String shells_mask;  // 贝壳拾取掩码 "0101..."（v6 增量键，旧档缺省=未拾取）
+	bool shells_applied = false;
 
 	SkyCycle *find_sky() const;
 	GameDirector *find_director() const;
 	Chest *find_chest() const;
 	CabinDoor *find_door() const;
 	ShutterWindow *find_window(int p_index) const; // 0..3 → ShutterFL/FR/L/B 固定路径
+	ShellField *find_shells() const;
 	void restore_targets(); // 把缓存值写回 SkyCycle/GameDirector（缺谁下帧再试）
 	void trim_logs();       // user://logs/ 超过 10MB 时按最旧优先删除（引擎只按份数轮转不限体积）
 

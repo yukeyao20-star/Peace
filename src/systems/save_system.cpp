@@ -1,5 +1,7 @@
 #include "save_system.h"
 
+#include "../props/shells.h"
+
 #include <godot_cpp/classes/config_file.hpp>
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/engine.hpp>
@@ -62,6 +64,16 @@ void SaveSystem::_notification(int p_what) {
 			if (!restored) {
 				restore_targets();
 			}
+			// v6 贝壳：ShellField 可能晚于本节点 READY，逐帧补应用一次
+			if (loaded_data && !shells_applied) {
+				ShellField *sh = find_shells();
+				if (sh != nullptr) {
+					if (shells_mask.length() == 10) {
+						sh->apply_collected_mask(shells_mask);
+					}
+					shells_applied = true;
+				}
+			}
 			// —— 每 30 秒自动存档 ——
 			autosave_t += (float)get_process_delta_time();
 			if (autosave_t >= AUTOSAVE_SECONDS) {
@@ -107,6 +119,13 @@ CabinDoor *SaveSystem::find_door() const {
 		return nullptr;
 	}
 	return Object::cast_to<CabinDoor>(get_parent()->get_node_or_null(NodePath("Homestead/CabinDoor")));
+}
+
+ShellField *SaveSystem::find_shells() const {
+	if (get_parent() == nullptr) {
+		return nullptr;
+	}
+	return Object::cast_to<ShellField>(get_parent()->get_node_or_null(NodePath("Shells")));
 }
 
 ShutterWindow *SaveSystem::find_window(int p_index) const {
@@ -185,6 +204,13 @@ bool SaveSystem::save_now() {
 	}
 	cf->set_value(SEC, "windows_open", windows_open);
 
+	// v6：贝壳拾取掩码——存前拉最新值；缺源保留缓存，防退出拆树期覆盖
+	ShellField *sh = find_shells();
+	if (sh != nullptr) {
+		shells_mask = sh->get_collected_mask();
+	}
+	cf->set_value(SEC, "shells_mask", shells_mask);
+
 	return cf->save(SAVE_PATH) == Error::OK;
 }
 
@@ -222,6 +248,8 @@ bool SaveSystem::load_now() {
 	chest_looted = (bool)cf->get_value(SEC, "chest_looted", false); // 旧档缺键=未发现
 	door_state = cf->get_value(SEC, "door_state", String());       // 旧档缺键=空串 → 关门
 	windows_open = cf->get_value(SEC, "windows_open", String());   // 旧档缺键=空串 → 全关
+	shells_mask = cf->get_value(SEC, "shells_mask", String());     // 旧档缺键=空串 → 都还在
+	shells_applied = false;
 
 	loaded_data = true;
 	restored = false;      // 有数据待应用，交给 _process 的重试通道
