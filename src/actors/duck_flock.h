@@ -11,7 +11,10 @@
 // 注意：水面海拔 -0.55 与 terrain_builder.h water_level 联动，改水位须同步这里。
 
 #include <godot_cpp/classes/node3d.hpp>
+#include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/vector3.hpp>
+
+#include "../interact/interactable.h"
 
 #include <vector>
 
@@ -19,9 +22,12 @@ namespace godot {
 
 class AudioStreamPlayer3D;
 class AudioStreamWAV;
+class MeshInstance3D;
+class SphereMesh;
+class StandardMaterial3D;
 
-class DuckFlock : public Node3D {
-	GDCLASS(DuckFlock, Node3D)
+class DuckFlock : public Interactable {
+	GDCLASS(DuckFlock, Interactable)
 
 private:
 	struct Duck {
@@ -49,6 +55,21 @@ private:
 	bool first_frame = true;
 	std::vector<Vector3> last_pos;
 
+	// —— 喂食（E 键撒面包屑，鸭群聚拢）——
+	struct Crumb {
+		MeshInstance3D *mi = nullptr;
+		float life = 0.0f;
+	};
+	float feed_cd = 0.0f;    // 冷却
+	float feed_t = 0.0f;     // 聚拢剩余时间
+	float feed_elapsed = 0.0f;
+	Vector3 feed_point;      // 水面上的投喂点
+	Ref<SphereMesh> crumb_mesh;
+	Ref<StandardMaterial3D> crumb_mat;
+	std::vector<Crumb> crumbs;
+	void spawn_crumbs();
+	void update_crumbs(float p_delta);
+
 	void build();
 	void spawn_duck(int p_index, unsigned p_seed);
 	Ref<AudioStreamWAV> make_quack();
@@ -58,6 +79,13 @@ protected:
 
 public:
 	void _notification(int p_what);
+
+	// Interactable
+	String get_prompt() const override;
+	Vector3 get_interact_pos() const override;
+	float get_interact_distance() const override;
+	bool requires_line_of_sight() const override { return false; }
+	void interact(const Vector3 &p_player_pos) override;
 };
 
 } // namespace godot

@@ -1226,6 +1226,7 @@ sky_cycle_path = NodePath("../SkyCycle")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, -24)
 
 [node name="Ducks" type="DuckFlock" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, -0.55, 26)
 
 [node name="LakeJumps" type="LakeJumpFx" parent="."]
 

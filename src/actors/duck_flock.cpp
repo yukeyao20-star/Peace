@@ -21,6 +21,13 @@
 using namespace godot;
 
 void DuckFlock::_bind_methods() {
+	ADD_SIGNAL(MethodInfo("animal_fed"));
+	// 覆写 Interactable 的虚方法：脚本侧也走鸭子自己的实现（-s 探针可测）
+	ClassDB::bind_method(D_METHOD("get_prompt"), &DuckFlock::get_prompt);
+	ClassDB::bind_method(D_METHOD("get_interact_pos"), &DuckFlock::get_interact_pos);
+	ClassDB::bind_method(D_METHOD("get_interact_distance"), &DuckFlock::get_interact_distance);
+	ClassDB::bind_method(D_METHOD("requires_line_of_sight"), &DuckFlock::requires_line_of_sight);
+	ClassDB::bind_method(D_METHOD("interact", "player_pos"), &DuckFlock::interact);
 }
 
 void DuckFlock::_notification(int p_what) {
@@ -30,10 +37,23 @@ void DuckFlock::_notification(int p_what) {
 				break;
 			}
 			build();
+			add_to_group("interactables"); // E 键撒面包屑
+			add_to_group("farm_animals"); // 复用"喂动物"每日待办计分（导演按组连 animal_fed）
 			if (get_parent() != nullptr) {
 				sky_cycle = get_parent()->get_node_or_null("SkyCycle");
 				player = Object::cast_to<Node3D>(get_parent()->get_node_or_null("Player"));
 			}
+			// 面包屑小球的共享网格/材质
+			crumb_mesh.instantiate();
+			crumb_mesh->set_radius(0.022f);
+			crumb_mesh->set_height(0.044f);
+			crumb_mesh->set_radial_segments(6);
+			crumb_mesh->set_rings(3);
+			crumb_mat.instantiate();
+			crumb_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+			crumb_mat->set_albedo(Color(0.94f, 0.83f, 0.56f));
+			crumb_mat->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+			crumb_mesh->set_material(crumb_mat);
 			// 嘎嘎声源（程序化合成，无外部音频依赖）
 			quack_stream = make_quack();
 			if (quack_stream.is_valid()) {
@@ -49,6 +69,15 @@ void DuckFlock::_notification(int p_what) {
 		case NOTIFICATION_PROCESS: {
 			double delta = get_process_delta_time();
 			anim_t += (float)delta;
+			// 喂食冷却/聚拢计时
+			if (feed_cd > 0.0f) {
+				feed_cd = Math::max(0.0f, feed_cd - (float)delta);
+			}
+			if (feed_t > 0.0f) {
+				feed_t = Math::max(0.0f, feed_t - (float)delta);
+				feed_elapsed += (float)delta;
+			}
+			update_crumbs((float)delta);
 			// 偶尔嘎两声：玩家在 30m 内才叫，避免远处空响
 			quack_timer -= (float)delta;
 			if (quack_timer <= 0.0f && voice != nullptr && !ducks.empty()) {
@@ -81,7 +110,16 @@ void DuckFlock::_notification(int p_what) {
 					night_mul = night ? 0.35f : 1.0f;
 				}
 			}
-			for (Duck &d : ducks) {
+			// 喂食聚拢权重：1.2s 游过去、最后 1.5s 散开
+			float gather_k = 0.0f;
+			if (feed_t > 0.0f) {
+				float kin = Math::clamp(feed_elapsed / 1.2f, 0.0f, 1.0f);
+				float kout = Math::clamp(feed_t / 1.5f, 0.0f, 1.0f);
+				float k = kin * kout;
+				gather_k = k * k * (3.0f - 2.0f * k);
+			}
+			for (int di = 0; di < (int)ducks.size(); di++) {
+				Duck &d = ducks[di];
 				if (d.root == nullptr) {
 					continue;
 				}
@@ -90,13 +128,32 @@ void DuckFlock::_notification(int p_what) {
 				Vector3 pos(lake_center.x + std::cos(d.angle) * d.radius,
 						water_level + 0.02f + bob,
 						lake_center.y + std::sin(d.angle) * d.radius);
-				d.root->set_position(pos);
-				// 朝向 = 切线方向（角速度符号决定顺/逆时针），再叠一个固定微偏
-				float sgn = d.speed >= 0.0f ? 1.0f : -1.0f;
-				Vector3 tangent(-std::sin(d.angle) * sgn, 0.0f, std::cos(d.angle) * sgn);
-				float yaw = std::atan2(tangent.x, tangent.z) + d.yaw_offset;
-				Vector3 dir(std::sin(yaw), 0.0f, std::cos(yaw));
-				Vector3 gpos = d.root->get_global_position();
+				if (gather_k > 0.001f) {
+					float ga = Math::TAU * (float)di / (float)ducks.size();
+					float gr = 0.5f + 0.22f * (float)di;
+					Vector3 gather(feed_point.x + std::cos(ga) * gr,
+							water_level + 0.02f + bob,
+							feed_point.z + std::sin(ga) * gr);
+					pos = pos.lerp(gather, gather_k);
+				}
+				d.root->set_global_position(pos);
+				Vector3 gpos = pos;
+				Vector3 dir;
+				if (gather_k > 0.03f) {
+					// 聚拢时面朝食物
+					dir = Vector3(feed_point.x - gpos.x, 0.0f, feed_point.z - gpos.z);
+					if (dir.length_squared() < 0.0001f) {
+						dir = Vector3(0.0f, 0.0f, 1.0f);
+					} else {
+						dir = dir.normalized();
+					}
+				} else {
+					// 朝向 = 切线方向（角速度符号决定顺/逆时针），再叠一个固定微偏
+					float sgn = d.speed >= 0.0f ? 1.0f : -1.0f;
+					Vector3 tangent(-std::sin(d.angle) * sgn, 0.0f, std::cos(d.angle) * sgn);
+					float yaw = std::atan2(tangent.x, tangent.z) + d.yaw_offset;
+					dir = Vector3(std::sin(yaw), 0.0f, std::cos(yaw));
+				}
 				d.root->look_at(gpos + dir, Vector3(0.0f, 1.0f, 0.0f));
 				// 轻微左右摇晃（像踩水）
 				d.root->rotate_object_local(Vector3(0.0f, 0.0f, 1.0f),
@@ -237,6 +294,113 @@ void DuckFlock::spawn_duck(int p_index, unsigned p_seed) {
 	d.wake = wake_mi;
 
 	ducks.push_back(d);
+}
+
+// —— 喂食交互（Interactable）——
+
+String DuckFlock::get_prompt() const {
+	if (feed_t > 0.0f) {
+		return String::utf8("🦆 鸭群游过来了");
+	}
+	if (feed_cd > 0.0f) {
+		return String::utf8("鸭子吃饱了，待会儿再来");
+	}
+	return String::utf8("按 E 撒面包屑");
+}
+
+Vector3 DuckFlock::get_interact_pos() const {
+	if (ducks.empty()) {
+		return Vector3(lake_center.x, water_level, lake_center.y);
+	}
+	// 取离玩家最近的那只鸭（玩家在岸上，避免用节点原点/固定半径的鸭）
+	Vector3 ref = player != nullptr ? player->get_global_position() : get_global_position();
+	Vector3 best = get_global_position();
+	float best_d = 1e9f;
+	for (const Duck &d : ducks) {
+		if (d.root == nullptr) {
+			continue;
+		}
+		Vector3 p = d.root->get_global_position();
+		float dd = p.distance_squared_to(ref);
+		if (dd < best_d) {
+			best_d = dd;
+			best = p;
+		}
+	}
+	best.y = water_level + 0.15f;
+	return best;
+}
+
+float DuckFlock::get_interact_distance() const {
+	return 8.0f; // 鸭子离岸 5~7m，比常规交互半径大
+}
+
+void DuckFlock::interact(const Vector3 &p_player_pos) {
+	if (feed_cd > 0.0f) {
+		return;
+	}
+	feed_cd = 12.0f;
+	feed_t = 7.0f;
+	feed_elapsed = 0.0f;
+	// 投喂点落在玩家这一侧的湖面上（离湖心不超过 12m，保证在水里）
+	Vector2 dir(p_player_pos.x - lake_center.x, p_player_pos.z - lake_center.y);
+	float len = dir.length();
+	if (len < 0.01f) {
+		dir = Vector2(0.0f, 1.0f);
+		len = 0.0f;
+	} else {
+		dir /= len;
+	}
+	float reach = Math::min(len, 12.0f);
+	feed_point = Vector3(lake_center.x + dir.x * reach, water_level + 0.02f,
+			lake_center.y + dir.y * reach);
+	spawn_crumbs();
+	if (voice != nullptr) {
+		voice->set_global_position(feed_point + Vector3(0.0f, 0.2f, 0.0f));
+		voice->play();
+	}
+	emit_signal("animal_fed"); // 每日待办"喂动物"计分
+}
+
+void DuckFlock::spawn_crumbs() {
+	static std::mt19937 rng(515151u);
+	std::uniform_real_distribution<float> d01(0.0f, 1.0f);
+	for (int i = 0; i < 7; i++) {
+		if (!crumb_mesh.is_valid()) {
+			break;
+		}
+		float a = d01(rng) * Math::TAU;
+		float r = 0.12f + d01(rng) * 0.55f;
+		MeshInstance3D *mi = memnew(MeshInstance3D);
+		mi->set_name("Crumb" + String::num_int64(i));
+		mi->set_mesh(crumb_mesh);
+		mi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+		add_child(mi);
+		mi->set_global_position(feed_point + Vector3(std::cos(a) * r, 0.012f, std::sin(a) * r));
+		Crumb c;
+		c.mi = mi;
+		c.life = 4.6f + d01(rng) * 0.8f;
+		crumbs.push_back(c);
+	}
+}
+
+void DuckFlock::update_crumbs(float p_delta) {
+	for (size_t i = 0; i < crumbs.size();) {
+		Crumb &c = crumbs[i];
+		c.life -= p_delta;
+		if (c.life <= 0.0f) {
+			if (c.mi != nullptr) {
+				c.mi->queue_free();
+			}
+			crumbs.erase(crumbs.begin() + (long)i);
+		} else {
+			if (c.mi != nullptr) {
+				float s = Math::clamp(c.life / 1.2f, 0.0f, 1.0f);
+				c.mi->set_scale(Vector3(s, s, s));
+			}
+			i++;
+		}
+	}
 }
 
 // 程序化鸭叫：「嘎-嘎」两声短促鼻音，基频下滑 + 共振峰加权（免滤波器，稳定）。
