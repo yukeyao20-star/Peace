@@ -11,6 +11,8 @@
 
 #include <godot_cpp/classes/audio_stream_wav.hpp>
 #include <godot_cpp/classes/node3d.hpp>
+#include <vector>
+
 #include <godot_cpp/variant/vector2.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
@@ -21,6 +23,7 @@ class Player; // 全局命名空间（player.h 的定义不在 godot 内）
 namespace godot {
 
 class AudioStreamPlayer3D;
+class MeshInstance3D;
 class CPUParticles3D;
 class OmniLight3D;
 class TerrainBuilder;
@@ -51,6 +54,12 @@ private:
 	AudioStreamPlayer3D *boat_patter = nullptr;
 	Ref<AudioStreamWAV> snd_patter;
 	Node *sky = nullptr;
+	Node3D *winter_snow = nullptr;   // 船舱/座板/船头的积雪
+	Node3D *dock_snow = nullptr;     // 码头木桩顶的雪帽
+	Node3D *floe_root = nullptr;     // 船边浮冰
+	std::vector<MeshInstance3D *> floes;
+	std::vector<Vector3> floe_base;
+	float floe_t = 0.0f;
 	bool rain_fx_built = false;
 	void build_rain_fx(Node *p_dock);
 	Ref<AudioStreamWAV> make_patter();

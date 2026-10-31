@@ -183,10 +183,26 @@ void Rowboat::_notification(int p_what) {
 			}
 			// 雨天：甲板/船板上溅起细小水花
 			float rain_amt = 0.0f;
+			float snow_amt = 0.0f;
 			if (sky != nullptr) {
 				SkyCycle *scc = Object::cast_to<SkyCycle>(sky);
 				if (scc != nullptr) {
 					rain_amt = scc->get_rain_amount();
+					snow_amt = scc->get_snow_amount();
+				}
+			}
+			// 冬日细节：积雪上船、桩顶雪帽、船边浮冰
+			if (winter_snow != nullptr) {
+				winter_snow->set_visible(snow_amt > 0.45f);
+			}
+			if (dock_snow != nullptr) {
+				dock_snow->set_visible(snow_amt > 0.45f);
+			}
+			if (floe_root != nullptr) {
+				floe_root->set_visible(snow_amt > 0.78f);
+				floe_t += (float)delta;
+				for (size_t fi = 0; fi < floes.size(); fi++) {
+					floes[fi]->set_position(floe_base[fi] + Vector3(0.0f, 0.012f * std::sin(floe_t * 1.4f + (float)fi * 1.3f), 0.0f));
 				}
 			}
 			if (dock_splash != nullptr) {
@@ -486,6 +502,41 @@ void Rowboat::build_hull() {
 	oar_drip->set_position(Vector3(0.0f, 0.30f, 0.0f));
 	oar_drip->set_emitting(false);
 	hull->add_child(oar_drip);
+
+	// —— 冬日：船舱/座板/船头积雪与舷边垂冰 ——
+	const Color snow_white(0.92f, 0.95f, 1.0f);
+	winter_snow = memnew(Node3D);
+	winter_snow->set_name("WinterSnow");
+	hull->add_child(winter_snow);
+	meshutil::add_box(winter_snow, toon, Vector3(0.78f, 0.03f, 1.60f), Vector3(0.0f, 0.165f, -0.06f), snow_white);
+	meshutil::add_box(winter_snow, toon, Vector3(0.52f, 0.03f, 0.72f), Vector3(0.0f, 0.165f, 1.08f), snow_white);
+	meshutil::add_box(winter_snow, toon, Vector3(0.82f, 0.03f, 0.24f), Vector3(0.0f, 0.405f, 0.42f), snow_white);
+	meshutil::add_box(winter_snow, toon, Vector3(0.82f, 0.03f, 0.24f), Vector3(0.0f, 0.405f, -0.36f), snow_white);
+	meshutil::add_box(winter_snow, toon, Vector3(0.62f, 0.03f, 0.60f), Vector3(0.0f, 0.075f, 1.30f), snow_white);
+	Ref<StandardMaterial3D> ice_mat;
+	ice_mat.instantiate();
+	ice_mat->set_albedo(Color(0.80f, 0.92f, 1.0f, 0.78f));
+	ice_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	ice_mat->set_roughness(0.15f);
+	Ref<CylinderMesh> icicle;
+	icicle.instantiate();
+	icicle->set_top_radius(0.024f);
+	icicle->set_bottom_radius(0.0f);
+	icicle->set_height(0.16f);
+	icicle->set_radial_segments(5);
+	icicle->set_rings(1);
+	icicle->set_material(Ref<Material>(ice_mat));
+	for (int i = 0; i < 6; i++) {
+		const float side = (i % 2 == 0) ? 1.0f : -1.0f;
+		const float z = -0.45f + (float)(i / 2) * 0.55f;
+		const float len = 0.10f + 0.06f * (float)((i * 7) % 5);
+		MeshInstance3D *ic = memnew(MeshInstance3D);
+		ic->set_mesh(icicle);
+		ic->set_scale(Vector3(1.0f, len / 0.16f, 1.0f));
+		ic->set_position(Vector3(side * 0.44f, 0.40f - len * 0.5f, z));
+		winter_snow->add_child(ic);
+	}
+	winter_snow->set_visible(false);
 }
 
 void Rowboat::build_dock() {
@@ -626,6 +677,38 @@ void Rowboat::build_dock() {
 	rope_mi->set_position(Vector3(-6.2f, -0.24f, -7.3f));
 	rope_mi->set_rotation(Vector3(1.5707964f, 0.0f, 0.3f));
 	body->add_child(rope_mi);
+
+	// —— 冬日：木桩雪帽 + 船边浮冰 ——
+	const Color snow_white(0.92f, 0.95f, 1.0f);
+	dock_snow = memnew(Node3D);
+	dock_snow->set_name("DockSnow");
+	body->add_child(dock_snow);
+	for (int i = 0; i < 4; i++) {
+		const float x = (i % 2 == 0) ? -6.85f : -5.15f;
+		const float z = (i < 2) ? -11.6f : -6.65f;
+		meshutil::add_box(dock_snow, toon, Vector3(0.19f, 0.04f, 0.19f), Vector3(x, -0.23f, z), snow_white);
+	}
+	meshutil::add_box(dock_snow, toon, Vector3(0.34f, 0.035f, 0.34f), Vector3(-6.68f, 2.31f, -6.95f), snow_white);
+
+	floe_root = memnew(Node3D);
+	floe_root->set_name("Floes");
+	body->add_child(floe_root);
+	const Vector3 floe_pos[5] = {
+		Vector3(-7.0f, -0.52f, -9.9f),
+		Vector3(-4.9f, -0.52f, -10.4f),
+		Vector3(-7.3f, -0.52f, -7.8f),
+		Vector3(-4.4f, -0.52f, -9.2f),
+		Vector3(-6.0f, -0.52f, -6.4f),
+	};
+	for (int i = 0; i < 5; i++) {
+		MeshInstance3D *f = meshutil::add_box(floe_root, toon,
+				Vector3(0.28f + 0.04f * (float)(i % 3), 0.035f, 0.20f + 0.03f * (float)((i + 1) % 3)),
+				floe_pos[i], Color(0.90f, 0.96f, 1.0f), Vector3(0.0f, (float)i * 0.7f, 0.0f));
+		f->set_name(String("Floe") + String::num_int64(i));
+		floes.push_back(f);
+		floe_base.push_back(floe_pos[i]);
+	}
+	floe_root->set_visible(false);
 }
 
 // 桨叶入水：短促的低频水花
