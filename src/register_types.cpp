@@ -128,6 +128,7 @@
 #include "sundial.h"
 #include "bean_trellis.h"
 #include "bicycle.h"
+#include "porch_lights.h"
 #include "beach_finds.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
@@ -281,6 +282,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(Sundial);
 	GDREGISTER_CLASS(BeanTrellis);
 	GDREGISTER_CLASS(Bicycle);
+	GDREGISTER_CLASS(PorchLights);
 	GDREGISTER_CLASS(BeachFinds);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
