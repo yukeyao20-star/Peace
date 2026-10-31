@@ -591,8 +591,9 @@ void Player::_physics_step() {
 	if (is_boating) {
 		if (boat != nullptr) {
 			set_global_position(boat->get_global_position() + Vector3(0.0f, 0.34f, -0.30f));
+			float yaw = boat->get_global_rotation().y;
+			facing = Vector3(std::sin(yaw), 0.0f, std::cos(yaw)); // 船钓时朝船头
 			if (model != nullptr) {
-				float yaw = boat->get_global_rotation().y;
 				float lean = 0.0f;
 				Rowboat *rb = Object::cast_to<Rowboat>(boat);
 				if (rb != nullptr && std::fabs(rb->get_speed()) > 0.1f) {

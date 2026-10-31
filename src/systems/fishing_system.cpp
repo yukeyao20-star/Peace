@@ -300,6 +300,7 @@ void FishingSystem::build_tackle() {
 
 	// 浮漂：红白两截小球
 	bobber = memnew(Node3D);
+	bobber->set_name("Bobber");
 	add_child(bobber);
 	{
 		MeshInstance3D *top = memnew(MeshInstance3D);
@@ -588,7 +589,8 @@ bool FishingSystem::check_near_shore(const Vector3 &p_pos) const {
 	// 现在直接问地形：脚边 6m 内有没有"水深够下竿"的地方。
 	if (terrain != nullptr) {
 		// 站在深水里不能钓；脚底贴着水面（荷叶/浅滩）算例外
-		if (terrain->water_depth_at(p_pos.x, p_pos.z) > 0.25f
+		// 坐在船上时人高于水面，但脚下就是深水——放行，允许从船上抛竿
+		if (!player->get_is_boating() && terrain->water_depth_at(p_pos.x, p_pos.z) > 0.25f
 				&& Math::abs(p_pos.y - water_level) > 0.35f) {
 			return false;
 		}
