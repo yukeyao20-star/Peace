@@ -64,6 +64,7 @@
 #include "rain_chain.h"
 #include "clothesline.h"
 #include "scarecrow.h"
+#include "chicken_coop.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
 #include "leaf_drift.h"
@@ -152,6 +153,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(RainChain);
 	GDREGISTER_CLASS(Clothesline);
 	GDREGISTER_CLASS(Scarecrow);
+	GDREGISTER_CLASS(ChickenCoop);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
 	GDREGISTER_CLASS(LeafDrift);

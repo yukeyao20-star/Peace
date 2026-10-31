@@ -123,7 +123,8 @@
 | 110 | 优化专项（雨链 48 个单体合并为 5 个 MultiMesh、缓存 SkyCycle 查找、细小道具关阴影、材质写入脏检查） | dac13d3 |
 | 111 | 院中晾衣绳（调研悬挂布摆动后：四件衣物挂点轻摆/淋湿变深滴水/雪落绳面/按 E 收衣服再晾回） | 84ba546 |
 | 112 | 篱笆牵牛花（调研藤蔓生成后：5 根藤 MultiMesh/6 朵晨开午合/清晨露珠/白天小蜂/雨雪闭花） | a8f3034 |
-| 113 | 院角稻草人（调研乌鸦 AI 后：木架草人/袖子随风/两只乌鸦绕飞不落近/程序化鸦叫/按 E 扶正草帽） | 本轮提交 |
+| 113 | 院角稻草人（调研乌鸦 AI 后：木架草人/袖子随风/两只乌鸦绕飞不落近/程序化鸦叫/按 E 扶正草帽） | a9b2061 |
+| 114 | 小鸡舍（调研鸡群漫步后：木窝草窝/三只母鸡走-啄食状态机/靠近扑翅逃开/按 E 收蛋/定时再下蛋） | 本轮提交 |
 
 ## 编号对账
 
@@ -218,6 +219,12 @@ FPS 基本不变：当前场景主要瓶颈仍在整片地形/植被的三角形
 - gmtk-2023（Godot）—— 提交含 "tweak crow ai"、"Add dancing crow"，乌鸦用简单环绕/航点
 - Summer Engine「How to make AI in Godot」—— FSM + 感知范围的基本结构（本作只留绕飞 + 保持距离）
 - Reddit r/godot 程序化稻草人动画 —— 关节用代码摆动而非骨骼动画
+
+第 114 轮补充参考：
+- kyrick/godot-boids —— 鸡群用视野/避让距离/最大速度的 steering 参数
+- konbel/steering-behaviors-godot-4 —— Wander + Flee 的基本行为
+- dusoleil/chicken-chaser-gd —— mov_length / peck_chance / flap_chance 概率状态
+- CSDN《Godot4.3 小鸡 NPC》—— 行走/空闲由计时器驱动、靠近玩家逃跑
 
 ## 收尾
 
