@@ -191,7 +191,7 @@ void Player::_notification(int p_what) {
 			guide_panel->set_offset(SIDE_LEFT, -214.0f);
 			guide_panel->set_offset(SIDE_RIGHT, -16.0f);
 			guide_panel->set_offset(SIDE_TOP, 16.0f);
-			guide_panel->set_offset(SIDE_BOTTOM, 168.0f);
+			guide_panel->set_offset(SIDE_BOTTOM, 190.0f);
 
 			// 小黑板：墨绿板面 + 原木边框，粉笔字（与木牌/木屋同一材质语言）
 			guide_panel->add_theme_stylebox_override("panel", uistyle::make_blackboard_textured(0.98f));
@@ -207,10 +207,11 @@ void Player::_notification(int p_what) {
 				"[G] 烟花 · 升空绚烂燃放",
 				"[R] 翻滚 · 趣味滚地冲刺",
 				"[M] 舆图 · 苍湖全景漫游",
-				"[空格] 跳跃 · 支持凌空二段跳"
+				"[空格] 跳跃 · 支持凌空二段跳",
+				"[空格/Ctrl] 游泳 · 上浮 / 下潜"
 			};
 
-			for (int hi = 0; hi < 6; ++hi) {
+			for (int hi = 0; hi < 7; ++hi) {
 				Label *hl = memnew(Label);
 				hl->set_text(String::utf8(hints[hi]));
 				uistyle::dress_chalk_label(hl, 13, uistyle::chalk_font());
@@ -222,6 +223,7 @@ void Player::_notification(int p_what) {
 			build_sleep_ui();
 			rebuild_costume();
 			build_skate_shoes();
+			build_propeller();
 
 			// 脚步声：真实雪地踩雪声优先读取外部音频资源（用户下载的踩雪声录音），其余程序化合成
 			steps_voice = memnew(AudioStreamPlayer);
@@ -623,17 +625,42 @@ void Player::_physics_step() {
 	}
 	bool in_bush = false;
 	is_ice_skating = false;
+	float water_level_here = -0.55f;
+	float water_depth_here = 0.0f;
 	if (terrain_cache != nullptr) {
 		in_bush = terrain_cache->is_in_bush(gp.x, gp.z, gp.y);
 		is_ice_skating = terrain_cache->is_on_frozen_lake(gp.x, gp.z, gp.y);
+		water_level_here = terrain_cache->get_water_level();
+		water_depth_here = terrain_cache->water_depth_at(gp.x, gp.z);
 	}
+	// 深水自动进入游泳：水深 >1.25m 且身体已沉到水面下 0.35m（岸边蹚水仍走正常走路）
+	bool swimming = !is_ice_skating && water_depth_here > 1.25f && gp.y < water_level_here - 0.35f;
+	if (swimming) {
+		is_ice_skating = false;
+	}
+	is_swimming = swimming;
+	if (propeller != nullptr) {
+		propeller->set_visible(swimming);
+	}
+	if (is_swimming && !was_swimming) {
+		play_land(2); // 入水水花声
+	}
+	was_swimming = is_swimming;
 	// 踏上冰面时自动穿上滑冰鞋，离开冰面时自动脱下
 	set_skate_shoes_visible(is_ice_skating && !is_rolling);
 
 	double current_speed = in_bush ? (move_speed * 0.52) : (is_rolling ? (move_speed * 1.25) : (is_ice_skating ? (move_speed * 1.65) : move_speed));
+	if (is_swimming) {
+		current_speed = 4.6; // 水中推进：比走路略慢，但六向自由
+	}
 
-	// 水平：冰面滑冰（超低阻尼摩擦、高动量极滑滑行，飞一般的感觉）vs 普通地面直接设定
-	if (is_ice_skating) {
+	// 水平：游泳（水的阻力，加速平滑）/ 冰面滑冰（超低阻尼）/ 普通地面直接设定
+	if (is_swimming) {
+		Vector3 target_vel = dir * (float)current_speed;
+		float k = Math::min(1.0f, (float)delta * 3.4f);
+		velocity.x = Math::lerp((float)velocity.x, target_vel.x, k);
+		velocity.z = Math::lerp((float)velocity.z, target_vel.z, k);
+	} else if (is_ice_skating) {
 		Vector3 target_vel = dir * (float)current_speed;
 		if (dir.length_squared() > 0.001) {
 			// 在冰面上推进：敏捷推背加速滑行
@@ -649,6 +676,18 @@ void Player::_physics_step() {
 		velocity.z = dir.z * current_speed;
 	}
 
+	// 垂直：游泳六向（空格上浮 / Ctrl·C 下潜）vs 走路重力 + 跳跃
+	bool space_down = act_pressed("jump", KEY_SPACE);
+	if (is_swimming) {
+		double up = space_down ? 1.0 : 0.0;
+		double down = (input->is_key_pressed(KEY_CTRL) || input->is_key_pressed(KEY_C)) ? 1.0 : 0.0;
+		double vy_target = (up - down) * 2.6; // 无输入时中性浮力，悬停
+		velocity.y = (double)Math::lerp((float)velocity.y, (float)vy_target,
+				(float)Math::min(1.0, delta * 4.5));
+		jump_count = 0;
+		is_double_jumping = false;
+		double_jump_spin = 0.0;
+	} else {
 	// 垂直：重力 + 落地归零与跳跃计数重置
 	if (is_on_floor()) {
 		if (velocity.y < 0.0) {
@@ -666,7 +705,6 @@ void Player::_physics_step() {
 	}
 
 	// 跳跃与二段跳系统（空格键边沿触发）
-	bool space_down = act_pressed("jump", KEY_SPACE);
 	if (space_down && !space_prev) {
 		if (is_on_floor()) {
 			// 一段跳：地面起跳
@@ -704,10 +742,39 @@ void Player::_physics_step() {
 			}
 		}
 	}
+	}
 	space_prev = space_down;
 
 	set_velocity(velocity);
 	move_and_slide();
+
+	// 游泳高度夹取：上不冲出水面（允许头顶微露呼吸），下不钻进湖底
+	if (is_swimming && terrain_cache != nullptr) {
+		Vector3 p = get_global_position();
+		float wl = terrain_cache->get_water_level();
+		float wd = terrain_cache->water_depth_at(p.x, p.z);
+		float bed = wl - wd;
+		Vector3 v = get_velocity();
+		bool clamped = false;
+		if (p.y > wl - 0.75f) {
+			p.y = wl - 0.75f;
+			if (v.y > 0.0) {
+				v.y = 0.0;
+			}
+			clamped = true;
+		}
+		if (p.y < bed + 0.75f) {
+			p.y = bed + 0.75f;
+			if (v.y < 0.0) {
+				v.y = 0.0;
+			}
+			clamped = true;
+		}
+		if (clamped) {
+			set_global_position(p);
+			set_velocity(v);
+		}
+	}
 
 	// 防坠兜底：任何情况下掉出世界（y<-60）直接传送回出生点
 	// （历史事故：扩展失效期间地形碰撞消失，主角坠穿场景被一起存盘）
@@ -758,7 +825,27 @@ void Player::_physics_step() {
 		}
 		float yaw = Math::atan2(facing.x, facing.z);
 
-		if (is_rolling) {
+		if (is_swimming) {
+			// 横躺俯泳：身体沿前进方向水平，抬头/低头跟随上浮下潜
+			float yaw = Math::atan2(facing.x, facing.z);
+			const Vector3 hv = get_velocity();
+			float pitch = Math::clamp(-(float)hv.y * 0.14f, -0.55f, 0.55f);
+			swim_t += delta;
+			swim_roll = std::sin((float)swim_t * 2.1f) * 0.06f;
+			Basis b = Basis(Vector3(0.0, 1.0, 0.0), yaw)
+					* Basis(Vector3(1.0, 0.0, 0.0), 1.570796f + pitch)
+					* Basis(Vector3(0.0, 0.0, 1.0), swim_roll);
+			model->set_basis(b);
+			// 胶囊中心（局部 0,0.9,0）抬到 Player 原点上方 0.62m，水平漂浮
+			Vector3 center_offset = b.xform(Vector3(0.0f, 0.9f, 0.0f));
+			model->set_position(Vector3(0.0f, 0.62f, 0.0f) - center_offset);
+			// 螺旋桨转速跟速度走，悬停时怠速
+			if (propeller_blades != nullptr) {
+				float spd = Vector2(hv.x, hv.z).length();
+				propeller_blades->rotate_object_local(Vector3(0.0, 1.0, 0.0),
+						(float)delta * (5.0f + spd * 6.0f));
+			}
+		} else if (is_rolling) {
 			const Vector3 hv = get_velocity();
 			double hspd = Vector2(hv.x, hv.z).length();
 			if (hspd > 0.15) {
@@ -1084,7 +1171,7 @@ void Player::_update_camera(double delta) {
 		return; // 不走跟随 + 遮挡回拉（机位是手工摆在屋里的）
 	}
 
-	const Vector3 head = get_global_position() + Vector3(0.0, camera_height, 0.0);
+	const Vector3 head = get_global_position() + Vector3(0.0, is_swimming ? 0.55 : camera_height, 0.0);
 
 	if (!cam_follow_init) {
 		cam_follow = head;
@@ -1096,8 +1183,9 @@ void Player::_update_camera(double delta) {
 	}
 	cam_follow = cam_follow.lerp(head, factor);
 
+	double cam_dist_eff = is_swimming ? Math::min(cam_dist, 4.0) : cam_dist;
 	Vector3 off = Basis(Vector3(0.0, 1.0, 0.0), (float)cam_yaw).xform(
-			Vector3(0.0, std::sin(cam_pitch), std::cos(cam_pitch)) * cam_dist);
+			Vector3(0.0, std::sin(cam_pitch), std::cos(cam_pitch)) * cam_dist_eff);
 	Vector3 want = cam_follow + off;
 
 	PhysicsDirectSpaceState3D *space = get_world_3d()->get_direct_space_state();
@@ -1120,6 +1208,20 @@ void Player::_update_camera(double delta) {
 				// 空间极端狭小时，将相机微抬并保持在头顶斜后方，避免完全挤死
 				want = cam_follow + Vector3(0.0f, 0.40f, 0.0f) + dir_from_follow.normalized() * 0.35f;
 			}
+		}
+	}
+
+	// 水下机位约束：人在水里时相机尽量也留在水下，否则会隔着水面看人；
+	// 同时不能扎进湖底。
+	if (is_swimming && terrain_cache != nullptr) {
+		float wl = terrain_cache->get_water_level();
+		if (get_global_position().y < wl - 1.0f && want.y > wl - 0.22f) {
+			want.y = wl - 0.22f;
+		}
+		float wd = terrain_cache->water_depth_at(want.x, want.z);
+		float bed = wl - wd;
+		if (want.y < bed + 0.35f) {
+			want.y = bed + 0.35f;
 		}
 	}
 
@@ -3509,4 +3611,55 @@ void Player::_on_firework_cleanup(Node *burst_root, Node *rocket, Node *launch_v
 	if (launch_voice != nullptr && launch_voice->is_inside_tree()) {
 		launch_voice->queue_free();
 	}
+}
+
+// —— 游泳螺旋桨：背后三叶推进器（银白桨叶 + 青色轮毂，入水自动出现） ——
+void Player::build_propeller() {
+	if (model == nullptr) {
+		return;
+	}
+	propeller = memnew(Node3D);
+	propeller->set_name("SwimPropeller");
+	propeller->set_position(Vector3(0.0f, -0.12f, 0.0f)); // 脚后（局部 +Y 经横置后指向身体前方，-Y 即脚后）
+	model->add_child(propeller);
+
+	Ref<StandardMaterial3D> metal;
+	metal.instantiate();
+	metal->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	metal->set_albedo(Color(0.78f, 0.86f, 0.92f));
+	metal->set_feature(BaseMaterial3D::FEATURE_EMISSION, true);
+	metal->set_emission(Color(0.30f, 0.62f, 0.72f));
+	metal->set_emission_energy_multiplier(0.55f);
+
+	// 轮毂
+	Ref<SphereMesh> hub;
+	hub.instantiate();
+	hub->set_radius(0.055f);
+	hub->set_height(0.11f);
+	hub->set_radial_segments(10);
+	hub->set_rings(5);
+	hub->set_material(metal);
+	MeshInstance3D *hub_mi = memnew(MeshInstance3D);
+	hub_mi->set_mesh(hub);
+	propeller->add_child(hub_mi);
+
+	// 三片桨叶（绕 Z 轴旋转的盘面）
+	propeller_blades = memnew(Node3D);
+	propeller_blades->set_name("Blades");
+	propeller->add_child(propeller_blades);
+	for (int i = 0; i < 3; i++) {
+		Node3D *arm = memnew(Node3D);
+		arm->set_rotation(Vector3(0.0f, (float)i * 2.0943951f, 0.0f)); // 盘面绕身体前进轴
+		propeller_blades->add_child(arm);
+		Ref<BoxMesh> blade;
+		blade.instantiate();
+		blade->set_size(Vector3(0.055f, 0.016f, 0.30f));
+		blade->set_material(metal);
+		MeshInstance3D *bmi = memnew(MeshInstance3D);
+		bmi->set_mesh(blade);
+		bmi->set_position(Vector3(0.0f, 0.0f, 0.17f));
+		arm->add_child(bmi);
+	}
+
+	propeller->set_visible(false);
 }

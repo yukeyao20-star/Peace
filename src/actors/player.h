@@ -174,6 +174,15 @@ private:
 	void build_skate_shoes();
 	void set_skate_shoes_visible(bool p_vis);
 
+	// —— 游泳（深水自动切换：身体横置 + 背后螺旋桨，空格上浮 / Ctrl 下潜）——
+	bool is_swimming = false;
+	bool was_swimming = false;
+	Node3D *propeller = nullptr;
+	Node3D *propeller_blades = nullptr;
+	double swim_t = 0.0;
+	float swim_roll = 0.0f;
+	void build_propeller();
+
 	// —— 二段跳系统 ——
 	int jump_count = 0;                 // 当前空中跳跃次数（0: 在地面, 1: 一段跳, 2: 二段跳）
 	bool space_prev = false;            // 空格键边沿检测，防止按住长跳
