@@ -168,6 +168,11 @@ void SkyCycle::_notification(int p_what) {
 				Color col = uw_tint->get_color();
 				col.a = uw_alpha;
 				uw_tint->set_color(col);
+				// 光柱/焦散叠加层：强度跟水下浓度走，完全出水时隐藏省一次全屏绘制
+				if (uw_rays != nullptr && uw_rays_mat.is_valid()) {
+					uw_rays->set_visible(uw_alpha > 0.002f);
+					uw_rays_mat->set_shader_parameter("uw_amount", uw_alpha / 0.34f);
+				}
 				// 音频低通随水下状态平滑过渡（指数逼近，避免线性扫频的"呼呼"声）
 				float cut_target = target > 0.0f ? 700.0f : 20000.0f;
 				uw_cutoff += (cut_target - uw_cutoff) * Math::min(1.0f, (float)delta * 4.0f);
@@ -637,6 +642,25 @@ void SkyCycle::build_underwater() {
 	uw_tint->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
 	uw_tint->set_color(Color(0.04f, 0.26f, 0.30f, 0.0f));
 	uw_layer->add_child(uw_tint);
+
+	// 光柱/焦散：在青蓝色之上叠一层加色光效（不透明层遮住水下细节的问题由它补出"水感"）
+	ResourceLoader *rl = ResourceLoader::get_singleton();
+	if (rl != nullptr && rl->exists("res://assets/uw_rays.gdshader")) {
+		Ref<Shader> rays_shader = rl->load("res://assets/uw_rays.gdshader");
+		if (rays_shader.is_valid()) {
+			uw_rays_mat.instantiate();
+			uw_rays_mat->set_shader(rays_shader);
+			uw_rays_mat->set_shader_parameter("uw_amount", 0.0f);
+			uw_rays = memnew(ColorRect);
+			uw_rays->set_name("UnderwaterRays");
+			uw_rays->set_anchors_preset(Control::PRESET_FULL_RECT);
+			uw_rays->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+			uw_rays->set_color(Color(1.0f, 1.0f, 1.0f, 1.0f));
+			uw_rays->set_material(uw_rays_mat);
+			uw_rays->set_visible(false);
+			uw_layer->add_child(uw_rays);
+		}
+	}
 
 	// 水下音频：Master 总线挂一个低通，入水时截止频率滑到 ~700Hz（声音发闷），
 	// 出水滑回 20kHz（近似直通）。始终启用、只改截止频率，避免开关时的咔哒声。

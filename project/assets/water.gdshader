@@ -449,6 +449,12 @@ void fragment() {
 				shallow_color.rgb * 1.25 + vec3(0.06, 0.10, 0.12), pow(up_dot, 1.5));
 		// 从水下看，水面上的波光变成缓慢流动的亮纹（复用焦散图案）
 		under_col += vec3(0.55, 0.75, 0.80) * ca * 0.22 * up_dot;
+		// 头顶水面的慢波光影：大尺度明暗带随时间漂移，仰视时不像一块死色板
+		float uw_wave = sin(world_pos.x * 0.55 + world_pos.z * 0.32 + TIME * 1.05)
+				* sin(world_pos.z * 0.47 - world_pos.x * 0.21 - TIME * 0.83);
+		float uw_band = pow(max(uw_wave, 0.0), 1.6);
+		under_col += vec3(0.42, 0.66, 0.70) * uw_band
+				* (0.10 + 0.22 * up_dot) * (1.0 - cover);
 		// 结冰时从水下看是一层灰白冰盖
 		under_col = mix(under_col, ice_color * 0.85, cover * 0.85);
 		// 用自发光保证"水顶"不受光照方向影响（背面法线与阳光相反，

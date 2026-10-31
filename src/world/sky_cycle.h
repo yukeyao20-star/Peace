@@ -99,6 +99,8 @@ private:
 	Node3D *player = nullptr;          // 懒查找的主角
 	CanvasLayer *uw_layer = nullptr;   // 水下氛围覆盖层（相机入水时淡入）
 	ColorRect *uw_tint = nullptr;
+	ColorRect *uw_rays = nullptr;       // 水下光柱/焦散叠加层
+	Ref<ShaderMaterial> uw_rays_mat;
 	float uw_alpha = 0.0f;             // 当前不透明度（平滑过渡）
 	Ref<AudioEffectLowPassFilter> uw_lp; // 水下低通（Master 总线）
 	CPUParticles3D *uw_bubbles = nullptr; // 水下气泡（相机周围上升）
