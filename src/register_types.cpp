@@ -139,6 +139,7 @@
 #include "willow_tree.h"
 #include "bread_oven.h"
 #include "otter.h"
+#include "yarn_basket.h"
 #include "beach_finds.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
@@ -303,6 +304,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(WillowTree);
 	GDREGISTER_CLASS(BreadOven);
 	GDREGISTER_CLASS(Otter);
+	GDREGISTER_CLASS(YarnBasket);
 	GDREGISTER_CLASS(BeachFinds);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
