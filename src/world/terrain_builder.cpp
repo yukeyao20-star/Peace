@@ -1046,6 +1046,9 @@ void TerrainBuilder::update_sky_driven() {
 		Node *parent = get_parent();
 		if (parent) {
 			Node3D *pl = Object::cast_to<Node3D>(parent->get_node_or_null(NodePath("Player")));
+			if (pl == nullptr) {
+				pl = Object::cast_to<Node3D>(parent->find_child("Player", true, false));
+			}
 			if (pl != nullptr) {
 				sources.push_back({ pl, pl->get_global_position() });
 			}

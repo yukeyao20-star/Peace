@@ -159,7 +159,11 @@ Player *SaveSystem::find_player() const {
 	if (get_parent() == nullptr) {
 		return nullptr;
 	}
-	return Object::cast_to<Player>(get_parent()->get_node_or_null(NodePath("Player")));
+	Node *pl = get_parent()->get_node_or_null(NodePath("Player"));
+	if (pl == nullptr) {
+		pl = get_parent()->find_child("Player", true, false); // 划船时挂在 Boat/Hull 下
+	}
+	return Object::cast_to<Player>(pl);
 }
 
 Mailbox *SaveSystem::find_mailbox() const {

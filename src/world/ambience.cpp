@@ -69,6 +69,9 @@ void Ambience::_notification(int p_what) {
 			// —— 懒查找 Player 与 Terrain ——
 			if (player_cache == nullptr && get_parent() != nullptr) {
 				player_cache = Object::cast_to<Node3D>(get_parent()->get_node_or_null(NodePath("Player")));
+				if (player_cache == nullptr) {
+					player_cache = Object::cast_to<Node3D>(get_parent()->find_child("Player", true, false));
+				}
 			}
 			if (terrain_cache == nullptr && get_parent() != nullptr) {
 				terrain_cache = Object::cast_to<TerrainBuilder>(get_parent()->get_node_or_null(NodePath("Terrain")));

@@ -666,6 +666,9 @@ void FarmAnimal::tick_behavior(float p_delta, float p_night, float p_wet) {
 			}
 			// 避让主角：离主角过近时停步或重新觅径，防止推挤人
 			Node *pl_node = get_parent() ? get_parent()->get_node_or_null(NodePath("Player")) : nullptr;
+			if (pl_node == nullptr && get_parent() != nullptr) {
+				pl_node = get_parent()->find_child("Player", true, false);
+			}
 			if (pl_node != nullptr) {
 				Node3D *pl3d = Object::cast_to<Node3D>(pl_node);
 				if (pl3d != nullptr) {

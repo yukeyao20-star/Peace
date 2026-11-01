@@ -554,7 +554,11 @@ Player *PauseMenu::find_player() const {
 	if (p == nullptr) {
 		return nullptr;
 	}
-	return Object::cast_to<Player>(p->get_node_or_null(NodePath("Player")));
+	Node *pl = p->get_node_or_null(NodePath("Player"));
+	if (pl == nullptr) {
+		pl = p->find_child("Player", true, false);
+	}
+	return Object::cast_to<Player>(pl);
 }
 
 WorldEnvironment *PauseMenu::find_world_env() const {

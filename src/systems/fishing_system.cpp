@@ -120,6 +120,9 @@ void FishingSystem::_notification(int p_what) {
 				Node *p = get_parent();
 				if (p != nullptr) {
 					player = Object::cast_to<Player>(p->get_node_or_null(NodePath("Player")));
+					if (player == nullptr) {
+						player = Object::cast_to<Player>(p->find_child("Player", true, false));
+					}
 					terrain = Object::cast_to<TerrainBuilder>(p->get_node_or_null(NodePath("Terrain")));
 					sky = Object::cast_to<SkyCycle>(p->get_node_or_null(NodePath("SkyCycle")));
 				}
