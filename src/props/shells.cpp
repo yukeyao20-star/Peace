@@ -262,7 +262,12 @@ void ShellField::update_counter() {
 		add_child(hud);
 		PanelContainer *panel = memnew(PanelContainer);
 		panel->set_name("ShellCounterPanel");
-		panel->set_position(Vector2(12.0f, 96.0f));
+		// 左下角：避开左上角的「今日待办」木牌，两者不再叠在一起
+		panel->set_anchors_preset(Control::PRESET_BOTTOM_LEFT);
+		panel->set_offset(SIDE_LEFT, 12.0f);
+		panel->set_offset(SIDE_RIGHT, 140.0f);
+		panel->set_offset(SIDE_TOP, -46.0f);
+		panel->set_offset(SIDE_BOTTOM, -14.0f);
 		panel->set_custom_minimum_size(Vector2(118.0f, 0.0f));
 		panel->add_theme_stylebox_override("panel", uistyle::make_wood_textured(9.0f, 0.95f));
 		hud->add_child(panel);

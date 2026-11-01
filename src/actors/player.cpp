@@ -976,24 +976,21 @@ void Player::_physics_step() {
 		return;
 	}
 
-	// 2.5 划船：位置跟着船走，自身物理与交互全部暂停（上下船由 Rowboat 处理）
+	// 2.5 划船：角色已挂在船体 Hull 下，位置由船带着走，自身物理与交互全部暂停
 	if (is_boating) {
-		if (boat != nullptr) {
-			set_global_position(boat->get_global_position() + Vector3(0.0f, 0.34f, -0.30f));
-			float yaw = boat->get_global_rotation().y;
-			facing = Vector3(std::sin(yaw), 0.0f, std::cos(yaw)); // 船钓时朝船头
-			if (model != nullptr) {
-				float lean = 0.0f;
-				Rowboat *rb = Object::cast_to<Rowboat>(boat);
-				if (rb != nullptr && std::fabs(rb->get_speed()) > 0.1f) {
-					lean = std::sin(rb->get_row_phase()) * 0.10f;
-				}
-				// 坐在船舱里：整体下沉、纵向压扁并稍向后靠，下身被船舷挡住
-				model->set_scale(Vector3(1.0f, 0.65f, 1.0f));
-				model->set_basis(Basis(Vector3(0.0f, 1.0f, 0.0f), yaw)
-						* Basis(Vector3(1.0f, 0.0f, 0.0f), -0.12f + lean));
-				model->set_position(Vector3(0.0f, -0.28f, 0.0f));
+		if (boat != nullptr && model != nullptr) {
+			float lean = 0.0f;
+			Rowboat *rb = Object::cast_to<Rowboat>(boat);
+			if (rb != nullptr && std::fabs(rb->get_speed()) > 0.1f) {
+				lean = std::sin(rb->get_row_phase()) * 0.10f;
 			}
+			// 坐在船舱里：整体下沉、纵向压扁并稍向后靠，下身被船舷挡住。
+			// 模型朝向用船体局部坐标（0 = 船头），避免父节点已带船艏向时二次旋转。
+			facing = Vector3(0.0f, 0.0f, 1.0f);
+			// 坐姿：压扁并收到座垫上沿，避免胶囊底部穿进船板和横座
+			model->set_scale(Vector3(0.95f, 0.55f, 0.95f));
+			model->set_basis(Basis(Vector3(1.0f, 0.0f, 0.0f), -0.12f + lean));
+			model->set_position(Vector3(0.0f, -0.03f, 0.0f));
 		}
 		set_velocity(Vector3(0.0f, 0.0f, 0.0f));
 		if (prompt != nullptr) {

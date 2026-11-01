@@ -142,72 +142,32 @@ void apply_btn_face(const Ref<StyleBoxFlat> &p_sb, float p_alpha) {
 }
 
 void style_button(Button *p_btn, BtnKind p_kind) {
-	Ref<StyleBoxFlat> n, h, p;
-	n.instantiate();
-	h.instantiate();
-	p.instantiate();
-	if (p_kind == BTN_PRIMARY) {
-		// 主行动：浅松木板 + 深胡桃刻字，hover 提亮、pressed 压暗（像按下一块真木板）
-		for (auto *sb : { n.ptr(), h.ptr(), p.ptr() }) {
-			sb->set_corner_radius_all(10);
-			sb->set_border_width_all(2);
-			sb->set_border_color(Color(uistyle::wood_dark().r, uistyle::wood_dark().g, uistyle::wood_dark().b, 0.9f));
-			sb->set_content_margin_all(10.0f);
-			sb->set_content_margin(Side::SIDE_LEFT, 16.0f);
-			sb->set_content_margin(Side::SIDE_RIGHT, 16.0f);
-		}
-		n->set_bg_color(Color(0.72f, 0.58f, 0.38f, 1.0f));
-		h->set_bg_color(Color(0.80f, 0.66f, 0.44f, 1.0f));
-		p->set_bg_color(Color(0.62f, 0.49f, 0.31f, 1.0f));
-		p_btn->add_theme_color_override("font_color", Color(0.16f, 0.11f, 0.05f));
-		p_btn->add_theme_color_override("font_hover_color", Color(0.13f, 0.09f, 0.04f));
-		p_btn->add_theme_color_override("font_pressed_color", Color(0.13f, 0.09f, 0.04f));
-		p_btn->add_theme_color_override("font_focus_color", Color(0.16f, 0.11f, 0.05f));
-	} else if (p_kind == BTN_QUIT) {
-		for (auto *sb : { n.ptr(), p.ptr() }) {
-			sb->set_bg_color(Color(uistyle::wood_dark().r, uistyle::wood_dark().g, uistyle::wood_dark().b, 0.55f));
-			sb->set_corner_radius_all(10);
-			sb->set_border_width_all(1);
-			sb->set_border_color(Color(1.0f, 0.95f, 0.85f, 0.10f));
-			sb->set_content_margin_all(10.0f);
-			sb->set_content_margin(Side::SIDE_LEFT, 16.0f);
-			sb->set_content_margin(Side::SIDE_RIGHT, 16.0f);
-		}
-		// 悬停整块转暖红，暗示 irreversible（底/边/角全部逐属性设置,StyleBoxFlat 禁拷贝赋值）
-		h->set_bg_color(Color(0.62f, 0.26f, 0.18f, 0.72f));
-		h->set_border_color(Color(0.95f, 0.55f, 0.40f, 0.55f));
-		h->set_border_width_all(1);
-		h->set_corner_radius_all(10);
-		h->set_content_margin_all(10.0f);
-		h->set_content_margin(Side::SIDE_LEFT, 16.0f);
-		h->set_content_margin(Side::SIDE_RIGHT, 16.0f);
-		p_btn->add_theme_color_override("font_color", Color(0.93f, 0.88f, 0.78f, 0.92f));
-		p_btn->add_theme_color_override("font_hover_color", Color(1.0f, 0.86f, 0.80f));
-		p_btn->add_theme_color_override("font_pressed_color", Color(1.0f, 0.86f, 0.80f));
-		p_btn->add_theme_color_override("font_focus_color", uistyle::wood_text());
-	} else {
-		// 次按钮：嵌进木牌的凹槽——深胡桃底、奶油刻字
-		for (auto *sb : { n.ptr(), h.ptr(), p.ptr() }) {
-			sb->set_bg_color(Color(uistyle::wood_dark().r, uistyle::wood_dark().g, uistyle::wood_dark().b, 0.55f));
-			sb->set_corner_radius_all(10);
-			sb->set_border_width_all(1);
-			sb->set_border_color(Color(1.0f, 0.95f, 0.85f, 0.10f));
-			sb->set_content_margin_all(10.0f);
-			sb->set_content_margin(Side::SIDE_LEFT, 16.0f);
-			sb->set_content_margin(Side::SIDE_RIGHT, 16.0f);
-		}
-		h->set_bg_color(Color(0.36f, 0.26f, 0.16f, 0.75f));
-		h->set_border_color(Color(1.0f, 0.95f, 0.85f, 0.28f));
-		p->set_bg_color(Color(0.22f, 0.15f, 0.09f, 0.9f));
-		p_btn->add_theme_color_override("font_color", Color(0.93f, 0.88f, 0.78f, 0.92f));
-		p_btn->add_theme_color_override("font_hover_color", uistyle::wood_text());
-		p_btn->add_theme_color_override("font_pressed_color", uistyle::wood_text());
-		p_btn->add_theme_color_override("font_focus_color", uistyle::wood_text());
+	// 立体木牌/漆牌：复用 ui_style 里烘焙好的倒角贴图（亮边+暗边+黄铜包边），
+	// 比纯色 StyleBoxFlat 更有厚度；三态各一张，按下时倒角翻转。
+	const bool primary = (p_kind == BTN_PRIMARY);
+	for (int state = 0; state < 3; state++) {
+		p_btn->add_theme_stylebox_override(state == 0 ? "normal" : (state == 1 ? "hover" : "pressed"),
+				uistyle::make_button_style(primary, state));
 	}
-	p_btn->add_theme_stylebox_override("normal", n);
-	p_btn->add_theme_stylebox_override("hover", h);
-	p_btn->add_theme_stylebox_override("pressed", p);
-	p_btn->add_theme_stylebox_override("focus", n); // 聚焦不画框，靠底色变化表达
+	// focus 不画额外框，沿用 normal 的厚度
+	p_btn->add_theme_stylebox_override("focus", uistyle::make_button_style(primary, 0));
+	const Color face = primary ? Color(0.98f, 0.94f, 0.82f) : Color(0.95f, 0.91f, 0.82f);
+	Color hover = face;
+	Color pressed = face;
+	if (p_kind == BTN_QUIT) {
+		hover = Color(1.0f, 0.88f, 0.82f);
+		pressed = Color(1.0f, 0.88f, 0.82f);
+	} else if (primary) {
+		hover = Color(1.0f, 0.97f, 0.88f);
+		pressed = Color(0.94f, 0.90f, 0.78f);
+	} else {
+		hover = Color(1.0f, 0.95f, 0.85f);
+		pressed = Color(0.90f, 0.86f, 0.77f);
+	}
+	p_btn->add_theme_color_override("font_color", face);
+	p_btn->add_theme_color_override("font_hover_color", hover);
+	p_btn->add_theme_color_override("font_pressed_color", pressed);
+	p_btn->add_theme_color_override("font_focus_color", face);
 }
 
 } // namespace
@@ -229,7 +189,7 @@ void PauseMenu::build_ui() {
 
 	ColorRect *dim = memnew(ColorRect);
 	dim->set_name("Dim");
-	dim->set_color(Color(0.0f, 0.0f, 0.0f, 0.45f));
+	dim->set_color(Color(0.0f, 0.0f, 0.0f, 0.60f));
 	dim->set_anchors_preset(Control::PRESET_FULL_RECT);
 	root->add_child(dim);
 
@@ -239,14 +199,35 @@ void PauseMenu::build_ui() {
 	root->add_child(center);
 
 	// —— 面板（湖畔玻璃令牌 ui_style.h；内边距按菜单布局放大） ——
+	// 双层牌：外圈深胡桃厚边 + 内层凸起板面，投影落在身后的草地上，
+	// 让菜单像一块真正立在湖畔的木牌，而不是贴在屏幕上的色块。
+	PanelContainer *frame = memnew(PanelContainer);
+	Ref<StyleBoxFlat> frame_sb;
+	frame_sb.instantiate();
+	frame_sb->set_bg_color(Color(0.075f, 0.052f, 0.032f, 0.985f));
+	frame_sb->set_corner_radius_all(22);
+	frame_sb->set_border_width_all(2);
+	frame_sb->set_border_color(Color(0.045f, 0.030f, 0.018f, 1.0f));
+	frame_sb->set_shadow_color(Color(0.01f, 0.006f, 0.003f, 0.62f));
+	frame_sb->set_shadow_size(28);
+	frame_sb->set_shadow_offset(Vector2(0, 13));
+	frame_sb->set_content_margin_all(5.0f);
+	frame->add_theme_stylebox_override("panel", frame_sb);
+	center->add_child(frame);
+
 	PanelContainer *panel = memnew(PanelContainer);
-	Ref<StyleBoxTexture> sb = uistyle::make_wood_textured(0.98f); // 悬浮木牌（程序化木纹）
-	sb->set_content_margin(SIDE_LEFT, 32.0f);
-	sb->set_content_margin(SIDE_RIGHT, 32.0f);
-	sb->set_content_margin(SIDE_TOP, 24.0f);
-	sb->set_content_margin(SIDE_BOTTOM, 24.0f);
+	Ref<StyleBoxFlat> sb;
+	sb.instantiate();
+	sb->set_bg_color(Color(0.205f, 0.150f, 0.102f, 0.995f));
+	sb->set_corner_radius_all(17);
+	sb->set_border_width_all(1);
+	sb->set_border_color(Color(0.98f, 0.86f, 0.64f, 0.20f));
+	sb->set_content_margin(SIDE_LEFT, 36.0f);
+	sb->set_content_margin(SIDE_RIGHT, 36.0f);
+	sb->set_content_margin(SIDE_TOP, 28.0f);
+	sb->set_content_margin(SIDE_BOTTOM, 26.0f);
 	panel->add_theme_stylebox_override("panel", sb);
-	center->add_child(panel);
+	frame->add_child(panel);
 
 	VBoxContainer *vb = memnew(VBoxContainer);
 	vb->set_name("Menu");
@@ -255,15 +236,15 @@ void PauseMenu::build_ui() {
 
 	// 标题
 	Label *title = memnew(Label);
-	title->set_text(String::utf8("·  湖  畔  小  憩  ·"));
+	title->set_text(String::utf8("Peace"));
 	title->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
-	uistyle::dress_label(title, 28, uistyle::text_cream(), font, 0); // 无描边：菜单标题不学野外 HUD
+	uistyle::dress_label(title, 40, Color(1.0f, 0.94f, 0.78f), font, 5); // 无描边：菜单标题不学野外 HUD
 	vb->add_child(title);
 
 	Label *subtitle = memnew(Label);
 	subtitle->set_text(String::utf8("微风正好，歇一歇脚"));
 	subtitle->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
-	uistyle::dress_label(subtitle, 14, Color(0.90f, 0.84f, 0.72f, 0.85f), font, 0);
+	uistyle::dress_label(subtitle, 16, Color(0.88f, 0.82f, 0.70f), font, 0);
 	vb->add_child(subtitle);
 
 	// 分隔细线（湖面波光意象：三段渐隐横线）
@@ -273,10 +254,10 @@ void PauseMenu::build_ui() {
 		rule->set_alignment(BoxContainer::ALIGNMENT_CENTER);
 		vb->add_child(rule);
 		const float segs[3] = { 60.0f, 110.0f, 60.0f };
-		const float alphas[3] = { 0.06f, 0.22f, 0.06f };
+		const float alphas[3] = { 0.16f, 0.42f, 0.16f };
 		for (int i = 0; i < 3; i++) {
 			ColorRect *seg = memnew(ColorRect);
-			seg->set_color(Color(0.10f, 0.07f, 0.04f, alphas[i] + 0.12f)); // 木面刻痕线
+			seg->set_color(Color(0.92f, 0.82f, 0.62f, alphas[i])); // 暖金细线
 			seg->set_custom_minimum_size(Vector2(segs[i], 2.0f));
 			seg->set_v_size_flags(Control::SIZE_SHRINK_CENTER);
 			rule->add_child(seg);
@@ -287,11 +268,11 @@ void PauseMenu::build_ui() {
 	btn_resume = memnew(Button);
 	btn_resume->set_name("ResumeBtn");
 	btn_resume->set_text(String::utf8("继续游戏"));
-	btn_resume->set_custom_minimum_size(Vector2(300.0f, 48.0f));
+	btn_resume->set_custom_minimum_size(Vector2(340.0f, 56.0f));
 	if (font.is_valid()) {
 		btn_resume->add_theme_font_override("font", font);
 	}
-	btn_resume->add_theme_font_size_override("font_size", 22);
+	btn_resume->add_theme_font_size_override("font_size", 24);
 	style_button(btn_resume, BTN_PRIMARY);
 	btn_resume->connect("pressed", Callable(this, "on_resume_pressed"));
 	vb->add_child(btn_resume);
@@ -303,8 +284,8 @@ void PauseMenu::build_ui() {
 
 	Label *vol_name = memnew(Label);
 	vol_name->set_text(String::utf8("音量"));
-	uistyle::dress_label(vol_name, 20, uistyle::text_soft(), font);
-	vol_name->set_custom_minimum_size(Vector2(52.0f, 0.0f));
+	uistyle::dress_label(vol_name, 20, uistyle::text_cream(), font, 0);
+	vol_name->set_custom_minimum_size(Vector2(56.0f, 0.0f));
 	hb->add_child(vol_name);
 
 	volume_slider = memnew(HSlider);
@@ -313,7 +294,7 @@ void PauseMenu::build_ui() {
 	volume_slider->set_max(1.0f);
 	volume_slider->set_step(0.05f);
 	volume_slider->set_value(volume_linear); // 先赋值再连接，避免开机置脏
-	volume_slider->set_custom_minimum_size(Vector2(190.0f, 28.0f));
+	volume_slider->set_custom_minimum_size(Vector2(200.0f, 30.0f));
 	volume_slider->set_v_size_flags(Control::SIZE_SHRINK_CENTER);
 	{
 		Ref<StyleBoxFlat> track, fill;
@@ -332,8 +313,8 @@ void PauseMenu::build_ui() {
 
 	volume_value = memnew(Label);
 	refresh_volume_label();
-	uistyle::dress_label(volume_value, 18, uistyle::wood_text(), font, 0);
-	volume_value->set_custom_minimum_size(Vector2(48.0f, 0.0f));
+	uistyle::dress_label(volume_value, 20, Color(1.0f, 0.88f, 0.58f), font, 0);
+	volume_value->set_custom_minimum_size(Vector2(54.0f, 0.0f));
 	volume_value->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_RIGHT);
 	hb->add_child(volume_value);
 
@@ -343,11 +324,11 @@ void PauseMenu::build_ui() {
 	btn_quality = memnew(Button);
 	btn_quality->set_name("QualityBtn");
 	refresh_quality_text();
-	btn_quality->set_custom_minimum_size(Vector2(300.0f, 46.0f));
+	btn_quality->set_custom_minimum_size(Vector2(340.0f, 50.0f));
 	if (font.is_valid()) {
 		btn_quality->add_theme_font_override("font", font);
 	}
-	btn_quality->add_theme_font_size_override("font_size", 20);
+	btn_quality->add_theme_font_size_override("font_size", 22);
 	style_button(btn_quality, BTN_GLASS);
 	btn_quality->connect("pressed", Callable(this, "on_quality_pressed"));
 	vb->add_child(btn_quality);
@@ -356,11 +337,11 @@ void PauseMenu::build_ui() {
 	btn_fullscreen = memnew(Button);
 	btn_fullscreen->set_name("FullscreenBtn");
 	refresh_fullscreen_text();
-	btn_fullscreen->set_custom_minimum_size(Vector2(300.0f, 46.0f));
+	btn_fullscreen->set_custom_minimum_size(Vector2(340.0f, 50.0f));
 	if (font.is_valid()) {
 		btn_fullscreen->add_theme_font_override("font", font);
 	}
-	btn_fullscreen->add_theme_font_size_override("font_size", 20);
+	btn_fullscreen->add_theme_font_size_override("font_size", 22);
 	style_button(btn_fullscreen, BTN_GLASS);
 	btn_fullscreen->connect("pressed", Callable(this, "on_fullscreen_pressed"));
 	vb->add_child(btn_fullscreen);
@@ -369,11 +350,11 @@ void PauseMenu::build_ui() {
 	btn_quit = memnew(Button);
 	btn_quit->set_name("QuitBtn");
 	btn_quit->set_text(String::utf8("保存并退出"));
-	btn_quit->set_custom_minimum_size(Vector2(300.0f, 46.0f));
+	btn_quit->set_custom_minimum_size(Vector2(340.0f, 50.0f));
 	if (font.is_valid()) {
 		btn_quit->add_theme_font_override("font", font);
 	}
-	btn_quit->add_theme_font_size_override("font_size", 20);
+	btn_quit->add_theme_font_size_override("font_size", 22);
 	style_button(btn_quit, BTN_QUIT);
 	btn_quit->connect("pressed", Callable(this, "on_quit_pressed"));
 	vb->add_child(btn_quit);
@@ -382,7 +363,7 @@ void PauseMenu::build_ui() {
 	Label *tip = memnew(Label);
 	tip->set_text(String::utf8("Esc · 继续垂钓与漫游"));
 	tip->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
-	uistyle::dress_label(tip, 14, Color(0.88f, 0.81f, 0.68f, 0.72f), font, 0);
+	uistyle::dress_label(tip, 15, Color(0.86f, 0.82f, 0.74f, 0.72f), font, 0);
 	vb->add_child(tip);
 
 	// —— 菜单音效（挂在本节点下，暂停期间照常出声） ——

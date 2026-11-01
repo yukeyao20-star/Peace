@@ -286,27 +286,7 @@ void FishingSystem::build_ui() {
 	layer->add_child(prog);
 	prog->hide();
 
-	// 蓄力条（张力条上面一行）：按住 F 时从 0 涨到满，松手抛出去。
-	// 用暖黄→橙的填充色，和张力条（绿区/黄游标）区分开。托槽同款玻璃 Panel。
-	charge_bg = memnew(Panel);
-	charge_bg->add_theme_stylebox_override("panel", uistyle::make_wood_textured(8.0f, 0.90f));
-	charge_bg->set_anchors_preset(Control::PRESET_CENTER_BOTTOM);
-	charge_bg->set_offset(SIDE_LEFT, -180.0f);
-	charge_bg->set_offset(SIDE_RIGHT, 180.0f);
-	charge_bg->set_offset(SIDE_TOP, -104.0f);
-	charge_bg->set_offset(SIDE_BOTTOM, -92.0f);
-	layer->add_child(charge_bg);
-	charge_bg->hide();
-
-	charge_fill = memnew(ColorRect);
-	charge_fill->set_color(Color(1.0f, 0.72f, 0.22f, 0.95f));
-	charge_fill->set_anchors_preset(Control::PRESET_CENTER_BOTTOM);
-	charge_fill->set_offset(SIDE_LEFT, -180.0f);
-	charge_fill->set_offset(SIDE_RIGHT, -180.0f);
-	charge_fill->set_offset(SIDE_TOP, -104.0f);
-	charge_fill->set_offset(SIDE_BOTTOM, -92.0f);
-	layer->add_child(charge_fill);
-	charge_fill->hide();
+	// 蓄力反馈只用底部文字提示（不再绘制整块木板进度条）。
 
 	// 音效播放器与音频资源载入
 	ResourceLoader *rl = ResourceLoader::get_singleton();

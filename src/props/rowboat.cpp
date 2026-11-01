@@ -292,8 +292,7 @@ void Rowboat::board(Player *p_rider) {
 	rider = p_rider;
 	occupied = true;
 	e_prev = true;
-	p_rider->board_boat(this);
-	p_rider->set_global_position(get_global_position() + Vector3(0.0f, 0.34f, -0.30f));
+	p_rider->board_boat(this); // 会把角色挂到 Hull 下并摆到座位上
 	if (get_parent() != nullptr) {
 		Node *gd = get_parent()->get_node_or_null("GameDirector");
 		if (gd != nullptr) {
@@ -313,6 +312,8 @@ void Rowboat::exit_boat() {
 	rider->set_global_position(p);
 	rider->set_velocity(Vector3());
 	rider->leave_boat();
+	// 下船瞬间仍按着 E（且人就在船边）时，先吞掉半秒交互，防止立刻被重新判定上船
+	rider->suppress_interaction(0.7f);
 	rider = nullptr;
 	occupied = false;
 	speed = 0.0f;

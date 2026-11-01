@@ -139,6 +139,16 @@ public:
 		was_swimming = false;
 		if (propeller != nullptr) propeller->set_visible(false);
 		set_velocity(Vector3(0, 0, 0));
+		// 停掉自身碰撞，避免船体/码头把角色推来推去（船内漂移的根源）
+		set_collision_layer(0);
+		set_collision_mask(0);
+		// 直接挂到船体下：随船的上下浮动与侧倾一起动，不再每帧追船的位置
+		Node3D *hull = Object::cast_to<Node3D>(p_boat->get_node_or_null(NodePath("Hull")));
+		if (hull != nullptr) {
+			reparent(hull, true);
+			set_position(Vector3(0.0f, 0.46f, -0.36f));
+			set_rotation(Vector3());
+		}
 	}
 	void sit_down(const Vector3 &p_seat, float p_yaw) {
 		is_sitting = true;
@@ -164,8 +174,15 @@ public:
 	void set_star_wishes(int p_n) { star_wishes = Math::max(0, p_n); }
 	int get_photo_filter() const { return photo_filter; }
 	void leave_boat() {
+		Node3D *b = boat;
 		is_boating = false;
 		boat = nullptr;
+		// 回到世界根节点，并恢复行走时的碰撞层
+		if (b != nullptr && b->get_parent() != nullptr && get_parent() != b->get_parent()) {
+			reparent(b->get_parent(), true);
+		}
+		set_collision_layer(1);
+		set_collision_mask(3);
 		if (model != nullptr) {
 			model->set_scale(Vector3(1.0f, 1.0f, 1.0f));
 		}
