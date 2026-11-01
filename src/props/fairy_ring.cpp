@@ -7,6 +7,8 @@
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/geometry_instance3d.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/multi_mesh.hpp>
+#include <godot_cpp/classes/multi_mesh_instance3d.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
@@ -44,9 +46,8 @@ void FairyRing::interact(const Vector3 &p_player_pos) {
 	for (int i = 0; i < COUNT; i++) {
 		if (!picked[i]) {
 			picked[i] = true;
-			if (mushrooms[i] != nullptr) {
-				mushrooms[i]->set_visible(false);
-			}
+			update_mushroom(i);
+			update_glow(i, false);
 			picked_count++;
 			break;
 		}
@@ -86,16 +87,9 @@ void FairyRing::_notification(int p_what) {
 			}
 			glow_visible = 0;
 			for (int i = 0; i < COUNT; i++) {
-				if (glow[i] == nullptr) {
-					continue;
-				}
 				const bool vis = night && !picked[i];
-				glow[i]->set_visible(vis);
-				if (vis) {
-					glow_visible++;
-					const float pulse = 0.75f + 0.25f * std::sin(t * 1.6f + (float)i * 1.1f);
-					glow[i]->set_scale(Vector3(pulse, pulse, pulse));
-				}
+				update_glow(i, vis);
+				if (vis) glow_visible++;
 			}
 			spores_on = spore_want > 0.2f;
 			if (spores != nullptr && spores->is_emitting() != spores_on) {
@@ -108,9 +102,8 @@ void FairyRing::_notification(int p_what) {
 				for (int i = 0; i < COUNT; i++) {
 					if (picked[i]) {
 						picked[i] = false;
-						if (mushrooms[i] != nullptr) {
-							mushrooms[i]->set_visible(true);
-						}
+						update_mushroom(i);
+						update_glow(i, false);
 						break;
 					}
 				}
@@ -165,42 +158,56 @@ void FairyRing::build() {
 	glow_mesh->set_rings(5);
 	glow_mesh->set_material(glow_mat);
 
+	// 优化（第 190 轮）：菌柄、伞盖、白点、光晕各合成一个 MultiMesh。
+	Ref<SphereMesh> spot_mesh;
+	spot_mesh.instantiate();
+	spot_mesh->set_radius(0.018f);
+	spot_mesh->set_height(0.036f);
+	spot_mesh->set_radial_segments(6);
+	spot_mesh->set_rings(3);
+	spot_mesh->set_material(meshutil::toon_material(toon, Color(0.95f, 0.92f, 0.84f), 0.2f));
+	stem_mm.instantiate();
+	stem_mm->set_transform_format(MultiMesh::TRANSFORM_3D);
+	stem_mm->set_mesh(stem_mesh);
+	stem_mm->set_instance_count(COUNT);
+	cap_mm.instantiate();
+	cap_mm->set_transform_format(MultiMesh::TRANSFORM_3D);
+	cap_mm->set_mesh(cap_mesh);
+	cap_mm->set_instance_count(COUNT);
+	spot_mm.instantiate();
+	spot_mm->set_transform_format(MultiMesh::TRANSFORM_3D);
+	spot_mm->set_mesh(spot_mesh);
+	spot_mm->set_instance_count(COUNT * 3);
+	glow_mm.instantiate();
+	glow_mm->set_transform_format(MultiMesh::TRANSFORM_3D);
+	glow_mm->set_mesh(glow_mesh);
+	glow_mm->set_instance_count(COUNT);
+	MultiMeshInstance3D *stem_mi = memnew(MultiMeshInstance3D);
+	stem_mi->set_name("Stems");
+	stem_mi->set_multimesh(stem_mm);
+	add_child(stem_mi);
+	MultiMeshInstance3D *cap_mi = memnew(MultiMeshInstance3D);
+	cap_mi->set_name("Caps");
+	cap_mi->set_multimesh(cap_mm);
+	add_child(cap_mi);
+	MultiMeshInstance3D *spot_mi = memnew(MultiMeshInstance3D);
+	spot_mi->set_name("Spots");
+	spot_mi->set_multimesh(spot_mm);
+	add_child(spot_mi);
+	MultiMeshInstance3D *glow_mi = memnew(MultiMeshInstance3D);
+	glow_mi->set_name("Glows");
+	glow_mi->set_multimesh(glow_mm);
+	glow_mi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+	add_child(glow_mi);
 	for (int i = 0; i < COUNT; i++) {
 		const float a = (float)i * 0.7854f;
 		const float rad = 1.25f + 0.12f * std::sin((float)i * 2.3f);
-		Node3D *m = memnew(Node3D);
-		m->set_name(String("Mushroom") + String::num_int64(i));
-		m->set_position(Vector3(std::cos(a) * rad, 0.0f, std::sin(a) * rad));
-		m->set_scale(Vector3(0.85f + 0.2f * std::sin((float)i), 1.0f, 0.85f + 0.2f * std::sin((float)i * 1.7f)));
-		add_child(m);
-		mushrooms[i] = m;
-
-		MeshInstance3D *smi = memnew(MeshInstance3D);
-		smi->set_mesh(stem_mesh);
-		smi->set_position(Vector3(0.0f, 0.065f, 0.0f));
-		m->add_child(smi);
-		MeshInstance3D *cmi = memnew(MeshInstance3D);
-		cmi->set_mesh(cap_mesh);
-		cmi->set_position(Vector3(0.0f, 0.145f, 0.0f));
-		cmi->set_scale(Vector3(1.0f, 0.55f, 1.0f));
-		m->add_child(cmi);
-		// 伞盖上的白点
-		for (int s = 0; s < 3; s++) {
-			const float sa = (float)s * 2.1f + (float)i;
-			meshutil::add_sphere(m, toon, 0.018f,
-					Vector3(std::cos(sa) * 0.06f, 0.165f, std::sin(sa) * 0.06f),
-					Color(0.95f, 0.92f, 0.84f));
-		}
-		MeshInstance3D *g = memnew(MeshInstance3D);
-		g->set_mesh(glow_mesh);
-		g->set_position(Vector3(0.0f, 0.17f, 0.0f));
-		g->set_scale(Vector3(1.0f, 0.6f, 1.0f));
-		g->set_visible(false);
-		g->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
-		m->add_child(g);
-		glow[i] = g;
+		mush_pos[i] = Vector3(std::cos(a) * rad, 0.0f, std::sin(a) * rad);
+		mush_sx[i] = 0.85f + 0.2f * std::sin((float)i);
+		mush_sz[i] = 0.85f + 0.2f * std::sin((float)i * 1.7f);
+		update_mushroom(i);
+		update_glow(i, false);
 	}
-
 	// 清晨的孢子
 	Ref<SphereMesh> spore_mesh;
 	spore_mesh.instantiate();
@@ -231,4 +238,35 @@ void FairyRing::build() {
 	spores->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 	spores->set_emitting(false);
 	add_child(spores);
+}
+
+void FairyRing::update_mushroom(int p_index) {
+	const Basis hull = Basis().scaled(Vector3(mush_sx[p_index], 1.0f, mush_sz[p_index]));
+	if (picked[p_index]) {
+		const Transform3D hidden(Basis().scaled(Vector3(0.0f, 0.0f, 0.0f)), mush_pos[p_index]);
+		stem_mm->set_instance_transform(p_index, hidden);
+		cap_mm->set_instance_transform(p_index, hidden);
+		for (int sp = 0; sp < 3; sp++) spot_mm->set_instance_transform(p_index * 3 + sp, hidden);
+		return;
+	}
+	const Transform3D h(hull, mush_pos[p_index]);
+	stem_mm->set_instance_transform(p_index, h * Transform3D(Basis(), Vector3(0.0f, 0.065f, 0.0f)));
+	cap_mm->set_instance_transform(p_index, h * Transform3D(Basis().scaled(Vector3(1.0f, 0.55f, 1.0f)), Vector3(0.0f, 0.145f, 0.0f)));
+	for (int sp = 0; sp < 3; sp++) {
+		const float sa = (float)sp * 2.1f + (float)p_index;
+		spot_mm->set_instance_transform(p_index * 3 + sp, h * Transform3D(Basis(), Vector3(std::cos(sa) * 0.06f, 0.165f, std::sin(sa) * 0.06f)));
+	}
+}
+
+void FairyRing::update_glow(int p_index, bool p_on) {
+	if (!glow_mm.is_valid()) return;
+	if (!p_on) {
+		glow_mm->set_instance_transform(p_index, Transform3D(Basis().scaled(Vector3(0.0f, 0.0f, 0.0f)), mush_pos[p_index]));
+		return;
+	}
+	const float pulse = 0.75f + 0.25f * std::sin(t * 1.6f + (float)p_index * 1.1f);
+	const Basis hull = Basis().scaled(Vector3(mush_sx[p_index], 1.0f, mush_sz[p_index]));
+	const Transform3D h(hull, mush_pos[p_index]);
+	const Basis g = Basis().scaled(Vector3(pulse, pulse * 0.6f, pulse));
+	glow_mm->set_instance_transform(p_index, h * Transform3D(g, Vector3(0.0f, 0.17f, 0.0f)));
 }

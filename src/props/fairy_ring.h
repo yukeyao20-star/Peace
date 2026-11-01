@@ -19,6 +19,7 @@ namespace godot {
 
 class CPUParticles3D;
 class MeshInstance3D;
+class MultiMesh;
 class Node3D;
 class SkyCycle;
 
@@ -27,8 +28,13 @@ class FairyRing : public Interactable {
 
 	static const int COUNT = 8;
 
-	Node3D *mushrooms[COUNT] = {};
-	MeshInstance3D *glow[COUNT] = {};
+	Ref<MultiMesh> stem_mm;
+	Ref<MultiMesh> cap_mm;
+	Ref<MultiMesh> spot_mm;
+	Ref<MultiMesh> glow_mm;
+	Vector3 mush_pos[COUNT];
+	float mush_sx[COUNT] = {};
+	float mush_sz[COUNT] = {};
 	CPUParticles3D *spores = nullptr;
 	SkyCycle *sky = nullptr;
 
@@ -41,6 +47,8 @@ class FairyRing : public Interactable {
 
 	void build();
 	void refresh_glow();
+	void update_mushroom(int p_index);
+	void update_glow(int p_index, bool p_on);
 
 protected:
 	static void _bind_methods();
