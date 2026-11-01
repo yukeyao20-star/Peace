@@ -137,6 +137,7 @@
 #include "workbench.h"
 #include "painter_easel.h"
 #include "willow_tree.h"
+#include "bread_oven.h"
 #include "beach_finds.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
@@ -299,6 +300,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(Workbench);
 	GDREGISTER_CLASS(PainterEasel);
 	GDREGISTER_CLASS(WillowTree);
+	GDREGISTER_CLASS(BreadOven);
 	GDREGISTER_CLASS(BeachFinds);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
