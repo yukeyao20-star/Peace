@@ -7,6 +7,8 @@
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/multi_mesh.hpp>
+#include <godot_cpp/classes/multi_mesh_instance3d.hpp>
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
@@ -192,6 +194,8 @@ void LilyPond::build_pads() {
 	const float cluster_x[6] = {-2.3f, -0.4f, 1.5f, 2.4f, -1.8f, 0.4f};
 	const float cluster_z[6] = {-1.5f, 1.3f, -1.2f, 1.5f, 1.9f, -0.3f};
 	int guard = 0;
+	// 优化（第 200 轮）：46 片荷叶合成一个 MultiMesh。
+	std::vector<Transform3D> pad_xforms;
 	for (int ci = 0; ci < 6 && (int)pad_spots.size() < 46; ci++) {
 		int made = 0;
 		while (made < 8 && guard < 2200) {
@@ -218,16 +222,24 @@ void LilyPond::build_pads() {
 		}
 		float r = 0.26f + (float)(rng() % 100u) * 0.0036f;
 
-		MeshInstance3D *mi = memnew(MeshInstance3D);
-		mi->set_mesh(pad_mesh);
-		mi->set_position(Vector3(p.x, water_level + 0.012f, p.z));
-		mi->set_scale(Vector3(r, 1.0f, r));
-		mi->set_rotation(Vector3(0.0f, (float)(rng() % 628u) * 0.01f, (float)(rng() % 100u) * 0.0006f - 0.03f));
-		add_child(mi);
+		const Basis pb = Basis::from_euler(Vector3(0.0f, (float)(rng() % 628u) * 0.01f, (float)(rng() % 100u) * 0.0006f - 0.03f)).scaled(Vector3(r, 1.0f, r));
+		pad_xforms.push_back(Transform3D(pb, Vector3(p.x, water_level + 0.012f, p.z)));
 		pad_spots.push_back(Vector3(p.x, water_level + 0.03f, p.z));
 		made++;
 		}
 	}
+	Ref<MultiMesh> pads_mm;
+	pads_mm.instantiate();
+	pads_mm->set_transform_format(MultiMesh::TRANSFORM_3D);
+	pads_mm->set_mesh(pad_mesh);
+	pads_mm->set_instance_count((int)pad_xforms.size());
+	for (int i = 0; i < (int)pad_xforms.size(); i++) {
+		pads_mm->set_instance_transform(i, pad_xforms[i]);
+	}
+	MultiMeshInstance3D *pads_mi = memnew(MultiMeshInstance3D);
+	pads_mi->set_name("Pads");
+	pads_mi->set_multimesh(pads_mm);
+	add_child(pads_mi);
 }
 
 void LilyPond::build_flowers() {
