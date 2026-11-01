@@ -134,6 +134,7 @@
 #include "cabin_sign.h"
 #include "herb_bundles.h"
 #include "net_rack.h"
+#include "workbench.h"
 #include "beach_finds.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
@@ -293,6 +294,7 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(CabinSign);
 	GDREGISTER_CLASS(HerbBundles);
 	GDREGISTER_CLASS(NetRack);
+	GDREGISTER_CLASS(Workbench);
 	GDREGISTER_CLASS(BeachFinds);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);
