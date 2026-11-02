@@ -1509,6 +1509,8 @@ float TerrainBuilder::terrain_height(float x, float z) const {
 	float w_bed_half = Math::lerp(4.0f, 15.0f, w_rt);
 	float w_corr_half = Math::lerp(9.0f, 28.0f, w_rt);
 	float w_corridor = 1.0f - sstepf(w_corr_half * 0.65f, w_corr_half * 1.15f, w_dist);
+	// 入海口把河岸让给海盆，避免在海上留下一道“堤坝”
+	w_corridor *= Math::max(0.0f, 1.0f - w_sea * 0.95f);
 	if (w_corridor > 0.001f) {
 		const float bank_h = water_level + 0.32f;
 		const float bed_h = water_level - 1.55f;

@@ -69,13 +69,12 @@ const float PART_Z[ShipQuest::PART_COUNT] = {
 };
 const int STAGE_THRESHOLD[6] = { 7, 15, 20, 25, 28, 32 };
 // 离岸航线：从木屋湖畔的干船坞出发，穿过大湖、驶入西侧长河，最后进入西海。
-const Vector3 VOYAGE[18] = {
-	Vector3(0.0f, 0.0f, -10.2f), Vector3(-6.0f, 0.0f, 2.0f), Vector3(-16.0f, 0.0f, 13.0f),
-	Vector3(-27.0f, 0.0f, 27.0f), Vector3(-40.0f, 0.0f, 43.0f), Vector3(-52.0f, 0.0f, 56.0f),
-	Vector3(-66.0f, 0.0f, 64.0f), Vector3(-80.0f, 0.0f, 58.0f), Vector3(-92.0f, 0.0f, 44.0f),
-	Vector3(-102.0f, 0.0f, 30.0f), Vector3(-116.0f, 0.0f, 22.0f), Vector3(-124.0f, 0.0f, 8.0f),
-	Vector3(-138.0f, 0.0f, 0.0f), Vector3(-150.0f, 0.0f, -12.0f), Vector3(-165.0f, 0.0f, -14.0f),
-	Vector3(-182.0f, 0.0f, -28.0f), Vector3(-198.0f, 0.0f, -55.0f), Vector3(-210.0f, 0.0f, -95.0f)
+const Vector3 VOYAGE[14] = {
+	Vector3(-60.0f, 0.0f, 70.0f), Vector3(-66.0f, 0.0f, 64.0f), Vector3(-80.0f, 0.0f, 58.0f),
+	Vector3(-92.0f, 0.0f, 44.0f), Vector3(-102.0f, 0.0f, 30.0f), Vector3(-116.0f, 0.0f, 22.0f),
+	Vector3(-124.0f, 0.0f, 8.0f), Vector3(-138.0f, 0.0f, 0.0f), Vector3(-150.0f, 0.0f, -12.0f),
+	Vector3(-165.0f, 0.0f, -14.0f), Vector3(-182.0f, 0.0f, -28.0f), Vector3(-200.0f, 0.0f, -45.0f),
+	Vector3(-212.0f, 0.0f, -56.0f)
 };
 const char *STAGE_NAMES[6] = {
 	"龙骨与肋材", "船壳木板", "甲板与舱室", "桅杆与横桁", "船帆与绳索", "舵轮与船灯"
@@ -230,15 +229,15 @@ void ShipQuest::_notification(int p_what) {
 			dep_t += delta;
 			// 沿大湖 → 西河 → 西海的航线前进；船先沉入水面，再一路向大海驶去
 			const float water_y = (terrain != nullptr ? terrain->get_water_level() : -0.55f);
-			dep_s += delta * 12.5f;
+			dep_s += delta * 10.0f;
 			float remaining = dep_s;
 			Vector3 pos = VOYAGE[0];
 			Vector3 dir(0.0f, 0.0f, 1.0f);
-			for (int i = 0; i < 17; ++i) {
+			for (int i = 0; i < 13; ++i) {
 				const Vector3 a = VOYAGE[i];
 				const Vector3 b = VOYAGE[i + 1];
 				const float len = (b - a).length();
-				if (remaining <= len || i == 16) {
+				if (remaining <= len || i == 12) {
 					const float u = Math::clamp(remaining / Math::max(0.001f, len), 0.0f, 1.0f);
 					pos = a.lerp(b, u);
 					dir = (b - a).normalized();
@@ -263,12 +262,12 @@ void ShipQuest::_notification(int p_what) {
 				cine_cam->look_at(ship_g + Vector3(0.0f, 2.8f, 0.0f), Vector3(0, 1, 0));
 			}
 			if (fade != nullptr) {
-				const float a = Math::clamp((dep_t - 23.0f) / 4.0f, 0.0f, 1.0f);
+				const float a = Math::clamp((dep_t - 18.5f) / 4.0f, 0.0f, 1.0f);
 				fade->set_color(Color(0.98f, 0.97f, 0.93f, a));
-				if (end_title != nullptr) end_title->set_visible(dep_t > 24.5f);
-				if (end_sub != nullptr) end_sub->set_visible(dep_t > 25.3f);
+				if (end_title != nullptr) end_title->set_visible(dep_t > 21.0f);
+				if (end_sub != nullptr) end_sub->set_visible(dep_t > 21.8f);
 			}
-			if (dep_t > 30.0f) set_process(false);
+			if (dep_t > 26.0f) set_process(false);
 		} break;
 		default:
 			break;
@@ -420,7 +419,7 @@ void ShipQuest::build_ui() {
 	PanelContainer *panel = memnew(PanelContainer);
 	panel->set_name("Tracker");
 	panel->set_anchors_preset(Control::PRESET_CENTER_TOP);
-	panel->set_offset(SIDE_TOP, 72.0f);
+	panel->set_offset(SIDE_TOP, 92.0f);
 	panel->set_offset(SIDE_LEFT, -190.0f);
 	panel->set_offset(SIDE_RIGHT, 190.0f);
 	panel->add_theme_stylebox_override("panel", uistyle::make_wood_textured(12.0f, 0.96f));
@@ -446,9 +445,11 @@ void ShipQuest::build_cinematic() {
 	fade->set_anchors_preset(Control::PRESET_FULL_RECT);
 	fade->set_color(Color(0.98f, 0.97f, 0.93f, 0.0f));
 	fade->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	fade->set_z_index(-5); // 白场必须在标题下面
 	root->add_child(fade);
 	CenterContainer *center = memnew(CenterContainer);
 	center->set_anchors_preset(Control::PRESET_FULL_RECT);
+	center->set_z_index(5);
 	root->add_child(center);
 	VBoxContainer *vb = memnew(VBoxContainer);
 	vb->add_theme_constant_override("separation", 18);
