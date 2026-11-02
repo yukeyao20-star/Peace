@@ -1793,14 +1793,15 @@ void TerrainBuilder::build_water() {
 	sea_mat->set_shader_parameter("refraction_distort", 0.05f);
 	Ref<PlaneMesh> sea_plane;
 	sea_plane.instantiate();
-	sea_plane->set_size(Vector2(143.0f, 304.0f)); // X: -224..-81，Z: -224..80
-	sea_plane->set_subdivide_width(96);
-	sea_plane->set_subdivide_depth(192);
+	// 东缘仍与大湖水面在 x=-81 对接；其余方向一直铺到地图外，海平线交给雾遮住
+	sea_plane->set_size(Vector2(319.0f, 480.0f)); // X: -400..-81，Z: -400..80
+	sea_plane->set_subdivide_width(128);
+	sea_plane->set_subdivide_depth(240);
 	sea_plane->set_material(sea_mat);
 	MeshInstance3D *sea_mi = memnew(MeshInstance3D);
 	sea_mi->set_name("WestSea");
 	sea_mi->set_mesh(sea_plane);
-	sea_mi->set_position(Vector3(-152.5f, water_level, -72.0f));
+	sea_mi->set_position(Vector3(-240.5f, water_level, -160.0f));
 	sea_mi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 	add_child(sea_mi);
 
