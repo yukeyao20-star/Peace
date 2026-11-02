@@ -11,11 +11,14 @@
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/geometry_instance3d.hpp>
 #include <godot_cpp/classes/gradient.hpp>
+#include <godot_cpp/classes/image.hpp>
+#include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/classes/multi_mesh.hpp>
 #include <godot_cpp/classes/multi_mesh_instance3d.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
+#include <godot_cpp/classes/surface_tool.hpp>
 #include <godot_cpp/classes/window.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_color_array.hpp>
@@ -140,44 +143,87 @@ void LeafDrift::kick_pile(int p_index) {
 }
 
 void LeafDrift::build_leaf_mesh() {
-	// 菱形叶片（四点两三角），比矩形更像叶子。
-	PackedVector3Array verts;
-	verts.push_back(Vector3(0.0f, 0.075f, 0.0f));
-	verts.push_back(Vector3(0.050f, 0.0f, 0.0f));
-	verts.push_back(Vector3(0.0f, -0.075f, 0.0f));
-	verts.push_back(Vector3(-0.050f, 0.0f, 0.0f));
-	PackedVector3Array normals;
-	for (int i = 0; i < 4; i++) {
-		normals.push_back(Vector3(0.0f, 0.0f, 1.0f));
+	// 叶片贴图：程序化画一片带主脉的秋叶轮廓，靠 alpha 裁出叶形。
+	// 颜色保持接近白（叶色由粒子颜色渐变乘上去），只在叶心和叶缘做明暗，
+	// 这样五色渐变依旧是秋天，而不是被贴图染成一片橙。
+	constexpr int TEX = 128;
+	Ref<Image> img = Image::create_empty(TEX, TEX, false, Image::FORMAT_RGBA8);
+	for (int y = 0; y < TEX; y++) {
+		for (int x = 0; x < TEX; x++) {
+			const float u = ((float)x + 0.5f) / (float)TEX;
+			const float v = ((float)y + 0.5f) / (float)TEX;
+			// 叶身：v=0.05 是叶尖，v=0.84 是叶柄；半宽按 sin 曲线收尖
+			const float t = (v - 0.05f) / 0.79f;
+			float a = 0.0f;
+			float shade = 1.0f;
+			if (t >= 0.0f && t <= 1.0f) {
+				float half = 0.40f * std::pow(std::sin(t * 3.1415926f), 0.62f);
+				half *= 1.0f + 0.035f * std::sin(t * 41.0f); // 极轻的叶缘起伏
+				const float d = std::fabs(u - 0.5f);
+				a = Math::clamp((half - d) * (float)TEX * 1.35f, 0.0f, 1.0f);
+				if (a > 0.0f) {
+					const float edge = Math::clamp(1.0f - d / Math::max(half, 0.001f), 0.0f, 1.0f);
+					shade = 0.80f + 0.20f * edge;                     // 叶缘略暗
+					shade *= 1.0f + 0.06f * (1.0f - t);               // 叶尖略亮
+					if (d < 0.007f) {
+						shade *= 0.60f;                               // 主脉
+					}
+					// 两条侧脉
+					const float sv = t - 0.30f - 0.45f * d;
+					if (std::fabs(sv) < 0.012f && t > 0.18f) {
+						shade *= 0.86f;
+					}
+				}
+			}
+			// 叶柄：细线拖到图底
+			if (v > 0.82f && v < 0.97f && std::fabs(u - 0.5f) < 0.012f) {
+				a = Math::max(a, 1.0f);
+				shade = 0.62f;
+			}
+			img->set_pixel(x, y, Color(shade, shade, shade, a));
+		}
 	}
-	PackedInt32Array idx;
-	idx.push_back(0);
-	idx.push_back(1);
-	idx.push_back(2);
-	idx.push_back(0);
-	idx.push_back(2);
-	idx.push_back(3);
-	PackedColorArray vcols;
-	for (int i = 0; i < 4; i++) {
-		vcols.push_back(Color(1, 1, 1)); // 粒子色由顶点色 × 粒子颜色共同决定，缺顶点色会变黑
+	Ref<ImageTexture> leaf_tex = ImageTexture::create_from_image(img);
+
+	// 网格：三列两行，中列沿 Z 抬起 1cm 形成折痕——叶子有正反面和明暗，
+	// 翻飞时不会像一张纯色纸片。
+	const float hw = 0.058f;
+	const float hh = 0.092f;
+	const float crease = 0.012f;
+	Ref<SurfaceTool> st;
+	st.instantiate();
+	st->begin(Mesh::PRIMITIVE_TRIANGLES);
+	for (int row = 0; row < 2; row++) {
+		for (int col = 0; col < 3; col++) {
+			const float x = ((float)col - 1.0f) * hw;
+			const float y = (row == 0) ? -hh : hh;
+			const float z = (col == 1) ? crease : 0.0f;
+			st->set_uv(Vector2((float)col * 0.5f, (row == 0) ? 1.0f : 0.0f));
+			st->set_color(Color(1.0f, 1.0f, 1.0f)); // 缺顶点色 × 粒子色会变黑
+			st->add_vertex(Vector3(x, y, z));
+		}
 	}
-	Array arrays;
-	arrays.resize(Mesh::ARRAY_MAX);
-	arrays[Mesh::ARRAY_VERTEX] = verts;
-	arrays[Mesh::ARRAY_NORMAL] = normals;
-	arrays[Mesh::ARRAY_COLOR] = vcols;
-	arrays[Mesh::ARRAY_INDEX] = idx;
-	Ref<ArrayMesh> am;
-	am.instantiate();
-	am->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, arrays);
+	// 两个格子各两个三角形（顶点行优先：0..2 下行，3..5 上行）
+	const int tri[4][3] = { { 0, 1, 4 }, { 0, 4, 3 }, { 1, 2, 5 }, { 1, 5, 4 } };
+	for (int i = 0; i < 4; i++) {
+		st->add_index(tri[i][0]);
+		st->add_index(tri[i][1]);
+		st->add_index(tri[i][2]);
+	}
+	st->generate_normals();
+	Ref<ArrayMesh> am = st->commit();
 	leaf_mesh = am;
 
 	leaf_mat.instantiate();
 	leaf_mat->set_shading_mode(BaseMaterial3D::SHADING_MODE_PER_PIXEL);
-	leaf_mat->set_albedo(Color(0.86f, 0.52f, 0.20f));
+	leaf_mat->set_albedo(Color(1.0f, 1.0f, 1.0f));
+	leaf_mat->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, leaf_tex);
+	leaf_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA_SCISSOR);
+	leaf_mat->set_alpha_scissor_threshold(0.5f);
 	leaf_mat->set_roughness(0.85f);
 	leaf_mat->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
 	leaf_mat->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true);
+	leaf_mat->set_flag(BaseMaterial3D::FLAG_DONT_RECEIVE_SHADOWS, true);
 	am->surface_set_material(0, leaf_mat);
 }
 
@@ -219,8 +265,8 @@ void LeafDrift::build() {
 	fall_fx->set_gravity(Vector3(0.2f, -0.22f, 0.12f));
 	fall_fx->set_param_min(CPUParticles3D::PARAM_DAMPING, 0.10f);
 	fall_fx->set_param_max(CPUParticles3D::PARAM_DAMPING, 0.18f);
-	fall_fx->set_param_min(CPUParticles3D::PARAM_SCALE, 0.9f);
-	fall_fx->set_param_max(CPUParticles3D::PARAM_SCALE, 1.7f);
+	fall_fx->set_param_min(CPUParticles3D::PARAM_SCALE, 0.8f);
+	fall_fx->set_param_max(CPUParticles3D::PARAM_SCALE, 1.35f);
 	fall_fx->set_param_min(CPUParticles3D::PARAM_ANGULAR_VELOCITY, -160.0f);
 	fall_fx->set_param_max(CPUParticles3D::PARAM_ANGULAR_VELOCITY, 160.0f);
 	fall_fx->set_particle_flag(CPUParticles3D::PARTICLE_FLAG_ROTATE_Y, true);
@@ -271,6 +317,10 @@ void LeafDrift::build() {
 
 	pile_mat.instantiate();
 	pile_mat->set_albedo(Color(1, 1, 1));
+	pile_mat->set_texture(BaseMaterial3D::TEXTURE_ALBEDO,
+			leaf_mat->get_texture(BaseMaterial3D::TEXTURE_ALBEDO));
+	pile_mat->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA_SCISSOR);
+	pile_mat->set_alpha_scissor_threshold(0.5f);
 	pile_mat->set_roughness(0.9f);
 	pile_mat->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
 	pile_mat->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true);

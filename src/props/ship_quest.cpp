@@ -6,6 +6,10 @@
 #include <godot_cpp/classes/color_rect.hpp>
 #include <godot_cpp/classes/control.hpp>
 #include <godot_cpp/classes/geometry_instance3d.hpp>
+#include <godot_cpp/classes/array_mesh.hpp>
+#include <godot_cpp/classes/curve3d.hpp>
+#include <godot_cpp/classes/mesh.hpp>
+#include <godot_cpp/classes/surface_tool.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/font.hpp>
@@ -15,7 +19,11 @@
 #include <godot_cpp/classes/panel_container.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/shader.hpp>
+#include <godot_cpp/classes/resource_loader.hpp>
+#include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
+#include <godot_cpp/classes/sub_viewport.hpp>
+#include <godot_cpp/classes/viewport_texture.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/classes/torus_mesh.hpp>
 #include <godot_cpp/classes/v_box_container.hpp>
@@ -222,34 +230,39 @@ void ShipQuest::_notification(int p_what) {
 			}
 			break;
 		case NOTIFICATION_PROCESS: {
-			if (!departing) break;
 			const float delta = (float)get_process_delta_time();
+			t += delta;
+			if (!departing) break;
 			dep_t += delta;
-			// 沿大湖 → 西河 → 西海的航线前进；船先沉入水面，再一路向大海驶去
+			// 路径跟随：船头朝前找航线上的“前视点”，先慢转、再沿船头方向前进。
+			// 关键：位置由船头方向积分，而不是直接贴曲线采样——大船转弯时不会侧滑。
 			const float water_y = (terrain != nullptr ? terrain->get_water_level() : -0.55f);
-			dep_s += delta * 10.0f;
-			float remaining = dep_s;
-			Vector3 pos = VOYAGE[0];
-			Vector3 dir(0.0f, 0.0f, 1.0f);
-			for (int i = 0; i < 13; ++i) {
-				const Vector3 a = VOYAGE[i];
-				const Vector3 b = VOYAGE[i + 1];
-				const float len = (b - a).length();
-				if (remaining <= len || i == 12) {
-					const float u = Math::clamp(remaining / Math::max(0.001f, len), 0.0f, 1.0f);
-					pos = a.lerp(b, u);
-					dir = (b - a).normalized();
-					break;
-				}
-				remaining -= len;
+			const float total_len = voyage_curve.is_valid() ? voyage_curve->get_baked_length() : 1.0f;
+			const float speed = 6.0f;
+			dep_s = Math::min(dep_s + delta * speed, total_len);
+			Vector3 pos = ship_root->get_global_position();
+			const float look = 12.0f;
+			Vector3 target = voyage_curve.is_valid()
+					? voyage_curve->sample_baked(Math::min(total_len, dep_s + look))
+					: VOYAGE[0];
+			Vector3 to = target - pos;
+			to.y = 0.0f;
+			float target_yaw = std::atan2(to.x, to.z);
+			if (!yaw_init) {
+				ship_yaw = target_yaw;
+				yaw_init = true;
+			} else {
+				float dy = target_yaw - ship_yaw;
+				while (dy > 3.1415926f) dy -= 6.2831853f;
+				while (dy < -3.1415926f) dy += 6.2831853f;
+				const float max_step = 0.22f * delta; // 大船约 13°/秒，稳而慢
+				ship_yaw += Math::clamp(dy, -max_step, max_step);
 			}
-			const float target_y = water_y - 0.10f - 0.69f;
-			Vector3 g = ship_root->get_global_position();
-			g.x = pos.x;
-			g.z = pos.z;
-			g.y = Math::lerp(g.y, target_y, Math::min(1.0f, delta * 1.2f));
-			ship_root->set_global_position(g);
-			ship_root->set_global_rotation(Vector3(0.0f, std::atan2(dir.x, dir.z), std::sin(dep_t * 0.6f) * 0.012f));
+			const Vector3 forward(std::sin(ship_yaw), 0.0f, std::cos(ship_yaw));
+			pos += forward * speed * delta;
+			pos.y = Math::lerp(pos.y, water_y - 0.10f - 0.69f, Math::min(1.0f, delta * 1.2f));
+			ship_root->set_global_position(pos);
+			ship_root->set_global_rotation(Vector3(0.0f, ship_yaw, std::sin(dep_t * 0.6f) * 0.008f));
 			// 摄影机在岸边缓缓跟随
 			if (cine_cam != nullptr) {
 				const Vector3 ship_g = ship_root->get_global_position();
@@ -260,12 +273,12 @@ void ShipQuest::_notification(int p_what) {
 				cine_cam->look_at(ship_g + Vector3(0.0f, 2.8f, 0.0f), Vector3(0, 1, 0));
 			}
 			if (fade != nullptr) {
-				const float a = Math::clamp((dep_t - 18.5f) / 4.0f, 0.0f, 1.0f);
+				const float a = Math::clamp((dep_t - 25.0f) / 4.0f, 0.0f, 1.0f);
 				fade->set_color(Color(0.98f, 0.97f, 0.93f, a));
-				if (end_title != nullptr) end_title->set_visible(dep_t > 19.0f);
-				if (end_sub != nullptr) end_sub->set_visible(dep_t > 19.8f);
+				if (end_title != nullptr) end_title->set_visible(dep_t > 27.5f);
+				if (end_sub != nullptr) end_sub->set_visible(dep_t > 28.3f);
 			}
-			if (dep_t > 26.0f) set_process(false);
+			if (dep_t > 34.0f) set_process(false);
 		} break;
 		default:
 			break;
@@ -332,6 +345,13 @@ void ShipQuest::interact(const Vector3 &p_player_pos) {
 			cine_cam->look_at(ship_root->get_global_position() + Vector3(0.0f, 2.8f, 0.0f), Vector3(0, 1, 0));
 			cine_cam->set_current(true);
 		}
+		// 曲线航线 + 缓慢转向：大船不可能在折点瞬间甩头
+		voyage_curve.instantiate();
+		for (int i = 0; i < 13; i++) voyage_curve->add_point(VOYAGE[i]);
+		voyage_curve->set_bake_interval(0.8f);
+		ship_yaw = 0.0f;
+		yaw_init = false;
+		dep_s = 0.0f;
 		if (cine_layer != nullptr) cine_layer->set_visible(true);
 		if (title_layer != nullptr) title_layer->set_visible(true);
 		dep_t = 0.0f;
@@ -508,7 +528,7 @@ void ShipQuest::build() {
 	build_ui();
 	build_cinematic();
 	update_ui();
-	set_process(false);
+	set_process(true);
 }
 
 void ShipQuest::make_part(int p_index) {
@@ -577,10 +597,112 @@ void ShipQuest::build_ship() {
 	mast_mi->set_position(Vector3(0.0f, 4.6f, 0.70f));
 	g4->add_child(mast_mi);
 	meshutil::add_box(g4, toon, Vector3(3.7f, 0.12f, 0.12f), Vector3(0.0f, 6.55f, 0.70f), wood);
-	// 5 帆与绳索
+	// 5 帆与绳索：更大的弧面主帆 + 前三角帆，帆面鼓起，整面写着 Peace
 	Node3D *g5 = stage_nodes[5];
-	meshutil::add_box(g5, toon, Vector3(3.0f, 2.7f, 0.04f), Vector3(0.0f, 4.9f, 0.72f), sail_c);
-	meshutil::add_box(g5, toon, Vector3(3.02f, 0.08f, 0.08f), Vector3(0.0f, 6.15f, 0.72f), trim);
+	const float sail_w = 5.0f;
+	const float sail_h = 3.75f;
+	const float sail_top = 6.45f;
+	const float sail_base_z = 0.92f;
+	const float sail_bulge = 1.05f;
+	Ref<SurfaceTool> sail_st;
+	sail_st.instantiate();
+	sail_st->begin(Mesh::PRIMITIVE_TRIANGLES);
+	const int NU = 12;
+	const int NV = 9;
+	auto sail_p = [&](int i, int j) {
+		const float u = (float)i / (float)NU;
+		const float v = (float)j / (float)NV;
+		const float ww = sail_w * (1.0f - 0.16f * v); // 下缘略收，像被风撑开的帆
+		const float x = (u - 0.5f) * ww;
+		const float y = sail_top - v * sail_h + 0.22f * std::sin(3.1415926f * u) * v * v;
+		const float z = sail_base_z + std::sin(3.1415926f * u) * std::sin(3.1415926f * v) * sail_bulge;
+		return Vector3(x, y, z);
+	};
+	for (int j = 0; j < NV; j++) {
+		for (int i = 0; i < NU; i++) {
+			const Vector3 a = sail_p(i, j);
+			const Vector3 b = sail_p(i + 1, j);
+			const Vector3 c = sail_p(i + 1, j + 1);
+			const Vector3 d = sail_p(i, j + 1);
+			sail_st->set_uv(Vector2((float)i / NU, (float)j / NV));
+			sail_st->add_vertex(a);
+			sail_st->set_uv(Vector2((float)(i + 1) / NU, (float)j / NV));
+			sail_st->add_vertex(c);
+			sail_st->set_uv(Vector2((float)(i + 1) / NU, (float)(j + 1) / NV));
+			sail_st->add_vertex(b);
+			sail_st->set_uv(Vector2((float)i / NU, (float)j / NV));
+			sail_st->add_vertex(a);
+			sail_st->set_uv(Vector2((float)i / NU, (float)(j + 1) / NV));
+			sail_st->add_vertex(d);
+			sail_st->set_uv(Vector2((float)(i + 1) / NU, (float)(j + 1) / NV));
+			sail_st->add_vertex(c);
+		}
+	}
+	sail_st->generate_normals();
+	Ref<ArrayMesh> sail_mesh = sail_st->commit();
+	// 帆布材质：Peace 字样先渲染进 SubViewport，再贴到会飘动的帆面 UV 上
+	SubViewport *mark_vp = memnew(SubViewport);
+	mark_vp->set_name("SailMarkViewport");
+	mark_vp->set_size(Vector2i(1024, 768));
+	mark_vp->set_transparent_background(false);
+	mark_vp->set_disable_3d(true);
+	add_child(mark_vp);
+	Control *mark_root = memnew(Control);
+	mark_root->set_size(Vector2(1024, 768));
+	mark_vp->add_child(mark_root);
+	ColorRect *mark_bg = memnew(ColorRect);
+	mark_bg->set_size(Vector2(1024, 768));
+	mark_bg->set_color(sail_c);
+	mark_root->add_child(mark_bg);
+	Label *mark_label = memnew(Label);
+	mark_label->set_text(String::utf8("Peace"));
+	mark_label->set_size(Vector2(1024, 768));
+	mark_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+	mark_label->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
+	mark_label->add_theme_font_size_override("font_size", 318);
+	Ref<Font> sail_font = uistyle::heavy_cjk(900, 0.85f);
+	if (sail_font.is_null()) sail_font = uistyle::load_cjk();
+	if (sail_font.is_valid()) mark_label->add_theme_font_override("font", sail_font);
+	// 同色描边当"加粗"用：NotoSansSC 可变字体的 wght/embolden 上限不够壮
+	const Color ink(0.19f, 0.12f, 0.055f);
+	mark_label->add_theme_color_override("font_color", ink);
+	mark_label->add_theme_color_override("font_outline_color", ink);
+	mark_label->add_theme_constant_override("outline_size", 18);
+	mark_label->set_pivot_offset(Vector2(512, 384));
+	mark_label->set_rotation(-0.20f);
+	mark_root->add_child(mark_label);
+	mark_vp->set_update_mode(SubViewport::UPDATE_ALWAYS);
+	Ref<Resource> sail_shader_res = ResourceLoader::get_singleton()->load("res://assets/sail.gdshader");
+	Ref<Shader> sail_shader = Ref<Shader>(Object::cast_to<Shader>(sail_shader_res.ptr()));
+	Ref<Material> sail_mat;
+	if (sail_shader.is_valid()) {
+		Ref<ShaderMaterial> smat;
+		smat.instantiate();
+		smat->set_shader(sail_shader);
+		sail_tex = mark_vp->get_texture();
+		smat->set_shader_parameter("sail_tex", sail_tex.ptr());
+		smat->set_shader_parameter("base_color", sail_c);
+		smat->set_shader_parameter("wind", 1.0f);
+		smat->set_shader_parameter("sail_w", sail_w);
+		smat->set_shader_parameter("sail_h", sail_h);
+		smat->set_shader_parameter("sail_top", sail_top);
+		sail_mat = smat;
+		sail_vp = mark_vp;
+	} else {
+		Ref<StandardMaterial3D> fallback;
+		fallback.instantiate();
+		fallback->set_albedo(sail_c);
+		fallback->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+		fallback->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
+		sail_mat = fallback;
+	}
+	sail_mesh->surface_set_material(0, sail_mat);
+	MeshInstance3D *sail_mi = memnew(MeshInstance3D);
+	sail_mi->set_name("MainSail");
+	sail_mi->set_mesh(sail_mesh);
+	g5->add_child(sail_mi);
+	// 帆的横桁（不再加竖缝，避免线条穿过 Peace 字样）
+	meshutil::add_box(g5, toon, Vector3(sail_w + 0.5f, 0.10f, 0.10f), Vector3(0.0f, sail_top + 0.02f, sail_base_z), trim);
 	meshutil::add_box(g5, toon, Vector3(0.03f, 5.0f, 0.03f), Vector3(0.0f, 3.7f, 3.15f), Color(0.50f, 0.42f, 0.30f), Vector3(0.55f, 0.0f, 0.0f));
 	meshutil::add_box(g5, toon, Vector3(0.03f, 5.2f, 0.03f), Vector3(0.0f, 3.7f, -3.20f), Color(0.50f, 0.42f, 0.30f), Vector3(-0.55f, 0.0f, 0.0f));
 	// 6 舵轮、尾舵、船灯、船名
