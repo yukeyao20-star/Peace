@@ -129,6 +129,7 @@ public:
 	void start_sleep(const Vector3 &p_bed_pos, float p_yaw);
 	void stop_sleep();
 	bool get_is_sleeping() const { return is_sleeping; }
+	void hide_hud_for_cutscene() { set_hud_visible(false); }
 	bool get_is_map_open() const { return is_map_open; } // PauseMenu 判定"Esc 只关地图"用
 	void toggle_map(); // 已 bind ClassDB；PauseMenu 在 Esc 路径上直接调用
 	void teleport_to(const Vector3 &p_pos);

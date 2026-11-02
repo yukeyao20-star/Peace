@@ -141,6 +141,7 @@
 #include "otter.h"
 #include "yarn_basket.h"
 #include "menu_board.h"
+#include "ship_quest.h"
 #include "beach_finds.h"
 #include "morning_glory.h"
 #include "snail_patch.h"
@@ -307,6 +308,8 @@ void initialize_game3d_module(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(Otter);
 	GDREGISTER_CLASS(YarnBasket);
 	GDREGISTER_CLASS(MenuBoard);
+	GDREGISTER_CLASS(ShipPart);
+	GDREGISTER_CLASS(ShipQuest);
 	GDREGISTER_CLASS(BeachFinds);
 	GDREGISTER_CLASS(MorningGlory);
 	GDREGISTER_CLASS(SnailPatch);

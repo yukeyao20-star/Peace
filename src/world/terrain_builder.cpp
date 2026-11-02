@@ -1319,6 +1319,46 @@ void TerrainBuilder::get_stream_spline(float x, float z, float &r_dist, float &r
 	r_water_y = Math::lerp(node_y[best_seg], node_y[best_seg + 1], best_seg_t);
 }
 
+namespace {
+// 西侧长河：从大湖西岸缓缓绕出去，最终汇入西海。
+const Vector2 WEST_RIVER_PTS[10] = {
+	Vector2(-52.0f, 56.0f), Vector2(-66.0f, 64.0f), Vector2(-80.0f, 58.0f),
+	Vector2(-92.0f, 44.0f), Vector2(-102.0f, 30.0f), Vector2(-116.0f, 22.0f),
+	Vector2(-124.0f, 8.0f), Vector2(-138.0f, 0.0f), Vector2(-150.0f, -12.0f),
+	Vector2(-165.0f, -14.0f)
+};
+// 返回离河心的最近距离，并给出沿河的进度 t（0=湖口，1=入海口）。
+float west_river_info(float p_x, float p_z, float &r_t) {
+	Vector2 p(p_x, p_z);
+	float best = 1e9f;
+	float best_t = 0.0f;
+	for (int i = 0; i < 9; ++i) {
+		Vector2 a = WEST_RIVER_PTS[i];
+		Vector2 b = WEST_RIVER_PTS[i + 1];
+		Vector2 ab = b - a;
+		float l2 = ab.length_squared();
+		float t = l2 > 0.0001f ? Math::clamp((p - a).dot(ab) / l2, 0.0f, 1.0f) : 0.0f;
+		float d = (p - (a + ab * t)).length();
+		if (d < best) {
+			best = d;
+			best_t = ((float)i + t) / 9.0f;
+		}
+	}
+	r_t = best_t;
+	return best;
+}
+float west_river_dist(float p_x, float p_z) {
+	float t = 0.0f;
+	return west_river_info(p_x, p_z, t);
+}
+float west_sea_mask(float p_x, float p_z) {
+	const float d = std::hypot(p_x + 235.0f, p_z + 20.0f);
+	const float t = Math::clamp((d - 62.0f) / 24.0f, 0.0f, 1.0f);
+	const float sm = t * t * (3.0f - 2.0f * t);
+	return 1.0f - sm;
+}
+}
+
 bool TerrainBuilder::is_near_stream(float x, float z, float margin) const {
 	float d, t, wy;
 	get_stream_spline(x, z, d, t, wy);
@@ -1351,7 +1391,14 @@ float TerrainBuilder::terrain_height(float x, float z) const {
 	float half = map_size * 0.5f;
 	float edge = Math::max(std::abs(x), std::abs(z)) / half;
 	float edge_factor = sstepf(0.68f, 1.0f, edge);
-	h += edge_factor * edge_factor * (16.5f + 5.5f * value_noise(x * 0.028f, z * 0.028f));
+	// 西侧长河与西海要看到开阔海平线：把这一扇区的环山压低/抹掉
+	float w_sea0 = west_sea_mask(x, z);
+	float w_river_t0 = 0.0f;
+	float w_river_d0 = west_river_info(x, z, w_river_t0);
+	float w_corr0 = Math::lerp(9.0f, 28.0f, w_river_t0);
+	float w_river0 = 1.0f - sstepf(w_corr0 * 0.65f, w_corr0 * 1.35f, w_river_d0);
+	float west_open = Math::max(w_sea0, w_river0 * 0.85f);
+	h += edge_factor * edge_factor * (16.5f + 5.5f * value_noise(x * 0.028f, z * 0.028f)) * (1.0f - west_open * 0.98f);
 
 	// 壮阔复合大湖盆（全面扩建成大湖：西北浩瀚主湖 44m + 东北阳光水域 32m + 石桥水峡 13x18m + 南侧湖湾 22m）
 	// 引入双频海岸线 FBM 域扭曲（Domain Warping），使岸线自然蜿蜒，彻底消除几何直圆弧与呆板感
@@ -1449,6 +1496,29 @@ float TerrainBuilder::terrain_height(float x, float z) const {
 	float rz = Math::abs(to_pitch.y) / (pitch_half_d + 8.0f);
 	float pr = 1.0f - sstepf(0.72f, 1.0f, Math::max(rx, rz));
 	h = lerpf(h, pitch_height, pr);
+
+	// ---- 西侧长河与西海（第 201 轮扩图）----
+	// 西海：地图西缘的开阔海盆，岸线用平滑 mask 过渡，海床压到水下 5.5m。
+	float w_sea = west_sea_mask(x, z);
+	if (w_sea > 0.001f) {
+		h = lerpf(h, -5.8f, w_sea);
+	}
+	// 长河：从大湖西岸到西海，河面逐渐加宽——上游约 8m，入海口约 30m。
+	float w_rt = 0.0f;
+	float w_dist = west_river_info(x, z, w_rt);
+	float w_bed_half = Math::lerp(4.0f, 15.0f, w_rt);
+	float w_corr_half = Math::lerp(9.0f, 28.0f, w_rt);
+	float w_corridor = 1.0f - sstepf(w_corr_half * 0.65f, w_corr_half * 1.15f, w_dist);
+	if (w_corridor > 0.001f) {
+		const float bank_h = water_level + 0.32f;
+		const float bed_h = water_level - 1.55f;
+		float river_h = bank_h;
+		if (w_dist < w_bed_half + 1.5f) {
+			float w_bed = 1.0f - sstepf(w_bed_half * 0.55f, w_bed_half + 1.5f, w_dist);
+			river_h = lerpf(bank_h, bed_h, w_bed);
+		}
+		h = lerpf(h, river_h, w_corridor);
+	}
 
 	return h;
 }
@@ -1703,6 +1773,36 @@ void TerrainBuilder::build_water() {
 	mi->set_mesh(plane);
 	mi->set_position(Vector3(-6.0f, water_level, 48.0f));
 	add_child(mi);
+
+	// ---- 西海 + 长河（第 201 轮扩图）----
+	// 单独一块海面，东缘与大湖水面在 x=-81 处对接；is_stream=true 绕开大湖
+	// shore_map 的剔除，靠地形遮挡自动只在河床/海盆里露出水面。
+	Ref<ShaderMaterial> sea_mat;
+	sea_mat.instantiate();
+	sea_mat->set_shader(shader);
+	sea_mat->set_shader_parameter("is_stream", true);
+	sea_mat->set_shader_parameter("wave_height", 0.13f);
+	sea_mat->set_shader_parameter("wave_speed", 0.82f);
+	sea_mat->set_shader_parameter("normal_strength", 1.15f);
+	sea_mat->set_shader_parameter("noise_scale", 1.35f);
+	sea_mat->set_shader_parameter("flow_dir", Vector2(-1.0f, -0.15f));
+	sea_mat->set_shader_parameter("shallow_color", Color(0.24f, 0.60f, 0.78f, 1.0f));
+	sea_mat->set_shader_parameter("deep_color", Color(0.035f, 0.20f, 0.40f, 1.0f));
+	sea_mat->set_shader_parameter("foam_color", Color(0.93f, 0.97f, 1.0f, 1.0f));
+	sea_mat->set_shader_parameter("foam_depth", 0.40f);
+	sea_mat->set_shader_parameter("refraction_distort", 0.05f);
+	Ref<PlaneMesh> sea_plane;
+	sea_plane.instantiate();
+	sea_plane->set_size(Vector2(143.0f, 304.0f)); // X: -224..-81，Z: -224..80
+	sea_plane->set_subdivide_width(96);
+	sea_plane->set_subdivide_depth(192);
+	sea_plane->set_material(sea_mat);
+	MeshInstance3D *sea_mi = memnew(MeshInstance3D);
+	sea_mi->set_name("WestSea");
+	sea_mi->set_mesh(sea_plane);
+	sea_mi->set_position(Vector3(-152.5f, water_level, -72.0f));
+	sea_mi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+	add_child(sea_mi);
 
 	// 湖面结冰碰撞归 IceSurface 独有（SkyCycle spawn 的无限平面，0.85/0.70 滞回，
 	// 与 water.gdshader freeze_amount 的视觉封冻节奏对齐）。此处不再建湖面 box：
