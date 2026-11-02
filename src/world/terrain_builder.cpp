@@ -1763,49 +1763,21 @@ void TerrainBuilder::build_water() {
 
 	Ref<PlaneMesh> plane;
 	plane.instantiate();
-	plane->set_size(Vector2(150.0f, 165.0f)); // 边缘深埋进沿岸丘陵，水面完整覆盖壮阔大湖 (X: -81~69, Z: -34.5~130.5)
-	plane->set_subdivide_width(176);          // 顶点波浪细分（大湖水面波浪精细起伏）
+	// 一张水面包住大湖、西河与西海：不再让两块水面相接，彻底消除交界线
+	plane->set_size(Vector2(369.0f, 390.5f)); // X: -300~69, Z: -260~130.5
+	plane->set_subdivide_width(256);
 	// 细分从 104 提到 192：顶点间距约 0.85m —— 拍岸涌浪的浪脊宽约 1.5m，
 	// 网格太粗的话浪脊比一个格子还窄，直接采样走样（水面一格一格地闪）。
-	plane->set_subdivide_depth(192);
+	plane->set_subdivide_depth(272);
 	plane->set_material(mat);
 
 	MeshInstance3D *mi = memnew(MeshInstance3D);
 	mi->set_name("Lake");
 	mi->set_mesh(plane);
-	mi->set_position(Vector3(-6.0f, water_level, 48.0f));
+	mi->set_position(Vector3(-115.5f, water_level, -64.75f));
 	add_child(mi);
 
-	// ---- 西海 + 长河（第 201 轮扩图）----
-	// 单独一块海面，东缘与大湖水面在 x=-81 处对接；is_stream=true 绕开大湖
-	// shore_map 的剔除，靠地形遮挡自动只在河床/海盆里露出水面。
-	Ref<ShaderMaterial> sea_mat;
-	sea_mat.instantiate();
-	sea_mat->set_shader(shader);
-	sea_mat->set_shader_parameter("is_stream", true);
-	sea_mat->set_shader_parameter("wave_height", 0.13f);
-	sea_mat->set_shader_parameter("wave_speed", 0.82f);
-	sea_mat->set_shader_parameter("normal_strength", 1.15f);
-	sea_mat->set_shader_parameter("noise_scale", 1.35f);
-	sea_mat->set_shader_parameter("flow_dir", Vector2(-1.0f, -0.15f));
-	sea_mat->set_shader_parameter("shallow_color", Color(0.24f, 0.60f, 0.78f, 1.0f));
-	sea_mat->set_shader_parameter("deep_color", Color(0.035f, 0.20f, 0.40f, 1.0f));
-	sea_mat->set_shader_parameter("foam_color", Color(0.93f, 0.97f, 1.0f, 1.0f));
-	sea_mat->set_shader_parameter("foam_depth", 0.40f);
-	sea_mat->set_shader_parameter("refraction_distort", 0.05f);
-	Ref<PlaneMesh> sea_plane;
-	sea_plane.instantiate();
-	// 东缘仍与大湖水面在 x=-81 对接；其余方向一直铺到地图外，海平线交给雾遮住
-	sea_plane->set_size(Vector2(319.0f, 480.0f)); // X: -400..-81，Z: -400..80
-	sea_plane->set_subdivide_width(128);
-	sea_plane->set_subdivide_depth(240);
-	sea_plane->set_material(sea_mat);
-	MeshInstance3D *sea_mi = memnew(MeshInstance3D);
-	sea_mi->set_name("WestSea");
-	sea_mi->set_mesh(sea_plane);
-	sea_mi->set_position(Vector3(-240.5f, water_level, -160.0f));
-	sea_mi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
-	add_child(sea_mi);
+	// 西海与长河共用上面这张水面与水深图，不再单独建 plane，避免水面交界线。
 
 	// 湖面结冰碰撞归 IceSurface 独有（SkyCycle spawn 的无限平面，0.85/0.70 滞回，
 	// 与 water.gdshader freeze_amount 的视觉封冻节奏对齐）。此处不再建湖面 box：
@@ -1821,17 +1793,24 @@ void TerrainBuilder::build_water() {
 	//
 	// 覆盖范围必须严格等于上面的 PlaneMesh：中心 (-6, 48) + size(150,165)
 	//   → X: -81 ~ 69，Z: -34.5 ~ 130.5
-	const Vector2 sm_origin(-81.0f, -34.5f);
-	const Vector2 sm_size(150.0f, 165.0f);
+	const Vector2 sm_origin(-300.0f, -260.0f);
+	const Vector2 sm_size(369.0f, 390.5f);
 	const float SM_DEPTH = 6.0f; // 与 water.gdshader 的 shore_map_depth 一致
-	const int SMW = 384;
-	const int SMH = 422; // 约 0.39 m/像素；线性过滤把像素台阶抹平，浪脊轮廓够细
+	const int SMW = 512;
+	const int SMH = 544; // 约 0.72 m/像素；覆盖湖、河、海同一张水深图
 	Ref<Image> sm = Image::create_empty(SMW, SMH, false, Image::FORMAT_R8);
 	for (int y = 0; y < SMH; y++) {
 		for (int x = 0; x < SMW; x++) {
 			Vector2 w = sm_origin + sm_size * Vector2(((float)x + 0.5f) / (float)SMW,
 													  ((float)y + 0.5f) / (float)SMH);
-			float d = clampf((water_level - terrain_height(w.x, w.y)) / SM_DEPTH, 0.0f, 1.0f);
+			float d;
+			if (w.x < -224.0f || w.y < -224.0f) {
+				// 地图外：只有西/西南是海，其余方向仍按陆地处理，避免四周凭空出现一圈海
+				const bool outer_sea = (w.x < -140.0f) || (w.y < -224.0f && w.x < -100.0f);
+				d = outer_sea ? 1.0f : 0.0f;
+			} else {
+				d = clampf((water_level - terrain_height(w.x, w.y)) / SM_DEPTH, 0.0f, 1.0f);
+			}
 			sm->set_pixel(x, y, Color(d, 0.0f, 0.0f));
 		}
 	}

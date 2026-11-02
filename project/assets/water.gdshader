@@ -190,7 +190,12 @@ void fragment() {
 		discard;
 	}
 
-	vec2 p = world_pos.xz * noise_scale;
+	// 大尺度域扭曲：同一套水面噪声在 200m 长河上不再按固定周期重复
+	vec2 wq = world_pos.xz;
+	vec2 warp = (vec2(vnoise(wq * 0.011 + vec2(5.2, 11.7)), vnoise(wq * 0.013 - vec2(9.1, 3.4))) - 0.5) * 30.0
+	          + (vec2(vnoise(wq * 0.061 + 17.0), vnoise(wq * 0.071 - 7.0)) - 0.5) * 4.5;
+	vec2 p = (wq + warp) * noise_scale;
+	vec2 foam_p = wq + warp * 1.35;
 	float t = TIME * 0.9;
 
 	// 三层噪声高度场：两层反向滚动 + 一层沿流向拉长的顺流层（水流方向感）；
@@ -321,14 +326,15 @@ void fragment() {
 	// 水深用**水深图**而不是深度缓冲算出来的 water_depth：顶点位移也用水深图，
 	// 两边同源，白沫才骑在抬起来的那道水脊上（差一点就错开半条浪）。
 	// 引入横向不规则相移（彻底打破平行等深线，消除湖面规则同心圆/平行白色硬线）
-	float phase_jitter = (vnoise(world_pos.xz * 0.22 + vec2(t * 0.04, -t * 0.03)) - 0.5) * 1.6
-	                   + (vnoise(world_pos.xz * 0.65 - vec2(t * 0.02, t * 0.05)) - 0.5) * 0.8;
+	float phase_jitter = (vnoise(foam_p * 0.22 + vec2(t * 0.04, -t * 0.03)) - 0.5) * 1.6
+	                   + (vnoise(foam_p * 0.65 - vec2(t * 0.02, t * 0.05)) - 0.5) * 0.8
+	                   + (vnoise(world_pos.xz * 0.026 + vec2(13.0, -4.0)) - 0.5) * 3.4;
 	float lap1 = TIME * shore_wave_speed + md * shore_wave_freq + phase_jitter;
 	float lap2 = TIME * shore_wave_speed * 0.72 + md * shore_wave_freq * 1.35 + 2.31 + phase_jitter * 1.15;
 	float lap3 = TIME * shore_wave_speed * 1.41 + md * shore_wave_freq * 0.85 + 4.77 + phase_jitter * 0.85;
 
 	// 白沫破碎噪声：打散浪脊使其呈现自然的浪沫簇，而不是一整条白色的硬线条！
-	float foam_breakup = smoothstep(0.32, 0.72, vnoise(world_pos.xz * 1.45 + vec2(t * 0.14, -t * 0.10)));
+	float foam_breakup = smoothstep(0.32, 0.72, vnoise(foam_p * 1.45 + vec2(t * 0.14, -t * 0.10)));
 
 	// 浪峰破碎（幂次尖锐化 + 有机白沫打散）
 	float crest1 = pow(max(sin(lap1), 0.0), 2.8) * shore_k * foam_breakup;
@@ -355,9 +361,9 @@ void fragment() {
 	}
 
 	// 石头处的不规则破碎噪声（让爆发团不成规整圆环）
-	float foam_n_fine = vnoise(p * 6.5 + vec2(TIME * 0.24, -TIME * 0.18))
-					  + vnoise(p * 14.2 - vec2(TIME * 0.16, TIME * 0.22)) * 0.55
-					  + vnoise(p * 28.0 + vec2(TIME * 0.09, TIME * 0.13)) * 0.30;
+	float foam_n_fine = vnoise(foam_p * 6.5 + vec2(TIME * 0.24, -TIME * 0.18))
+					  + vnoise(foam_p * 14.2 - vec2(TIME * 0.16, TIME * 0.22)) * 0.55
+					  + vnoise(foam_p * 28.0 + vec2(TIME * 0.09, TIME * 0.13)) * 0.30;
 	foam_n_fine = foam_n_fine / 1.85; // 归一到 0~1
 	float rock_grain = 0.55 + 0.45 * smoothstep(0.30, 0.80, foam_n_fine);
 
@@ -370,16 +376,17 @@ void fragment() {
 			* 0.75 * (1.0 - freeze_amount);
 
 	// ── D. 潮汐冲刷水线（Swash Zone）────────────────────────────────────
-	float foam_n_base = vnoise(p * 3.2 + vec2(t * 0.16, -t * 0.11)) * 0.5
-					  + vnoise(p * 7.0 - vec2(t * 0.10, t * 0.07)) * 0.5;
+	float foam_n_base = vnoise(foam_p * 3.2 + vec2(t * 0.16, -t * 0.11)) * 0.5
+					  + vnoise(foam_p * 7.0 - vec2(t * 0.10, t * 0.07)) * 0.5;
 	float swash_pulse = 0.13 * sin(TIME * shore_wave_speed)
 					  + 0.055 * sin(TIME * shore_wave_speed * 0.65 + 1.1)
-					  + 0.028 * sin(TIME * 4.3 + world_pos.x * 0.38 + world_pos.z * 0.22);
+					  + 0.028 * sin(TIME * 4.3 + world_pos.x * 0.38 + world_pos.z * 0.22
+					  		+ (vnoise(foam_p * 0.04) - 0.5) * 6.0);
 	float swash_line = 1.0 - smoothstep(0.0, 0.22, water_depth - swash_pulse + foam_n_base * 0.10);
 
 	// ── E. 退浪网状泡沫花边（Backwash Foam Lace）────────────────────────
-	float lace_n = vnoise(p * 9.0 + vec2(TIME * 0.14, -TIME * 0.10)) * 0.6
-				 + vnoise(p * 20.0 - vec2(TIME * 0.09, TIME * 0.12)) * 0.4;
+	float lace_n = vnoise(foam_p * 9.0 + vec2(TIME * 0.14, -TIME * 0.10)) * 0.6
+				 + vnoise(foam_p * 20.0 - vec2(TIME * 0.09, TIME * 0.12)) * 0.4;
 	float lace_mask = smoothstep(0.50, 0.78, lace_n) * shore_k;
 	// 大浪退去后遗留的银白泡沫网（强度随浪峰脉动消退）
 	float backwash = lace_mask * (crest1 * 0.65 + 0.28 * shore_k);
@@ -387,7 +394,7 @@ void fragment() {
 	// ── F. 浪花飞溅白雾（Spray Mist）────────────────────────────────────
 	// 浪峰最高处破碎飞溅的细小水雾，比岸边泡沫更加发白透明
 	float spray_k = pow(max(sin(lap1 + 0.7), 0.0), 5.5) * extreme_shallow;
-	float spray_n = vnoise(p * 22.0 + vec2(TIME * 0.35, TIME * 0.28));
+	float spray_n = vnoise(foam_p * 22.0 + vec2(TIME * 0.35, TIME * 0.28));
 	float spray = spray_k * smoothstep(0.45, 0.70, spray_n) * 1.6;
 
 	// ── G. 静态基底泡沫（保底，极浅处永不断层）─────────────────────────
@@ -426,7 +433,9 @@ void fragment() {
 				   + spray * 0.95;                 // 飞溅白雾
 		foam *= water_mask; // 浪花与水深严格绑定，边缘平滑收缩归零
 	}
-	foam = clamp(foam, 0.0, 1.0) * (1.0 - freeze_amount);
+	// 大尺度泡沫浓淡：同一段河岸不会每隔几米重复同样一团白沫
+	float foam_macro = 0.55 + 0.45 * smoothstep(0.22, 0.78, vnoise(world_pos.xz * 0.028 + vec2(7.3, -3.1)));
+	foam = clamp(foam * foam_macro, 0.0, 1.0) * (1.0 - freeze_amount);
 
 	// ── I. 浪峰法线隆起（立体破浪感）────────────────────────────────────
 	float norm_surge = (crest1 * 0.70 + rock_core * crest1 * 0.60) * (1.0 - freeze_amount);

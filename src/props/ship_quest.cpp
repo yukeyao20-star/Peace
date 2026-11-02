@@ -52,20 +52,18 @@ const int PART_KIND[ShipQuest::PART_COUNT] = {
 	4,1,4,5
 };
 const float PART_X[ShipQuest::PART_COUNT] = {
-	12.9f, 13.6f, 11.6f, 14.6f, 10.8f, 15.2f, 8.0f,
-	6.2f, 7.0f, 5.6f, 8.6f, -7.0f, -8.2f, -9.2f, -6.2f,
-	13.8f, 16.6f, 15.6f, 17.8f, 14.6f,
-	22.6f, 24.2f, 21.0f, -6.6f, -10.8f,
-	13.2f, 14.2f, 11.9f,
-	16.9f, 6.8f, 10.4f, 9.2f
+	12.9f, 13.6f, 16.9f, 7.0f, 10.8f, 15.2f, 8.0f,
+	6.2f, 7.0f, 5.6f, 5.2f, -4.2f, -11.6f, -12.8f,
+	-1.2f, 12.6f, 16.6f, 15.6f, 18.6f, 14.6f, 22.6f,
+	24.2f, 21.0f, -14.6f, -16.2f, 13.2f, 14.2f, 13.2f,
+	18.2f, 7.8f, 10.4f, 6.2f
 };
 const float PART_Z[ShipQuest::PART_COUNT] = {
-	3.2f, 4.1f, 5.0f, 5.2f, 3.0f, 3.6f, 4.0f,
-	15.2f, 16.2f, 14.0f, 12.4f, -12.8f, -13.8f, -12.2f, -14.2f,
-	21.5f, 21.0f, 24.6f, 20.4f, 20.0f,
-	17.4f, 15.0f, 14.0f, -13.5f, -14.4f,
-	17.2f, 18.2f, 12.6f,
-	21.8f, 16.4f, 20.3f, 11.0f
+	3.2f, 4.1f, 6.8f, 6.4f, 3.0f, 3.6f, 4.0f,
+	15.2f, 16.2f, 14.0f, 13.0f, -12.2f, -16.2f, -12.8f,
+	-16.4f, 22.6f, 21.0f, 24.6f, 19.4f, 20.0f, 17.4f,
+	15.0f, 14.0f, -15.8f, -18.2f, 17.2f, 18.2f, 14.0f,
+	22.4f, 17.6f, 20.3f, 12.8f
 };
 const int STAGE_THRESHOLD[6] = { 7, 15, 20, 25, 28, 32 };
 // 离岸航线：从木屋湖畔的干船坞出发，穿过大湖、驶入西侧长河，最后进入西海。
@@ -251,7 +249,7 @@ void ShipQuest::_notification(int p_what) {
 			g.z = pos.z;
 			g.y = Math::lerp(g.y, target_y, Math::min(1.0f, delta * 1.2f));
 			ship_root->set_global_position(g);
-			ship_root->set_rotation(Vector3(0.0f, std::atan2(dir.x, dir.z), std::sin(dep_t * 0.6f) * 0.012f));
+			ship_root->set_global_rotation(Vector3(0.0f, std::atan2(dir.x, dir.z), std::sin(dep_t * 0.6f) * 0.012f));
 			// 摄影机在岸边缓缓跟随
 			if (cine_cam != nullptr) {
 				const Vector3 ship_g = ship_root->get_global_position();
