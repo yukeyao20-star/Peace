@@ -264,8 +264,8 @@ void ShipQuest::_notification(int p_what) {
 			if (fade != nullptr) {
 				const float a = Math::clamp((dep_t - 18.5f) / 4.0f, 0.0f, 1.0f);
 				fade->set_color(Color(0.98f, 0.97f, 0.93f, a));
-				if (end_title != nullptr) end_title->set_visible(dep_t > 21.0f);
-				if (end_sub != nullptr) end_sub->set_visible(dep_t > 21.8f);
+				if (end_title != nullptr) end_title->set_visible(dep_t > 19.0f);
+				if (end_sub != nullptr) end_sub->set_visible(dep_t > 19.8f);
 			}
 			if (dep_t > 26.0f) set_process(false);
 		} break;
@@ -335,6 +335,7 @@ void ShipQuest::interact(const Vector3 &p_player_pos) {
 			cine_cam->set_current(true);
 		}
 		if (cine_layer != nullptr) cine_layer->set_visible(true);
+		if (title_layer != nullptr) title_layer->set_visible(true);
 		dep_t = 0.0f;
 		set_process(true);
 		return;
@@ -447,10 +448,14 @@ void ShipQuest::build_cinematic() {
 	fade->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
 	fade->set_z_index(-5); // 白场必须在标题下面
 	root->add_child(fade);
+	// 标题单独一层，保证永远压在白场与 3D 画面之上
+	title_layer = memnew(CanvasLayer);
+	title_layer->set_name("DepartureTitle");
+	title_layer->set_layer(151);
+	add_child(title_layer);
 	CenterContainer *center = memnew(CenterContainer);
 	center->set_anchors_preset(Control::PRESET_FULL_RECT);
-	center->set_z_index(5);
-	root->add_child(center);
+	title_layer->add_child(center);
 	VBoxContainer *vb = memnew(VBoxContainer);
 	vb->add_theme_constant_override("separation", 18);
 	center->add_child(vb);
@@ -467,6 +472,7 @@ void ShipQuest::build_cinematic() {
 	end_sub->set_visible(false);
 	vb->add_child(end_sub);
 	cine_layer->set_visible(false);
+	title_layer->set_visible(false);
 	cine_cam = memnew(Camera3D);
 	cine_cam->set_name("DepartureCamera");
 	cine_cam->set_fov(52.0f);

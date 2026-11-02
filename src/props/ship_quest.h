@@ -56,6 +56,7 @@ private:
 	CanvasLayer *ui_layer = nullptr;
 	Label *tracker = nullptr;
 	CanvasLayer *cine_layer = nullptr;
+	CanvasLayer *title_layer = nullptr;
 	ColorRect *fade = nullptr;
 	Label *end_title = nullptr;
 	Label *end_sub = nullptr;
