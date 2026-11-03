@@ -19,6 +19,8 @@
 // v4 增量：木箱"发现野餐毯"一次性标志（chest_looted 键；旧档缺键=未发现）。
 // v5 增量：门窗开合状态（door_state "0/1/-1" 含推拉向 + windows_open "1,0,0,1"
 // 定位序 FL,FR,L,B；旧档缺键=全关）。
+// v9 增量：主线「离岸」进度（ship_quest "started|32位拾取掩码|已安装数"；
+// 旧档缺键=主线未开始）。离岸动画中照存船体完成态，但不写玩家位置。
 
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/variant/vector3.hpp>
