@@ -35,6 +35,7 @@ class ShutterWindow;
 class ShellField;
 class Mailbox;
 class StewBowl;
+class ShipQuest;
 
 class SaveSystem : public Node {
 	GDCLASS(SaveSystem, Node)
@@ -77,6 +78,9 @@ private:
 	bool wishes_applied = false;
 	bool mailbox_applied = false;
 	bool stew_applied = false;
+	// v9：主线「离岸」进度（started|拾取掩码|已安装数；旧档缺键=未开始）
+	String ship_serial;
+	bool ship_applied = false;
 
 	SkyCycle *find_sky() const;
 	GameDirector *find_director() const;
@@ -87,6 +91,7 @@ private:
 	Player *find_player() const;
 	Mailbox *find_mailbox() const;
 	StewBowl *find_stew_bowl() const;
+	ShipQuest *find_ship_quest() const;
 	void restore_targets(); // 把缓存值写回 SkyCycle/GameDirector（缺谁下帧再试）
 	void trim_logs();       // user://logs/ 超过 10MB 时按最旧优先删除（引擎只按份数轮转不限体积）
 

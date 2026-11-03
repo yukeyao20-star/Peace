@@ -28,6 +28,7 @@
 #include <godot_cpp/classes/torus_mesh.hpp>
 #include <godot_cpp/classes/v_box_container.hpp>
 #include <godot_cpp/classes/window.hpp>
+#include <godot_cpp/variant/packed_string_array.hpp>
 #include "../actors/player.h"
 #include "../systems/ui_style.h"
 #include "../systems/mesh_util.h"
@@ -59,19 +60,23 @@ const int PART_KIND[ShipQuest::PART_COUNT] = {
 	2,2,2,
 	4,1,4,5
 };
+// 零件散布：从木屋院子一路向西——瀑布、西岸河滩、长河、直到入海口。
+// 越靠后阶段的零件越远，主线会自然把玩家带向"离岸"的方向。
 const float PART_X[ShipQuest::PART_COUNT] = {
 	12.9f, 13.6f, 16.9f, 7.0f, 10.8f, 15.2f, 8.0f,
 	6.2f, 7.0f, 5.6f, 5.2f, -4.2f, -11.6f, -12.8f,
-	-1.2f, 12.6f, 16.6f, 15.6f, 18.6f, 14.6f, 22.6f,
-	24.2f, 21.0f, -14.6f, -16.2f, 13.2f, 14.2f, 13.2f,
-	18.2f, 7.8f, 10.4f, 6.2f
+	-1.2f, 76.0f, 84.0f, 68.0f, 90.0f, 80.0f,
+	-52.0f, -58.0f, -88.0f, -98.0f, -110.0f,
+	-132.0f, -150.0f, -101.0f,
+	-140.0f, -146.0f, -152.0f, -64.0f
 };
 const float PART_Z[ShipQuest::PART_COUNT] = {
 	3.2f, 4.1f, 6.8f, 6.4f, 3.0f, 3.6f, 4.0f,
 	15.2f, 16.2f, 14.0f, 13.0f, -12.2f, -16.2f, -12.8f,
-	-16.4f, 22.6f, 21.0f, 24.6f, 19.4f, 20.0f, 17.4f,
-	15.0f, 14.0f, -15.8f, -18.2f, 17.2f, 18.2f, 14.0f,
-	22.4f, 17.6f, 20.3f, 12.8f
+	-16.4f, 84.0f, 74.0f, 88.0f, 70.0f, 64.0f,
+	64.0f, 52.0f, 62.0f, 52.0f, 46.0f,
+	23.0f, 12.0f, 14.0f,
+	-26.0f, -32.0f, -40.0f, 76.0f
 };
 const int STAGE_THRESHOLD[6] = { 7, 15, 20, 25, 28, 32 };
 // 离岸航线：从木屋湖畔的干船坞出发，穿过大湖、驶入西侧长河，最后进入西海。
@@ -84,6 +89,10 @@ const Vector3 VOYAGE[14] = {
 };
 const char *STAGE_NAMES[6] = {
 	"龙骨与肋材", "船壳木板", "甲板与舱室", "桅杆与横桁", "船帆与绳索", "舵轮与船灯"
+};
+// 每阶段零件的方位线索（散布范围变远后，靠这行字把玩家往西引）
+const char *STAGE_HINTS[6] = {
+	"木屋院子", "湖边与木屋南面", "瀑布一带", "西岸河滩", "长河两岸", "入海口的滩上"
 };
 }
 
@@ -232,6 +241,11 @@ void ShipQuest::_notification(int p_what) {
 		case NOTIFICATION_PROCESS: {
 			const float delta = (float)get_process_delta_time();
 			t += delta;
+			// 主线引导：开局几秒提示一次旧船坞的方位（只在未开工时出现）
+			if (!started && !intro_hint_shown && t > 6.0f) {
+				intro_hint_shown = true;
+				flash(String::utf8("听说西边河口的旧船坞里，停着一条没造完的船"));
+			}
 			if (!departing) break;
 			dep_t += delta;
 			// 路径跟随：船头朝前找航线上的“前视点”，先慢转、再沿船头方向前进。
@@ -393,19 +407,60 @@ int ShipQuest::get_parts_visible() const {
 	return n;
 }
 
-void ShipQuest::update_stage() {
+String ShipQuest::get_save_serial() const {
+	String mask;
+	for (int i = 0; i < PART_COUNT; i++) {
+		mask += collected[i] ? String("1") : String("0");
+	}
+	return String(started ? "1" : "0") + String("|") + mask + String("|")
+			+ String::num_int64(installed);
+}
+
+void ShipQuest::apply_save_serial(const String &p_serial) {
+	PackedStringArray parts_s = p_serial.split("|");
+	if (parts_s.size() != 3) {
+		return; // 旧档/坏档：保持初始状态（主线未开始）
+	}
+	const String mask = parts_s[1];
+	if (mask.length() != PART_COUNT) {
+		return;
+	}
+	int count = 0;
+	for (int i = 0; i < PART_COUNT; i++) {
+		collected[i] = mask[i] == '1';
+		if (collected[i]) count++;
+	}
+	// 已安装数只可能 ≤ 已拾取数；越界的坏档夹回安全范围
+	installed = Math::clamp((int)parts_s[2].to_int(), 0, count);
+	carried = count - installed;
+	complete = installed >= PART_COUNT;
+	started = (parts_s[0] == "1") || count > 0 || installed > 0;
+	departing = false;
+	for (int i = 0; i < PART_COUNT; i++) {
+		if (parts[i] != nullptr) {
+			parts[i]->set_visible(started && !collected[i] && !complete);
+		}
+	}
+	update_stage(false); // 读档不弹"船造好了"的提示
+	update_ui();
+}
+
+void ShipQuest::update_stage(bool p_announce) {
 	int s = 0;
 	for (int i = 0; i < 6; i++) {
 		if (installed >= STAGE_THRESHOLD[i]) s = i + 1;
 	}
 	stage = s;
 	for (int i = 1; i <= 6; i++) {
-		if (stage_nodes[i] != nullptr) stage_nodes[i]->set_visible(i <= stage);
+		// 第 1 阶段的龙骨永远露出：旧船坞里本来就该躺着一条没造完的船
+		if (stage_nodes[i] != nullptr) stage_nodes[i]->set_visible(i == 1 || i <= stage);
 	}
 	if (installed >= PART_COUNT) {
 		complete = true;
 		if (scaffold != nullptr) scaffold->set_visible(false);
-		flash(String::utf8("大船造好了 ·「Peace」\n按 E 登船，向湖心出发"));
+		if (p_announce) {
+			flash(String::utf8("大船造好了 ·「Peace」\n按 E 登船，向湖心出发"));
+		}
 	}
 }
 
@@ -421,7 +476,8 @@ void ShipQuest::update_ui() {
 		s += String::utf8("\n已找 ") + String::num_int64(installed + carried)
 				+ String::utf8(" · 待安装 ") + String::num_int64(carried);
 		if (stage < 6) {
-			s += String::utf8("\n下一段：") + String::utf8(STAGE_NAMES[stage]);
+			s += String::utf8("\n下一段：") + String::utf8(STAGE_NAMES[stage])
+					+ String::utf8(" · 去") + String::utf8(STAGE_HINTS[stage]) + String::utf8("找");
 		}
 		if (carried > 0) {
 			s += String::utf8("\n回旧船坞按 E 安装");
@@ -439,8 +495,8 @@ void ShipQuest::build_ui() {
 	panel->set_name("Tracker");
 	panel->set_anchors_preset(Control::PRESET_CENTER_TOP);
 	panel->set_offset(SIDE_TOP, 92.0f);
-	panel->set_offset(SIDE_LEFT, -190.0f);
-	panel->set_offset(SIDE_RIGHT, 190.0f);
+	panel->set_offset(SIDE_LEFT, -230.0f);
+	panel->set_offset(SIDE_RIGHT, 230.0f);
 	panel->add_theme_stylebox_override("panel", uistyle::make_wood_textured(12.0f, 0.96f));
 	ui_layer->add_child(panel);
 	tracker = memnew(Label);
@@ -522,9 +578,17 @@ void ShipQuest::build() {
 	meshutil::add_box(scaffold, toon, Vector3(0.10f, 0.10f, 6.5f), Vector3(-1.6f, 2.9f, 0.0f), post);
 	meshutil::add_box(scaffold, toon, Vector3(0.10f, 0.10f, 6.5f), Vector3(1.6f, 2.9f, 0.0f), post);
 	meshutil::add_box(scaffold, toon, Vector3(0.10f, 2.0f, 0.10f), Vector3(-1.6f, 1.0f, 0.0f), post, Vector3(0.0f, 0.0f, 0.5f));
+	// 船坞旗杆：一根高杆 + 奶白招幌，从湖对岸也能认出这里
+	const float pole_h = 7.4f;
+	meshutil::add_box(scaffold, toon, Vector3(0.10f, pole_h, 0.10f), Vector3(2.05f, pole_h * 0.5f, 3.55f), post);
+	meshutil::add_box(scaffold, toon, Vector3(2.20f, 1.15f, 0.03f), Vector3(3.15f, pole_h - 0.82f, 3.55f),
+			Color(0.95f, 0.87f, 0.68f), Vector3(0.0f, 0.0f, -0.06f));
+	meshutil::add_box(scaffold, toon, Vector3(0.09f, 0.09f, 0.09f), Vector3(2.05f, pole_h + 0.05f, 3.55f),
+			Color(0.78f, 0.64f, 0.32f));
 	build_ship();
 	// 零件
 	for (int i = 0; i < PART_COUNT; i++) make_part(i);
+	update_stage(false); // 初始：龙骨可见，其余阶段收着
 	build_ui();
 	build_cinematic();
 	update_ui();

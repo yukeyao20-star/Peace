@@ -77,6 +77,7 @@ private:
 	bool started = false;
 	bool complete = false;
 	bool departing = false;
+	bool intro_hint_shown = false;
 	int carried = 0;
 	int installed = 0;
 	int stage = 0;
@@ -89,7 +90,7 @@ private:
 	void build_cinematic();
 	void make_part(int p_index);
 	void update_ui();
-	void update_stage();
+	void update_stage(bool p_announce = true);
 	void flash(const String &p_msg) const;
 protected:
 	static void _bind_methods();
@@ -111,5 +112,9 @@ public:
 	int get_stage() const { return stage; }
 	bool is_part_taken(int p_index) const { return p_index >= 0 && p_index < PART_COUNT && collected[p_index]; }
 	int get_parts_visible() const;
+
+	// 存档：started|32位拾取掩码|已安装数（安装只记数量，安装顺序不影响船体）
+	String get_save_serial() const;
+	void apply_save_serial(const String &p_serial);
 };
 } // namespace godot

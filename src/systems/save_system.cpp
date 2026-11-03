@@ -3,6 +3,7 @@
 #include "../props/shells.h"
 #include "../props/mailbox.h"
 #include "../props/stew_bowl.h"
+#include "../props/ship_quest.h"
 #include "../actors/player.h"
 
 #include <godot_cpp/classes/config_file.hpp>
@@ -108,6 +109,16 @@ void SaveSystem::_notification(int p_what) {
 					shells_applied = true;
 				}
 			}
+			// v9 主线「离岸」：ShipQuest 可能晚于本节点 READY，逐帧补应用一次
+			if (loaded_data && !ship_applied) {
+				ShipQuest *sq = find_ship_quest();
+				if (sq != nullptr) {
+					if (!ship_serial.is_empty()) {
+						sq->apply_save_serial(ship_serial);
+					}
+					ship_applied = true;
+				}
+			}
 			// —— 每 30 秒自动存档 ——
 			autosave_t += (float)get_process_delta_time();
 			if (autosave_t >= AUTOSAVE_SECONDS) {
@@ -185,6 +196,13 @@ ShellField *SaveSystem::find_shells() const {
 		return nullptr;
 	}
 	return Object::cast_to<ShellField>(get_parent()->get_node_or_null(NodePath("Shells")));
+}
+
+ShipQuest *SaveSystem::find_ship_quest() const {
+	if (get_parent() == nullptr) {
+		return nullptr;
+	}
+	return Object::cast_to<ShipQuest>(get_parent()->get_node_or_null(NodePath("ShipQuest")));
 }
 
 ShutterWindow *SaveSystem::find_window(int p_index) const {
@@ -270,9 +288,12 @@ bool SaveSystem::save_now() {
 	}
 	cf->set_value(SEC, "shells_mask", shells_mask);
 
-	// v7：玩家位置——存前拉最新值；玩家缺席保留缓存
+	// v7：玩家位置——存前拉最新值；玩家缺席保留缓存。
+	// 离岸动画里玩家被挂在船上沿航线走，此刻的位置不能存档，否则读档会掉进水里。
+	ShipQuest *sq = find_ship_quest();
+	const bool ship_departing = (sq != nullptr && sq->is_departing());
 	Player *p = find_player();
-	if (p != nullptr) {
+	if (p != nullptr && !ship_departing) {
 		player_pos = p->get_global_position();
 		player_pos_saved = true;
 	}
@@ -296,6 +317,12 @@ bool SaveSystem::save_now() {
 		stew_bowls = sbowl->get_bowls_left();
 	}
 	cf->set_value(SEC, "stew_bowls", stew_bowls);
+
+	// v9：主线「离岸」进度（离岸动画中照存船体完成态；读档从"已造好"继续）
+	if (sq != nullptr) {
+		ship_serial = sq->get_save_serial();
+	}
+	cf->set_value(SEC, "ship_quest", ship_serial);
 
 	return cf->save(SAVE_PATH) == Error::OK;
 }
@@ -347,6 +374,9 @@ bool SaveSystem::load_now() {
 	wishes_applied = false;
 	mailbox_applied = false;
 	stew_applied = false;
+	// v9：主线进度（旧档缺键=空串 → 主线未开始；字符串键缺失不得沿用上一份档的缓存）
+	ship_serial = cf->get_value(SEC, "ship_quest", String());
+	ship_applied = false;
 
 	loaded_data = true;
 	restored = false;      // 有数据待应用，交给 _process 的重试通道

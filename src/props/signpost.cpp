@@ -25,7 +25,7 @@ void Signpost::interact(const Vector3 &p_player_pos) {
 	reads++;
 	if (get_tree() != nullptr) {
 		Node *gd = get_tree()->get_root()->find_child("GameDirector", true, false);
-		if (gd != nullptr) gd->call("flash_hint", String::utf8("木屋在西北 · 湖边往南 · 树林往东"), 3.2f);
+		if (gd != nullptr) gd->call("flash_hint", String::utf8("木屋在西北 · 湖边往南 · 树林往东\n旧船坞：沿湖岸一直往西，到河口就是"), 4.0f);
 	}
 }
 void Signpost::_notification(int p_what) {
@@ -42,15 +42,16 @@ void Signpost::build() {
 	arrows->set_name("Arrows");
 	add_child(arrows);
 	const Color board(0.66f, 0.50f, 0.30f);
-	// 三块箭头板，各偏一点角度
+	// 四块箭头板，各偏一点角度（第四块指向湖西河口的旧船坞）
 	meshutil::add_box(arrows, toon, Vector3(0.52f, 0.14f, 0.04f), Vector3(0.20f, 1.28f, 0.02f), board, Vector3(0.0f, 0.3f, 0.0f));
 	meshutil::add_box(arrows, toon, Vector3(0.52f, 0.14f, 0.04f), Vector3(0.18f, 1.08f, 0.01f), board, Vector3(0.0f, -0.4f, 0.0f));
 	meshutil::add_box(arrows, toon, Vector3(0.52f, 0.14f, 0.04f), Vector3(0.16f, 0.88f, 0.02f), board, Vector3(0.0f, 0.1f, 0.0f));
+	meshutil::add_box(arrows, toon, Vector3(0.52f, 0.14f, 0.04f), Vector3(0.14f, 0.68f, 0.01f), board, Vector3(0.0f, 0.24f, 0.0f));
 	// 箭头尖
-	for (int i = 0; i < 3; i++) {
+	for (int i = 0; i < 4; i++) {
 		meshutil::add_box(arrows, toon, Vector3(0.12f, 0.14f, 0.04f),
 				Vector3(0.48f, 1.28f - 0.20f * (float)i, 0.02f), board,
-				Vector3(0.0f, i == 1 ? -0.4f : (i == 0 ? 0.3f : 0.1f), 0.785f));
+				Vector3(0.0f, i == 1 ? -0.4f : (i == 0 ? 0.3f : (i == 3 ? 0.24f : 0.1f)), 0.785f));
 	}
 	// 手写路牌
 	Ref<Font> cjk = ResourceLoader::get_singleton()->load("res://assets/fonts/NotoSansSC-Regular.ttf");
@@ -58,10 +59,10 @@ void Signpost::build() {
 	label->set_name("SignText");
 	label->set_billboard_mode(BaseMaterial3D::BILLBOARD_DISABLED);
 	label->set_pixel_size(0.0035);
-	label->set_font_size(44);
-	label->set_text(String::utf8("木屋\n湖边\n树林"));
+	label->set_font_size(36);
+	label->set_text(String::utf8("木屋\n湖边\n树林\n船坞"));
 	label->set_modulate(Color(0.24f, 0.18f, 0.12f));
-	label->set_position(Vector3(0.18f, 1.08f, 0.05f));
+	label->set_position(Vector3(0.18f, 0.98f, 0.05f));
 	label->set_rotation(Vector3(0.0f, 0.0f, 0.0f));
 	if (cjk.is_valid()) label->set_font(cjk);
 	add_child(label);
