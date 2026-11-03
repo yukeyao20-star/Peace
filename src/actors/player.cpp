@@ -1810,6 +1810,17 @@ void Player::_update_look(double delta) {
 //   鼠标一转，目标机位是绕球面瞬移的，但相机位置在慢慢追，
 //   结果就是"视角永远慢半拍"。用户报的"有延迟/有积分"主要就是这一条。
 //   现在改成：跟随时（角色走动）平滑，环绕（鼠标转动）直接给到位。
+void Player::hide_hud_for_cutscene() {
+	set_hud_visible(false);
+	// 交互提示是 3D 世界里的 Label3D + 屏幕底部字，不归 hud_layer 管，单独收掉
+	if (prompt != nullptr) {
+		prompt->set_visible(false);
+	}
+	if (hud_prompt != nullptr) {
+		hud_prompt->hide();
+	}
+}
+
 void Player::set_hud_visible(bool p_visible) {
 	if (!p_visible && album_open) {
 		close_album();

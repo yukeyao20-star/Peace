@@ -613,6 +613,13 @@ void ShipQuest::build_ship() {
 	const Color wood(0.52f, 0.36f, 0.20f);
 	const Color trim(0.64f, 0.48f, 0.28f);
 	const Color sail_c(0.92f, 0.88f, 0.76f);
+	// 船体截面表（船尾→船首）：z 位置、半宽、舷沿高度。船壳与甲板共用。
+	struct HullSec { float z, hw, top; };
+	const HullSec SEC[8] = {
+		{ -3.70f, 0.70f, 2.00f }, { -3.15f, 1.10f, 2.00f }, { -2.10f, 1.22f, 2.01f },
+		{ 0.00f, 1.25f, 2.03f }, { 1.60f, 1.17f, 2.09f }, { 2.60f, 0.90f, 2.15f },
+		{ 3.30f, 0.42f, 2.21f }, { 3.72f, 0.05f, 2.26f }
+	};
 	ship_root = memnew(Node3D);
 	ship_root->set_name("Ship");
 	add_child(ship_root);
@@ -628,23 +635,192 @@ void ShipQuest::build_ship() {
 	meshutil::add_box(g1, toon, Vector3(0.36f, 1.50f, 0.36f), Vector3(0.0f, 1.10f, 3.35f), wood_dark);
 	meshutil::add_box(g1, toon, Vector3(0.36f, 1.10f, 0.30f), Vector3(0.0f, 1.00f, -3.40f), wood_dark);
 	for (int i = 0; i < 7; i++) {
-		meshutil::add_box(g1, toon, Vector3(2.30f, 0.20f, 0.22f), Vector3(0.0f, 1.05f, -2.7f + 0.9f * (float)i), wood);
+		// 肋材收窄到船壳内侧：装完船壳后不再从舷侧穿出来
+		meshutil::add_box(g1, toon, Vector3(1.60f, 0.20f, 0.22f), Vector3(0.0f, 1.05f, -2.7f + 0.9f * (float)i), wood);
 	}
-	// 2 船壳
+	// 2 船壳：8 个横截面放样出的弧面船体（船尾圆钝、船首收尖），
+	// 比一排方盒子更像一条真正的船；顶点法线交给 SurfaceTool 生成。
 	Node3D *g2 = stage_nodes[2];
-	meshutil::add_box(g2, toon, Vector3(2.30f, 0.18f, 7.1f), Vector3(0.0f, 0.78f, 0.0f), wood);
-	meshutil::add_box(g2, toon, Vector3(0.14f, 1.15f, 7.0f), Vector3(-1.18f, 1.35f, 0.0f), trim);
-	meshutil::add_box(g2, toon, Vector3(0.14f, 1.15f, 7.0f), Vector3(1.18f, 1.35f, 0.0f), trim);
-	meshutil::add_box(g2, toon, Vector3(2.30f, 1.15f, 0.14f), Vector3(0.0f, 1.35f, -3.45f), trim);
-	meshutil::add_box(g2, toon, Vector3(0.14f, 1.15f, 2.10f), Vector3(-0.58f, 1.35f, 2.85f), trim, Vector3(0.0f, 0.28f, 0.0f));
-	meshutil::add_box(g2, toon, Vector3(0.14f, 1.15f, 2.10f), Vector3(0.58f, 1.35f, 2.85f), trim, Vector3(0.0f, -0.28f, 0.0f));
+	{
+		// 截面轮廓（从船沿到龙骨）：0 上沿 / 1 舷侧 / 2 舭部 / 3 近龙骨 / 4 龙骨中线
+		auto prof = [](const HullSec &s, int j, float &x, float &y) {
+			switch (j) {
+				case 0: x = s.hw; y = s.top; break;
+				case 1: x = s.hw * 0.97f; y = 1.30f; break;
+				case 2: x = s.hw * 0.80f; y = 0.90f; break;
+				case 3: x = s.hw * 0.38f; y = 0.62f; break;
+				default: x = 0.0f; y = 0.50f; break;
+			}
+		};
+		Ref<SurfaceTool> st;
+		st.instantiate();
+		st->begin(Mesh::PRIMITIVE_TRIANGLES);
+		// 正反两套绕序都写：低模船壳不赌引擎的正面判定，任何一面都不会漏
+		auto quad = [&](const Vector3 &a, const Vector3 &b, const Vector3 &c, const Vector3 &d) {
+			st->add_vertex(a); st->add_vertex(b); st->add_vertex(c);
+			st->add_vertex(a); st->add_vertex(c); st->add_vertex(d);
+			st->add_vertex(a); st->add_vertex(c); st->add_vertex(b);
+			st->add_vertex(a); st->add_vertex(d); st->add_vertex(c);
+		};
+		for (int i = 0; i < 7; i++) {
+			const HullSec &s0 = SEC[i];
+			const HullSec &s1 = SEC[i + 1];
+			for (int j = 0; j < 4; j++) {
+				float x0, y0, x1, y1;
+				prof(s0, j, x0, y0);
+				prof(s0, j + 1, x1, y1);
+				float x0b, y0b, x1b, y1b;
+				prof(s1, j, x0b, y0b);
+				prof(s1, j + 1, x1b, y1b);
+				// 右舷（+X）与左舷（-X）各一片
+				for (int side = 0; side < 2; side++) {
+					const float m = (side == 0) ? 1.0f : -1.0f;
+					quad(Vector3(m * x0, y0, s0.z), Vector3(m * x0b, y0b, s1.z),
+							Vector3(m * x1b, y1b, s1.z), Vector3(m * x1, y1, s0.z));
+				}
+			}
+		}
+		// 船尾封板（整块横截面）
+		{
+			const HullSec &s = SEC[0];
+			const Vector3 c(0.0f, 1.24f, s.z - 0.02f);
+			Vector3 ring[8];
+			int n = 0;
+			for (int j = 0; j < 4; j++) {
+				float x, y;
+				prof(s, j, x, y);
+				ring[n++] = Vector3(x, y, s.z - 0.02f);
+			}
+			for (int j = 3; j >= 0; j--) {
+				float x, y;
+				prof(s, j, x, y);
+				ring[n++] = Vector3(-x, y, s.z - 0.02f);
+			}
+			for (int k = 0; k < 7; k++) {
+				st->add_vertex(c);
+				st->add_vertex(ring[k + 1]);
+				st->add_vertex(ring[k]);
+			}
+		}
+		st->generate_normals();
+		Ref<ArrayMesh> hull_mesh = st->commit();
+		hull_mesh->surface_set_material(0, meshutil::toon_material(toon, wood));
+		MeshInstance3D *hull_mi = memnew(MeshInstance3D);
+		hull_mi->set_name("Hull");
+		hull_mi->set_mesh(hull_mesh);
+		g2->add_child(hull_mi);
+
+		// 舷墙立柱 + 沿舷弧的扶手
+		for (int side = 0; side < 2; side++) {
+			const float m = (side == 0) ? 1.0f : -1.0f;
+			for (int i = 0; i < 7; i++) {
+				const HullSec &s = SEC[i];
+				meshutil::add_box(g2, toon, Vector3(0.07f, 0.46f, 0.07f),
+						Vector3(m * (s.hw - 0.05f), s.top + 0.23f, s.z), trim);
+			}
+			for (int i = 0; i < 6; i++) {
+				const HullSec &a = SEC[i];
+				const HullSec &b = SEC[i + 1];
+				const Vector3 pa(m * (a.hw - 0.05f), a.top + 0.44f, a.z);
+				const Vector3 pb(m * (b.hw - 0.05f), b.top + 0.44f, b.z);
+				const Vector3 mid = (pa + pb) * 0.5f;
+				const float len = (pb - pa).length();
+				const float ang = std::atan2(pb.x - pa.x, pb.z - pa.z);
+				meshutil::add_box(g2, toon, Vector3(0.05f, 0.05f, len), mid, trim,
+						Vector3(0.0f, ang, 0.0f));
+			}
+		}
+		// 舷侧板缝：沿船体曲面贴两条深色窄带，低模也能看出是木板拼成的船
+		{
+			auto lerp_prof = [&](const HullSec &s, float jf, float &x, float &y) {
+				int j0 = (int)jf;
+				const float t = jf - (float)j0;
+				float xa, ya, xb, yb;
+				prof(s, j0, xa, ya);
+				prof(s, Math::min(j0 + 1, 4), xb, yb);
+				x = xa + (xb - xa) * t;
+				y = ya + (yb - ya) * t;
+			};
+			Ref<SurfaceTool> bst;
+			bst.instantiate();
+			bst->begin(Mesh::PRIMITIVE_TRIANGLES);
+			const float BANDS[2][2] = { { 1.28f, 1.44f }, { 2.10f, 2.26f } };
+			for (int b = 0; b < 2; b++) {
+				for (int i = 0; i < 7; i++) {
+					for (int side = 0; side < 2; side++) {
+						const float m = (side == 0) ? 1.0f : -1.0f;
+						float xa, ya, xb, yb, xc, yc, xd, yd;
+						lerp_prof(SEC[i], BANDS[b][0], xa, ya);
+						lerp_prof(SEC[i + 1], BANDS[b][0], xb, yb);
+						lerp_prof(SEC[i + 1], BANDS[b][1], xc, yc);
+						lerp_prof(SEC[i], BANDS[b][1], xd, yd);
+						const Vector3 p0(m * xa * 1.015f, ya, SEC[i].z);
+						const Vector3 p1(m * xb * 1.015f, yb, SEC[i + 1].z);
+						const Vector3 p2(m * xc * 1.015f, yc, SEC[i + 1].z);
+						const Vector3 p3(m * xd * 1.015f, yd, SEC[i].z);
+						for (int rev = 0; rev < 2; rev++) {
+							if (rev == 0) {
+								bst->add_vertex(p0); bst->add_vertex(p1); bst->add_vertex(p2);
+								bst->add_vertex(p0); bst->add_vertex(p2); bst->add_vertex(p3);
+							} else {
+								bst->add_vertex(p0); bst->add_vertex(p2); bst->add_vertex(p1);
+								bst->add_vertex(p0); bst->add_vertex(p3); bst->add_vertex(p2);
+							}
+						}
+					}
+				}
+			}
+			bst->generate_normals();
+			Ref<ArrayMesh> band_mesh = bst->commit();
+			band_mesh->surface_set_material(0, meshutil::toon_material(toon, wood_dark));
+			MeshInstance3D *band_mi = memnew(MeshInstance3D);
+			band_mi->set_name("HullPlanks");
+			band_mi->set_mesh(band_mesh);
+			g2->add_child(band_mi);
+		}
+		// 船首斜桅
+		meshutil::add_box(g2, toon, Vector3(0.07f, 0.07f, 1.55f), Vector3(0.0f, 2.42f, 4.05f),
+				wood, Vector3(0.42f, 0.0f, 0.0f));
+	}
 	// 3 甲板与舱室
 	Node3D *g3 = stage_nodes[3];
-	meshutil::add_box(g3, toon, Vector3(2.22f, 0.12f, 6.5f), Vector3(0.0f, 1.98f, 0.0f), trim);
-	meshutil::add_box(g3, toon, Vector3(1.70f, 0.95f, 1.9f), Vector3(0.0f, 2.50f, -1.45f), trim);
-	meshutil::add_box(g3, toon, Vector3(0.56f, 0.68f, 0.05f), Vector3(0.0f, 2.34f, -0.49f), wood_dark);
+	// 甲板：按船壳截面铺满（宽度随船体收放），甲板与舷墙之间不留缝
+	{
+		Ref<SurfaceTool> dk;
+		dk.instantiate();
+		dk->begin(Mesh::PRIMITIVE_TRIANGLES);
+		for (int i = 0; i < 7; i++) {
+			const float x0 = SEC[i].hw - 0.05f;
+			const float x1 = SEC[i + 1].hw - 0.05f;
+			const Vector3 c0(0.0f, 1.97f, SEC[i].z);
+			const Vector3 r0(x0, 1.97f, SEC[i].z);
+			const Vector3 l0(-x0, 1.97f, SEC[i].z);
+			const Vector3 c1(0.0f, 1.97f, SEC[i + 1].z);
+			const Vector3 r1(x1, 1.97f, SEC[i + 1].z);
+			const Vector3 l1(-x1, 1.97f, SEC[i + 1].z);
+			// 正反两套绕序都铺：甲板永远朝上，不赌引擎的正面判定
+			dk->add_vertex(r0); dk->add_vertex(r1); dk->add_vertex(c0);
+			dk->add_vertex(c0); dk->add_vertex(r1); dk->add_vertex(c1);
+			dk->add_vertex(c0); dk->add_vertex(c1); dk->add_vertex(l1);
+			dk->add_vertex(c0); dk->add_vertex(l1); dk->add_vertex(l0);
+			dk->add_vertex(r0); dk->add_vertex(c0); dk->add_vertex(r1);
+			dk->add_vertex(c0); dk->add_vertex(c1); dk->add_vertex(r1);
+			dk->add_vertex(c0); dk->add_vertex(l1); dk->add_vertex(c1);
+			dk->add_vertex(c0); dk->add_vertex(l0); dk->add_vertex(l1);
+		}
+		dk->generate_normals();
+		Ref<ArrayMesh> deck_mesh = dk->commit();
+		deck_mesh->surface_set_material(0, meshutil::toon_material(toon, trim));
+		MeshInstance3D *deck_mi = memnew(MeshInstance3D);
+		deck_mi->set_name("Deck");
+		deck_mi->set_mesh(deck_mesh);
+		g3->add_child(deck_mi);
+	}
+	meshutil::add_box(g3, toon, Vector3(1.70f, 0.95f, 1.9f), Vector3(0.0f, 2.44f, -1.45f), trim);
+	meshutil::add_box(g3, toon, Vector3(1.92f, 0.10f, 2.12f), Vector3(0.0f, 2.955f, -1.45f), wood_dark);
+	meshutil::add_box(g3, toon, Vector3(0.56f, 0.68f, 0.05f), Vector3(0.0f, 2.28f, -0.49f), wood_dark);
 	for (int s = 0; s < 2; s++) {
-		meshutil::add_box(g3, toon, Vector3(0.36f, 0.30f, 0.04f), Vector3(s == 0 ? -0.48f : 0.48f, 2.68f, -2.41f), Color(0.62f, 0.72f, 0.74f));
+		meshutil::add_box(g3, toon, Vector3(0.36f, 0.30f, 0.04f), Vector3(s == 0 ? -0.48f : 0.48f, 2.62f, -2.41f), Color(0.62f, 0.72f, 0.74f));
 	}
 	// 4 桅杆
 	Node3D *g4 = stage_nodes[4];

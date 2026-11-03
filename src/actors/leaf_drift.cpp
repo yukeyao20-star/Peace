@@ -26,6 +26,7 @@
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 
+#include "../props/ship_quest.h"
 #include "../world/sky_cycle.h"
 #include "../world/terrain_builder.h"
 
@@ -72,6 +73,10 @@ void LeafDrift::_notification(int p_what) {
 			if (sky == nullptr) {
 				sky = Object::cast_to<SkyCycle>(root->find_child("SkyCycle", true, false));
 			}
+			if (ship == nullptr) {
+				ship = Object::cast_to<ShipQuest>(root->find_child("ShipQuest", true, false));
+			}
+			const bool ship_departing = (ship != nullptr && ship->is_departing());
 			const float rain = (sky != nullptr) ? sky->get_rain_amount() : 0.0f;
 			const float snow = (sky != nullptr) ? sky->get_snow_amount() : 0.0f;
 			wet = Math::move_toward(wet, Math::clamp(rain, 0.0f, 1.0f), delta * 0.4f);
@@ -79,7 +84,7 @@ void LeafDrift::_notification(int p_what) {
 
 			if (fall_fx != nullptr) {
 				// 雪天不再飘叶；发射盒跟着玩家，走到哪都有一小片秋色。
-				const bool emit = snow_sm < 0.35f;
+				const bool emit = snow_sm < 0.35f && !ship_departing;
 				if (fall_fx->is_emitting() != emit) {
 					fall_fx->set_emitting(emit);
 				}

@@ -30,6 +30,7 @@ class MultiMesh;
 class MultiMeshInstance3D;
 class StandardMaterial3D;
 class SkyCycle;
+class ShipQuest;
 
 class LeafDrift : public Node3D {
 	GDCLASS(LeafDrift, Node3D)
@@ -58,6 +59,7 @@ class LeafDrift : public Node3D {
 
 	Node3D *player = nullptr;
 	SkyCycle *sky = nullptr;
+	ShipQuest *ship = nullptr;
 
 	void build();
 	void build_leaf_mesh();
