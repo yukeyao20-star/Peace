@@ -1,6 +1,7 @@
 #include "ship_quest.h"
 #include <cmath>
 #include <godot_cpp/classes/audio_stream.hpp>
+#include <godot_cpp/classes/audio_stream_player3d.hpp>
 #include <godot_cpp/classes/audio_stream_player.hpp>
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/canvas_layer.hpp>
@@ -13,8 +14,13 @@
 #include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/classes/surface_tool.hpp>
 #include <godot_cpp/classes/cylinder_mesh.hpp>
+#include <godot_cpp/classes/cpu_particles3d.hpp>
+#include <godot_cpp/classes/gradient.hpp>
+#include <godot_cpp/classes/quad_mesh.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/font.hpp>
+#include <godot_cpp/classes/image.hpp>
+#include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/label3d.hpp>
 #include <godot_cpp/classes/label.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
@@ -165,8 +171,8 @@ void ShipPart::build_visual() {
 	gm->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
 	Ref<SphereMesh> sm;
 	sm.instantiate();
-	sm->set_radius(0.055f);
-	sm->set_height(0.11f);
+	sm->set_radius(0.075f);
+	sm->set_height(0.15f);
 	sm->set_radial_segments(6);
 	sm->set_rings(3);
 	sm->set_material(gm);
@@ -177,6 +183,39 @@ void ShipPart::build_visual() {
 	mmi->set_mesh(sm);
 	mmi->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 	marker->add_child(mmi);
+
+	// 柔光点：远远看见的那一点金，靠它把视线拉过来
+	{
+		Ref<Image> gi = Image::create_empty(64, 64, false, Image::FORMAT_RGBA8);
+		for (int y = 0; y < 64; y++) {
+			for (int x = 0; x < 64; x++) {
+				const float dx = ((float)x + 0.5f) / 64.0f * 2.0f - 1.0f;
+				const float dy = ((float)y + 0.5f) / 64.0f * 2.0f - 1.0f;
+				const float r = std::sqrt(dx * dx + dy * dy);
+				float a = Math::clamp(1.0f - r, 0.0f, 1.0f);
+				a = std::pow(a, 1.7f) * 0.85f;
+				gi->set_pixel(x, y, Color(1.0f, 0.86f, 0.42f, a));
+			}
+		}
+		Ref<StandardMaterial3D> glow_m;
+		glow_m.instantiate();
+		glow_m->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+		glow_m->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+		glow_m->set_blend_mode(BaseMaterial3D::BLEND_MODE_ADD);
+		glow_m->set_billboard_mode(BaseMaterial3D::BILLBOARD_ENABLED);
+		glow_m->set_flag(BaseMaterial3D::FLAG_BILLBOARD_KEEP_SCALE, true);
+		glow_m->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+		glow_m->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, ImageTexture::create_from_image(gi));
+		Ref<QuadMesh> gq;
+		gq.instantiate();
+		gq->set_size(Vector2(0.62f, 0.62f));
+		gq->set_material(glow_m);
+		MeshInstance3D *glow = memnew(MeshInstance3D);
+		glow->set_name("Glow");
+		glow->set_mesh(gq);
+		glow->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+		marker->add_child(glow);
+	}
 	add_child(marker);
 }
 
@@ -386,6 +425,9 @@ void ShipQuest::interact(const Vector3 &p_player_pos) {
 		if (cine_layer != nullptr) cine_layer->set_visible(true);
 		if (title_layer != nullptr) title_layer->set_visible(true);
 		dep_t = 0.0f;
+		if (wake != nullptr) {
+			wake->set_emitting(true);
+		}
 		set_process(true);
 		return;
 	}
@@ -393,6 +435,11 @@ void ShipQuest::interact(const Vector3 &p_player_pos) {
 		const int n = carried;
 		installed += carried;
 		carried = 0;
+		if (sfx != nullptr && snd_install.is_valid()) {
+			sfx->set_global_position(get_interact_pos());
+			sfx->set_stream(snd_install);
+			sfx->play();
+		}
 		update_stage();
 		update_ui();
 		flash(String::utf8("装上了 ") + String::num_int64(n) + String::utf8(" 个船件 · 已装 ")
@@ -410,7 +457,14 @@ void ShipQuest::collect_part(int p_index) {
 	if (!started || complete || departing || p_index < 0 || p_index >= PART_COUNT) return;
 	if (collected[p_index]) return;
 	collected[p_index] = true;
-	if (parts[p_index] != nullptr) parts[p_index]->set_visible(false);
+	if (parts[p_index] != nullptr) {
+		if (sfx != nullptr && snd_pick.is_valid()) {
+			sfx->set_global_position(parts[p_index]->get_global_position());
+			sfx->set_stream(snd_pick);
+			sfx->play();
+		}
+		parts[p_index]->set_visible(false);
+	}
 	carried++;
 	update_ui();
 	flash(String::utf8("找到「") + String::utf8(PART_NAMES[p_index]) + String::utf8("」· 带回旧船坞安装"));
@@ -608,6 +662,24 @@ void ShipQuest::build() {
 	update_stage(false); // 初始：龙骨可见，其余阶段收着
 	build_ui();
 	build_cinematic();
+	// 零件拾取 / 安装的轻响：同一个 3D 播放器换位置复用
+	if (ResourceLoader *rl = ResourceLoader::get_singleton()) {
+		if (rl->exists("res://assets/audio/organic_chime.mp3")) {
+			Ref<Resource> r = rl->load("res://assets/audio/organic_chime.mp3");
+			snd_pick = Ref<AudioStream>(Object::cast_to<AudioStream>(r.ptr()));
+		}
+		if (rl->exists("res://assets/audio/goal_shimmer.mp3")) {
+			Ref<Resource> r = rl->load("res://assets/audio/goal_shimmer.mp3");
+			snd_install = Ref<AudioStream>(Object::cast_to<AudioStream>(r.ptr()));
+		}
+	}
+	sfx = memnew(AudioStreamPlayer3D);
+	sfx->set_name("PartSfx");
+	sfx->set_bus(StringName("SFX"));
+	sfx->set_volume_db(-4.0f);
+	sfx->set_unit_size(6.0f);
+	sfx->set_max_distance(36.0f);
+	add_child(sfx);
 	update_ui();
 	set_process(true);
 }
@@ -989,4 +1061,55 @@ void ShipQuest::build_ship() {
 	Ref<Font> cjk = uistyle::load_cjk();
 	if (cjk.is_valid()) name->set_font(cjk);
 	g6->add_child(name);
+
+	// 船尾尾迹：离岸动画里才发射；世界坐标粒子留在身后，拖出一条白浪
+	{
+		Ref<Texture2D> dot;
+		if (ResourceLoader::get_singleton()->exists("res://assets/firework_spark.png")) {
+			Ref<Resource> r = ResourceLoader::get_singleton()->load("res://assets/firework_spark.png");
+			dot = Ref<Texture2D>(Object::cast_to<Texture2D>(r.ptr()));
+		}
+		Ref<StandardMaterial3D> wm;
+		wm.instantiate();
+		wm->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+		wm->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+		wm->set_billboard_mode(BaseMaterial3D::BILLBOARD_PARTICLES);
+		wm->set_flag(BaseMaterial3D::FLAG_BILLBOARD_KEEP_SCALE, true);
+		wm->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+		wm->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true);
+		wm->set_albedo(Color(0.94f, 0.97f, 1.0f, 0.85f));
+		if (dot.is_valid()) {
+			wm->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, dot);
+		}
+		Ref<QuadMesh> wquad;
+		wquad.instantiate();
+		wquad->set_size(Vector2(1.35f, 0.68f));
+		wquad->set_material(wm);
+		wake = memnew(CPUParticles3D);
+		wake->set_name("Wake");
+		wake->set_amount(110);
+		wake->set_lifetime(2.2f);
+		wake->set_lifetime_randomness(0.35f);
+		wake->set_use_local_coordinates(false);
+		wake->set_mesh(wquad);
+		wake->set_emission_shape(CPUParticles3D::EMISSION_SHAPE_BOX);
+		wake->set_emission_box_extents(Vector3(1.35f, 0.05f, 0.35f));
+		wake->set_direction(Vector3(0.0f, 0.2f, -1.0f));
+		wake->set_spread(55.0f);
+		wake->set_gravity(Vector3(0.0f, 0.0f, 0.0f));
+		wake->set_param_min(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.15f);
+		wake->set_param_max(CPUParticles3D::PARAM_INITIAL_LINEAR_VELOCITY, 0.55f);
+		wake->set_param_min(CPUParticles3D::PARAM_SCALE, 0.7f);
+		wake->set_param_max(CPUParticles3D::PARAM_SCALE, 1.5f);
+		Ref<Gradient> wramp;
+		wramp.instantiate();
+		wramp->add_point(0.0f, Color(1.0f, 1.0f, 1.0f, 0.80f));
+		wramp->add_point(0.45f, Color(1.0f, 1.0f, 1.0f, 0.50f));
+		wramp->add_point(1.0f, Color(1.0f, 1.0f, 1.0f, 0.0f));
+		wake->set_color_ramp(wramp);
+		wake->set_position(Vector3(0.0f, 0.58f, -3.75f));
+		wake->set_emitting(false);
+		wake->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+		ship_root->add_child(wake);
+	}
 }

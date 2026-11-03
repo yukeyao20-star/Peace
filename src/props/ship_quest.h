@@ -4,6 +4,7 @@
 // 零件散落在木屋、谷仓、沙滩、码头和花圃附近；拾到后回船坞按 E 安装。
 // 全部装好后登船出发，进入离岸结局。
 
+#include <godot_cpp/classes/audio_stream.hpp>
 #include <godot_cpp/classes/texture2d.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/vector3.hpp>
@@ -13,6 +14,8 @@ namespace godot {
 
 class CanvasLayer;
 class Camera3D;
+class AudioStreamPlayer3D;
+class CPUParticles3D;
 class Curve3D;
 class ShaderMaterial;
 class SubViewport;
@@ -71,6 +74,10 @@ private:
 	Ref<Curve3D> voyage_curve;
 	Ref<ShaderMaterial> sail_mat;
 	SubViewport *sail_vp = nullptr;
+	CPUParticles3D *wake = nullptr;
+	AudioStreamPlayer3D *sfx = nullptr;
+	Ref<AudioStream> snd_pick;
+	Ref<AudioStream> snd_install;
 	Ref<Texture2D> sail_tex; // 必须由本节点持有：Variant 参数不会替 ViewportTexture 续命
 	float ship_yaw = 0.0f;
 	bool yaw_init = false;
