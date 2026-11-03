@@ -1,5 +1,7 @@
 #include "ship_quest.h"
 #include <cmath>
+#include <godot_cpp/classes/audio_stream.hpp>
+#include <godot_cpp/classes/audio_stream_player.hpp>
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/canvas_layer.hpp>
 #include <godot_cpp/classes/center_container.hpp>
@@ -366,6 +368,21 @@ void ShipQuest::interact(const Vector3 &p_player_pos) {
 		ship_yaw = 0.0f;
 		yaw_init = false;
 		dep_s = 0.0f;
+		// 离岸乐句：一段轻柔竖琴，把"出发"的情绪托起来
+		if (ResourceLoader *rl = ResourceLoader::get_singleton()) {
+			if (rl->exists("res://assets/audio/goal_dreamy_harp.mp3")) {
+				Ref<Resource> r = rl->load("res://assets/audio/goal_dreamy_harp.mp3");
+				Ref<AudioStream> snd = Ref<AudioStream>(Object::cast_to<AudioStream>(r.ptr()));
+				if (snd.is_valid()) {
+					AudioStreamPlayer *music = memnew(AudioStreamPlayer);
+					music->set_name("DepartMusic");
+					music->set_stream(snd);
+					music->set_volume_db(-8.0f);
+					add_child(music);
+					music->play();
+				}
+			}
+		}
 		if (cine_layer != nullptr) cine_layer->set_visible(true);
 		if (title_layer != nullptr) title_layer->set_visible(true);
 		dep_t = 0.0f;
