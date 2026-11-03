@@ -326,6 +326,10 @@ void GameDirector::build_ui() {
 	hint_panel = memnew(PanelContainer);
 	hint_panel->set_name("HintPanel");
 	hint_panel->set_anchors_preset(Control::PRESET_CENTER_BOTTOM);
+	// 锚在底边时会默认向下长，内容一撑高就整块掉到屏幕外——
+	// 改成向上生长、水平居中，底板才真的贴在屏幕底部。
+	hint_panel->set_h_grow_direction(Control::GROW_DIRECTION_BOTH);
+	hint_panel->set_v_grow_direction(Control::GROW_DIRECTION_BEGIN);
 	hint_panel->set_offset(Side::SIDE_BOTTOM, -16.0f);
 	hint_panel->add_theme_stylebox_override("panel", uistyle::make_wood_textured(10.0f, 0.92f));
 	add_child(hint_panel);
